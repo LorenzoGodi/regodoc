@@ -3,12 +3,14 @@
 import contextlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
@@ -173,6 +175,34 @@ class InternalErrorTest(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertIn("errore interno del motore (RuntimeError)", err)
         self.assertNotIn("Traceback", err)
+
+
+class EnvironmentTest(unittest.TestCase):
+    def test_closed_pipe_is_an_environment_error(self) -> None:
+        read_end, write_end = os.pipe()
+        os.close(read_end)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "regodoc", "info"],
+                stdout=write_end,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=60,
+            )
+        finally:
+            os.close(write_end)
+        self.assertEqual(result.returncode, ExitCode.ENVIRONMENT)
+        stderr = result.stderr.decode("utf-8")
+        self.assertIn("errore d'ambiente", stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("errore interno", stderr)
+
+    def test_interrupt(self) -> None:
+        with mock.patch.object(declaration, "describe", side_effect=KeyboardInterrupt):
+            code, out, err = run_cli("info")
+        self.assertEqual(code, ExitCode.INTERRUPTED)
+        self.assertEqual(out, "")
+        self.assertIn("regodoc: interrotto", err)
 
 
 class ModuleEntryPointTest(unittest.TestCase):

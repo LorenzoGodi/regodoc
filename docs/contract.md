@@ -274,7 +274,7 @@ generatore usa per il contenuto.
 | 0 | esito positivo, anche con avvisi (senza `--strict`) | usa l'uscita |
 | 1 | pacchetto o tema rifiutato per errori, o per avvisi con `--strict`; l'elenco è nel rapporto | mostra gli errori a chi ha caricato il pacchetto |
 | 2 | errore d'uso: argomenti, file mancante, opzione sconosciuta, contratto non supportato, data mancante | corregge la chiamata: è un difetto del chiamante |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, comando non ancora disponibile | riprova più tardi o segnala l'ambiente |
+| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa da chi legge, comando non ancora disponibile | riprova più tardi o segnala l'ambiente |
 | 4 | errore interno: un'eccezione non prevista | segnala un difetto del motore; non riprova |
 | 130 | interrotto | — |
 

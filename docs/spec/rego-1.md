@@ -670,7 +670,7 @@ I codici sono raggruppati per famiglia: `regodoc.archive.*`, `regodoc.manifest.*
 `regodoc.toml.*`, `regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`. Un
 codice, una volta pubblicato, non cambia significato.
 
-Il comando esce con questi codici, che fanno parte del contratto (CP-72):
+Il comando esce con questi codici, che fanno parte del contratto del motore (`docs/contract.md`, §7):
 
 | Codice | Significato |
 |---|---|
@@ -976,6 +976,6 @@ testo monospaziato in linea (decisione 26).
 | 31 commenti XML conservati | §4.8 |
 | 32 virgolette a coppie, larghezza delle figure, `<code>` | §4.5, §5.3 |
 | A1 tre regole nuove dei paragrafi 6 e 7 | §6.1 punti 2, 3 e 10 |
-| CP-72 unità binarie e codici d'uscita | §0, §7, §8 |
+| unità binarie e codici d'uscita, decisi dopo la verifica | §0, §7, §8 |
 
 Le decisioni 12, 16, 18, 19 e 21 riguardano Rego e non il formato.

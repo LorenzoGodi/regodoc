@@ -4,8 +4,8 @@ Rego legge questi valori dal comando ``regodoc info`` e li applica senza averli 
 nel proprio codice (terza regola dell'autonomia). Ogni valore qui è normativo: cambiarlo
 cambia il contratto e va registrato nella specifica.
 
-Le unità dei limiti sono binarie: 1 KiB = 1024 byte, 1 MiB = 1024 KiB (CP-72), per coerenza
-con i limiti in byte di Rego, che sono potenze di due.
+Le unità dei limiti sono binarie: 1 KiB = 1024 byte, 1 MiB = 1024 KiB (specifica, §0 e §7),
+per coerenza con i limiti in byte di Rego, che sono potenze di due.
 """
 
 from types import MappingProxyType
@@ -82,7 +82,7 @@ COMMANDS: Final = MappingProxyType(
 
 
 # Risorse per comando: tempo massimo in secondi e memoria, applicata solo dove il sistema lo
-# permette (CP-73, punto 6).
+# permette (contratto, §5).
 RESOURCES: Final = MappingProxyType(
     {
         "time_seconds": MappingProxyType(

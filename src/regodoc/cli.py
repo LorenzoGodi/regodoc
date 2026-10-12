@@ -6,8 +6,11 @@ JSON su stdout con l'opzione ``--json``.
 """
 
 import argparse
+import contextlib
 import enum
+import io
 import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -113,6 +116,21 @@ def _write(stream: IO[str], text: str) -> None:
         stream.flush()
         buffer.write(text.encode("utf-8"))
         buffer.flush()
+
+
+def _note(text: str) -> None:
+    """Scrive un messaggio su stderr senza mai fallire: anche stderr può essere chiuso."""
+    with contextlib.suppress(OSError, ValueError):
+        _write(sys.stderr, text)
+
+
+def _silence_stdout() -> None:
+    """Dopo una pipe chiusa, punta stdout a /dev/null per evitare errori alla chiusura."""
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError, io.UnsupportedOperation):
+        pass
 
 
 def _write_json(payload: object) -> None:
@@ -311,12 +329,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         # argparse esce con SystemExit per l'aiuto, la versione e gli errori d'uso.
         return exit_.code if isinstance(exit_.code, int) else int(ExitCode.USAGE)
     except KeyboardInterrupt:
-        _write(sys.stderr, "regodoc: interrotto\n")
+        _note("regodoc: interrotto\n")
         return int(ExitCode.INTERRUPTED)
+    except BrokenPipeError:
+        # Chi legge l'uscita ha chiuso la pipe: è un fatto d'ambiente, non un difetto.
+        _silence_stdout()
+        _note("regodoc: errore d'ambiente: l'uscita è stata chiusa prima della fine\n")
+        return int(ExitCode.ENVIRONMENT)
+    except OSError as error:
+        _note(f"regodoc: errore d'ambiente: {error.strerror or type(error).__name__}\n")
+        return int(ExitCode.ENVIRONMENT)
     except Exception as error:
-        _write(
-            sys.stderr,
+        _note(
             f"regodoc: errore interno del motore ({type(error).__name__}); "
-            "è un difetto del motore, non del pacchetto\n",
+            "è un difetto del motore, non del pacchetto\n"
         )
         return int(ExitCode.INTERNAL)

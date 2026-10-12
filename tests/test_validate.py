@@ -543,7 +543,7 @@ class XmlVocabularyTest(unittest.TestCase):
         self.assert_error("<p>a &#x202E; b</p>", "regodoc.text.char")
         self.assert_error("<p>emoji \U0001f600</p>", "regodoc.text.char")
         self.assert_error("<p>e\u0301</p>", "regodoc.text.char")
-        self.assertEqual(self.body("<p>Città, «così» — 22,14 € e ⇒ ok&#160;sì.</p>"), [])
+        self.assertEqual(self.body("<p>Città, «così» — 37,65 € e ⇒ ok&#160;sì.</p>"), [])
 
     def test_links_and_addresses(self) -> None:
         for href in (

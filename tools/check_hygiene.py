@@ -44,6 +44,8 @@ EXACT_BYTES_NAMES = frozenset({"mimetype"})
 # File in cui il carattere di tabulazione è necessario.
 TAB_ALLOWED_NAMES = frozenset({"Makefile"})
 MAX_NGRAM = 3
+# Identità di autore e committente di ogni commit.
+EXPECTED_IDENTITY = "Lorenzo Godi <34336808+LorenzoGodi@users.noreply.github.com>"
 
 # Caratteri di controllo bidirezionale e invisibili usati per nascondere codice (Trojan Source).
 _BIDI_AND_INVISIBLE = frozenset(
@@ -51,6 +53,7 @@ _BIDI_AND_INVISIBLE = frozenset(
     "\u2060\u2066\u2067\u2068\u2069\ufeff"
 )
 _WORD = re.compile(r"[^\W_]+")
+_WORD_OR_NUMBER = re.compile(r"[^\W\d_]+|\d+")
 _FIRST_LINE = re.compile(r"L\d+: \S")
 _CLOSING_KEYWORD = re.compile(
     r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[\s:]+([\w.-]+/[\w.-]+)?#\d+", re.IGNORECASE
@@ -120,7 +123,9 @@ def load_terms(path: Path = TERMS_FILE) -> Terms:
 
 
 def _words(text: str) -> list[str]:
-    return _WORD.findall(unicodedata.normalize("NFKC", text).casefold())
+    """Parole per il confronto a parola intera: si separano anche fra lettere e cifre, così
+    un nome seguito da un numero di versione senza separatore è riconosciuto."""
+    return _WORD_OR_NUMBER.findall(unicodedata.normalize("NFKC", text).casefold())
 
 
 def _ngrams(words: list[str], starts: int) -> Iterator[str]:
@@ -198,7 +203,9 @@ def check_file(root: Path, relative: str, terms: Terms) -> list[Problem]:
         else []
     )
     path = root / relative
-    if path.is_symlink() or not path.is_file():
+    if path.is_symlink():
+        return [*problems, Problem(relative, 0, "è un collegamento simbolico: non è ammesso")]
+    if not path.is_file():
         return problems
     if path.suffix.lower() in BINARY_SUFFIXES or path.name in EXACT_BYTES_NAMES:
         return problems
@@ -249,17 +256,39 @@ def tracked_files(root: Path) -> list[str]:
     return [p for p in result.stdout.decode("utf-8").split("\0") if p]
 
 
-def commit_messages(root: Path, revision_range: str) -> Iterator[tuple[str, str]]:
-    """Restituisce coppie (sha breve, messaggio) dei commit nell'intervallo."""
+@dataclass(frozen=True)
+class Commit:
+    """Un commit da controllare: sha breve, autore, committente e messaggio."""
+
+    sha: str
+    author: str
+    committer: str
+    message: str
+
+
+def check_identity(where: str, commit: Commit) -> list[Problem]:
+    """Autore e committente devono essere l'identità del repository."""
+    problems = []
+    for role, identity in (("autore", commit.author), ("committente", commit.committer)):
+        if identity != EXPECTED_IDENTITY:
+            problems.append(
+                Problem(where, 0, f"{role} «{identity}» diverso da «{EXPECTED_IDENTITY}»")
+            )
+    return problems
+
+
+def commits(root: Path, revision_range: str) -> Iterator[Commit]:
+    """I commit dell'intervallo, dal più recente."""
     result = subprocess.run(
-        ["git", "log", "--format=%h%x00%B%x00", revision_range],  # noqa: S607 - git dal PATH
+        ["git", "log", "--format=%h%x00%an <%ae>%x00%cn <%ce>%x00%B%x00", revision_range],  # noqa: S607
         cwd=root,
         capture_output=True,
         check=True,
     )
     fields = result.stdout.decode("utf-8").split("\0")
-    for sha, body in zip(fields[0::2], fields[1::2], strict=False):
-        yield sha.strip(), body.strip("\n")
+    for index in range(0, len(fields) - 3, 4):
+        sha, author, committer, body = fields[index : index + 4]
+        yield Commit(sha.strip(), author, committer, body.strip("\n"))
 
 
 def run(root: Path, files: Iterable[str], revision_range: str | None) -> list[Problem]:
@@ -269,8 +298,10 @@ def run(root: Path, files: Iterable[str], revision_range: str | None) -> list[Pr
     for relative in files:
         problems.extend(check_file(root, relative, terms))
     if revision_range:
-        for sha, message in commit_messages(root, revision_range):
-            problems.extend(check_message(f"commit {sha}", message, terms))
+        for commit in commits(root, revision_range):
+            where = f"commit {commit.sha}"
+            problems.extend(check_identity(where, commit))
+            problems.extend(check_message(where, commit.message, terms))
     return problems
 
 

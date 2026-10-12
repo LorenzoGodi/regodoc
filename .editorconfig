@@ -10,3 +10,7 @@ indent_size = 4
 
 [*.{yml,yaml,xml,md}]
 indent_size = 2
+
+# Per specifica (§1.2) il file mimetype non ha l'a capo finale.
+[mimetype]
+insert_final_newline = false

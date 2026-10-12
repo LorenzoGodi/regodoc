@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -51,6 +52,10 @@ class TermTest(unittest.TestCase):
         self.assertEqual(hygiene.find_terms("una rara occasione", TERMS), [1])
         self.assertEqual(hygiene.find_terms("bizzarra, rarità", TERMS), [])
 
+    def test_word_mode_splits_letters_from_digits(self) -> None:
+        self.assertEqual(hygiene.find_terms("versione rara2 e rara-3", TERMS), [1])
+        self.assertEqual(hygiene.find_terms("rarità2", TERMS), [])
+
     def test_repository_terms_file_format(self) -> None:
         terms = hygiene.load_terms()
         self.assertTrue(terms.substrings)
@@ -97,6 +102,30 @@ class TextTest(unittest.TestCase):
 
     def test_term(self) -> None:
         self.assertEqual(self.check(b"parolaproibito\n"), ["contiene un nome vietato"])
+
+
+class FileTest(unittest.TestCase):
+    def test_symlink_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "vero.txt").write_text("ok\n")
+            (root / "link.txt").symlink_to("vero.txt")
+            found = messages(hygiene.check_file(root, "link.txt", TERMS))
+        self.assertEqual(found, ["è un collegamento simbolico: non è ammesso"])
+
+
+class IdentityTest(unittest.TestCase):
+    def test_identity(self) -> None:
+        good = hygiene.EXPECTED_IDENTITY
+        commit = hygiene.Commit("abc", good, good, "L1: x")
+        self.assertEqual(hygiene.check_identity("c", commit), [])
+        other = hygiene.Commit("abc", "Qualcuno <q@example.com>", good, "L1: x")
+        self.assertEqual(
+            messages(hygiene.check_identity("c", other)),
+            [f"autore «Qualcuno <q@example.com>» diverso da «{good}»"],
+        )
+        web = hygiene.Commit("abc", good, "GitHub <noreply@github.com>", "L1: x")
+        self.assertEqual(len(hygiene.check_identity("c", web)), 1)
 
 
 class MessageTest(unittest.TestCase):

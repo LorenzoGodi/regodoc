@@ -55,7 +55,7 @@ codici d'uscita. L'opzione `--contract N` dichiara la versione del contratto att
 | 0 | esito positivo, anche con avvisi |
 | 1 | pacchetto rifiutato per errori di validazione, o per avvisi con `--strict`; il rapporto li elenca |
 | 2 | errore d'uso: argomenti sbagliati, file mancante, opzione sconosciuta |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato |
+| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa |
 | 4 | errore interno del motore: non deve mai accadere, è un difetto da segnalare |
 | 130 | interrotto |
 
@@ -86,7 +86,7 @@ nella CI, un pdflatex mancante diventa un errore.
 ### CI
 
 La CI usa GitHub Actions ed esegue ruff, il controllo d'igiene e le prove su Linux e macOS
-con Python 3.12 e 3.13. Verifica anche l'installazione in un venv pulito. Un job TeX compila
+con Python 3.12, 3.13 e 3.14. Verifica anche l'installazione in un venv pulito. Un job TeX compila
 due volte lo stesso sorgente sulla stessa base dell'immagine di produzione di Rego
 (`python:3.12-slim` su Debian trixie, fissata per digest) con i pacchetti TeX Live elencati
 sopra, e confronta i PDF byte per byte.
