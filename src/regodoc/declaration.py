@@ -15,9 +15,13 @@ from regodoc import __version__
 
 ENGINE_NAME: Final = "regodoc"
 
-# Versione del contratto fra Rego e il motore. Resta 0 finché il lotto L3 non lo fissa:
-# con la versione 0 il contratto può ancora cambiare senza preavviso.
+# Versione del contratto fra Rego e il motore (docs/contract.md). Resta 0 finché Lorenzo non
+# approva il contratto: con la versione 0 il contratto può ancora cambiare senza preavviso.
 CONTRACT_VERSION: Final = 0
+# Versioni del contratto che il motore sa servire con --contract.
+CONTRACTS: Final = (0,)
+# Versione del contratto del tema (docs/contract.md, §6).
+THEME_CONTRACT_VERSION: Final = 1
 
 # Grammatica scritta dal motore e grammatiche che sa leggere, dalla più vecchia.
 GRAMMAR_CURRENT: Final = "rego/1"
@@ -77,16 +81,70 @@ COMMANDS: Final = MappingProxyType(
 )
 
 
+# Risorse per comando: tempo massimo in secondi e memoria, applicata solo dove il sistema lo
+# permette (CP-73, punto 6).
+RESOURCES: Final = MappingProxyType(
+    {
+        "time_seconds": MappingProxyType(
+            {"info": 5, "validate": 30, "canon": 30, "build": 300, "upgrade": 60}
+        ),
+        "memory_bytes": 1024 * _MIB,
+        "memory_enforced_on": ("linux",),
+    }
+)
+
+# Capacità stabili di questa versione (docs/contract.md, §5 e §9).
+CAPABILITIES: Final = ("validate", "validate.directory")
+
+LANGUAGES: Final = ("it", "en")
+
+# Passate di pdflatex che build può eseguire: due per indice e rimandi, una in più per le
+# citazioni, una di riserva per i riferimenti che si spostano.
+PASSES: Final = MappingProxyType({"min": 2, "max": 4})
+
+# Pacchetti LaTeX che il motore e il tema neutro caricano. Provvisorio fino al lotto L5: tutti
+# sono nell'immagine TeX di Rego.
+TEX_PACKAGES: Final = (
+    "babel",
+    "booktabs",
+    "enumitem",
+    "etoolbox",
+    "fancyhdr",
+    "fontenc",
+    "geometry",
+    "graphicx",
+    "hyperref",
+    "lmodern",
+    "longtable",
+    "microtype",
+    "pdflscape",
+    "tcolorbox",
+    "titlesec",
+    "xcolor",
+)
+
+
 def describe() -> dict[str, object]:
     """Restituisce la dichiarazione completa del motore, pronta per JSON."""
     return {
         "engine": ENGINE_NAME,
         "version": __version__,
         "contract": CONTRACT_VERSION,
+        "contracts": list(CONTRACTS),
         "grammars": {"current": GRAMMAR_CURRENT, "read": list(GRAMMARS_READ)},
         "limits": {
             "envelope": dict(ENVELOPE_LIMITS),
             "content": dict(CONTENT_LIMITS),
         },
+        "resources": {
+            "time_seconds": dict(RESOURCES["time_seconds"]),
+            "memory_bytes": RESOURCES["memory_bytes"],
+            "memory_enforced_on": list(RESOURCES["memory_enforced_on"]),
+        },
         "commands": dict(COMMANDS),
+        "capabilities": list(CAPABILITIES),
+        "languages": list(LANGUAGES),
+        "passes": dict(PASSES),
+        "tex": {"packages": list(TEX_PACKAGES)},
+        "theme_contract": THEME_CONTRACT_VERSION,
     }

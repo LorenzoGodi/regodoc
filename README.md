@@ -44,6 +44,10 @@ Ogni comando che legge un pacchetto accetta `--json`, che scrive il rapporto in 
 e `--strict`, che tratta gli avvisi come errori. Lo stesso comando si può chiamare con
 `python -m regodoc`.
 
+Chi usa il motore da un altro programma segue il [contratto](docs/contract.md): invocazione,
+intestazione JSON, rapporto, dichiarazione di `info`, contratto del tema, grammatiche e
+codici d'uscita. L'opzione `--contract N` dichiara la versione del contratto attesa.
+
 ### Codici d'uscita
 
 | Codice | Significato |

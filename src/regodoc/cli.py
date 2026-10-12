@@ -42,6 +42,10 @@ _ARGPARSE_MESSAGES: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r"argument (?P<a>\S+): expected one argument"), "{a} richiede un valore"),
     (
+        re.compile(r"argument (?P<a>\S+): invalid int value: (?P<v>.+)"),
+        "{a} vuole un numero intero, non {v}",
+    ),
+    (
         re.compile(r"argument (?P<a>\S+): ignored explicit argument (?P<v>.+)"),
         "{a} non accetta il valore {v}",
     ),
@@ -124,6 +128,12 @@ def build_parser() -> ItalianArgumentParser:
     )
     parser.add_argument(
         "--version", action="version", version=f"regodoc {__version__}", help="mostra la versione"
+    )
+    parser.add_argument(
+        "--contract",
+        type=int,
+        metavar="N",
+        help="versione del contratto attesa da chi chiama (docs/contract.md)",
     )
     commands = parser.add_subparsers(dest="command", metavar="COMANDO", title="comandi")
     commands.required = True
@@ -288,6 +298,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
+        if args.contract is not None and args.contract not in declaration.CONTRACTS:
+            supported = ", ".join(str(v) for v in declaration.CONTRACTS)
+            _write(
+                sys.stderr,
+                f"regodoc: questo motore non supporta il contratto {args.contract}; "
+                f"supporta: {supported}\n",
+            )
+            return int(ExitCode.USAGE)
         return int(args.handler(args))
     except SystemExit as exit_:
         # argparse esce con SystemExit per l'aiuto, la versione e gli errori d'uso.
