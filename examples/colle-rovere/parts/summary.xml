@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opening>
+  <section id="in-brief">
+    <title>In breve</title>
+    <p>Questo rapporto descrive la rete e le copie di sicurezza di <var name="siteName"/> al <var name="surveyDate"/> e propone gli interventi per i prossimi <var name="legacyWindow" form="max"/>.</p>
+    <list type="numbered">
+      <item>Sostituire lo switch principale: costo stimato <var name="switchCost"/>.</item>
+      <item>Portare una copia dei dati fuori sede, con un canone di <var name="monthlyFee"/> al mese.</item>
+      <item>Verificare il ripristino almeno una volta a trimestre.</item>
+    </list>
+    <p>I dettagli sono in <reference to="network" through="backup"/>.</p>
+  </section>
+</opening>

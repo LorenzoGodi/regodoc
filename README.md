@@ -8,9 +8,11 @@ per il PDF serve TeX Live.
 Rego lo usa come dipendenza con versione fissata. Chiunque può usarlo da solo, con Python
 e TeX Live.
 
-> **Stato:** in costruzione. Oggi funziona soltanto `regodoc info`. Gli altri comandi
-> esistono, rispondono «non ancora implementato» ed escono con il codice 3, quello degli
-> errori d'ambiente. La specifica del formato `rego/1` arriva in `docs/spec/rego-1.md`.
+> **Stato:** in costruzione. Funzionano `regodoc info` e `regodoc validate`. Gli altri
+> comandi esistono, rispondono «non ancora implementato» ed escono con il codice 3, quello
+> degli errori d'ambiente. La specifica del formato è in
+> [`docs/spec/rego-1.md`](docs/spec/rego-1.md); un pacchetto d'esempio completo, sintetico,
+> è in `examples/colle-rovere/`.
 
 ## Requisiti
 
@@ -33,7 +35,7 @@ python3 -m venv .venv
 | Comando | Che cosa fa | Stato |
 |---|---|---|
 | `regodoc info` | Stampa in JSON la versione del motore, la versione del contratto, le grammatiche lette e i limiti | pronto |
-| `regodoc validate PACCHETTO` | Controlla un pacchetto e ne elenca errori e avvisi | in arrivo |
+| `regodoc validate PACCHETTO` | Controlla un pacchetto, archivio o cartella, e ne elenca errori e avvisi | pronto |
 | `regodoc canon PACCHETTO -o USCITA` | Riscrive il pacchetto in forma canonica | in arrivo |
 | `regodoc build PACCHETTO -o USCITA` | Produce PDF o LaTeX (`--format`), con un tema esterno (`--theme`) e un'intestazione (`--header`) | in arrivo |
 | `regodoc upgrade PACCHETTO -o USCITA` | Porta il pacchetto alla grammatica corrente | in arrivo |

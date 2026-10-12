@@ -1,0 +1,22 @@
+language = "it"
+toc = true
+
+[header]
+title = "Rinnovo della rete della Cantina Colle Rovere"
+subject = "Analisi dello stato attuale e proposta"
+reference = "CR-2026-07"
+date = 2026-10-05
+version_label = "Bozza 0.3"
+
+[[opening]]
+id = "summary"
+
+[[part]]
+id = "network"
+title = "Rete e collegamenti"
+accent = "azure"
+
+[[part]]
+id = "backup"
+title = "Copie di sicurezza"
+accent = "sage"

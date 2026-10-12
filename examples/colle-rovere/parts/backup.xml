@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Stato delle copie di sicurezza al <var name="surveyDate"/> e interventi proposti.</summary>
+  <section id="current-backup">
+    <title>Copie attuali</title>
+    <p><label type="observed"/> Il NAS dell'ufficio occupa <var name="nasUsed"/>, pari al <var name="diskFill"/> dei dischi, con <var name="fileCount"/> file.</p>
+    <p>Le copie restano disponibili per <var name="retention"/>; il rischio principale è descritto in <reference to="offsite"/>.</p>
+    <box type="warning">
+      <p><b>Una sola copia, nello stesso edificio.</b> Prima di cambiare l'apparato servono:</p>
+      <list>
+        <item>una copia completa verificata;</item>
+        <item>una prova di ripristino di una cartella a scelta.</item>
+      </list>
+    </box>
+    <!-- Righe ordinate per priorità. -->
+    <table columns="0.8cm 1.8cm *">
+      <head>
+        <cell>ID</cell>
+        <cell>Priorità</cell>
+        <cell>Intervento</cell>
+      </head>
+      <row>
+        <cell>B1</cell>
+        <cell><tone type="critical">Alta</tone></cell>
+        <cell>
+          <p>Copia fuori sede cifrata:</p>
+          <list type="numbered">
+            <item>scelta del servizio;</item>
+            <item>prima copia completa entro <var name="retention"/>.</item>
+          </list>
+        </cell>
+      </row>
+      <row>
+        <cell>B2</cell>
+        <cell><tone type="ok">Media</tone></cell>
+        <cell>Prova di ripristino trimestrale, con registro dell'esito. <label type="proposed"/></cell>
+      </row>
+      <separator/>
+      <row type="total">
+        <cell span="2">Spesa indicativa</cell>
+        <cell><var name="switchCost"/> una tantum, più <var name="monthlyFee"/> al mese</cell>
+      </row>
+    </table>
+    <section id="offsite">
+      <title>Copie fuori sede</title>
+      <p>La regola «3-2-1» chiede tre copie, su due supporti, di cui una fuori sede. Lo script di prova è:</p>
+      <listing>
+rsync -a --dry-run /volume1/dati/ backup@copie.example:/archivio/
+echo "fine prova"
+</listing>
+      <small>
+        <p>Il comando <code>rsync --dry-run</code> non copia nulla: elenca soltanto i file.</p>
+      </small>
+    </section>
+  </section>
+</part>

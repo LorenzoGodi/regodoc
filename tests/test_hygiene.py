@@ -82,6 +82,9 @@ class TextTest(unittest.TestCase):
         found = self.check("a\u202eb\n".encode())
         self.assertEqual(found, ["carattere invisibile RIGHT-TO-LEFT OVERRIDE"])
 
+    def test_soft_hyphen(self) -> None:
+        self.assertEqual(self.check("a\u00adb\n".encode()), ["carattere invisibile SOFT HYPHEN"])
+
     def test_bom(self) -> None:
         self.assertIn("comincia con un BOM", self.check("\ufeffa\n".encode()))
 

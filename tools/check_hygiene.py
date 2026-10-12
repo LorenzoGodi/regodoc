@@ -178,7 +178,7 @@ def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Pro
         if line != line.rstrip(" \t"):
             problems.append(Problem(where, number, "spazi in fondo alla riga"))
         for char in line:
-            if char in _BIDI_AND_INVISIBLE:
+            if char in _BIDI_AND_INVISIBLE or unicodedata.category(char) == "Cf":
                 name = unicodedata.name(char, f"U+{ord(char):04X}")
                 problems.append(Problem(where, number, f"carattere invisibile {name}"))
             elif char == "\t":

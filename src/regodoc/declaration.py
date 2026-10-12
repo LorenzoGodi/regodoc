@@ -48,7 +48,19 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "table_rows": 600,
         "table_columns": 10,
         "table_columns_normal_size": 8,
+        "cell_characters": 2000,
         "variables": 1500,
+        "structure_bytes": 64 * _KIB,
+        "variables_bytes": 384 * _KIB,
+        "manifest_bytes": 64 * _KIB,
+        "image_side_pixels": 6000,
+        "section_depth": 3,
+        "list_depth": 3,
+        "element_depth": 24,
+        "references": 10_000,
+        "sources": 500,
+        "href_characters": 2000,
+        "listing_line_characters": 200,
     }
 )
 
@@ -57,7 +69,7 @@ CONTENT_LIMITS: Final = MappingProxyType(
 COMMANDS: Final = MappingProxyType(
     {
         "info": "ready",
-        "validate": "draft",
+        "validate": "ready",
         "canon": "draft",
         "build": "draft",
         "upgrade": "draft",

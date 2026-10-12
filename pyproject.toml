@@ -37,6 +37,7 @@ src = ["src", "tests", "tools"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PL", "PTH"]
 ignore = [
     "PLR2004",  # costanti nelle prove
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917",  # i validatori sono lunghi per natura
     "S603",     # subprocess senza shell: e' il modo voluto di chiamare pdflatex e git
     "RUF001", "RUF002", "RUF003",  # testi italiani con caratteri tipografici
 ]

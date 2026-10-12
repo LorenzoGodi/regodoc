@@ -3,9 +3,12 @@
 import contextlib
 import io
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
@@ -39,7 +42,6 @@ class InfoTest(unittest.TestCase):
 class DraftCommandTest(unittest.TestCase):
     def test_draft_commands_say_so(self) -> None:
         cases = {
-            "validate": ("validate", "p.regodoc"),
             "canon": ("canon", "p.regodoc", "-o", "q.regodoc"),
             "build": ("build", "p.regodoc", "-o", "p.pdf"),
             "upgrade": ("upgrade", "p.regodoc", "-o", "q.regodoc"),
@@ -52,17 +54,59 @@ class DraftCommandTest(unittest.TestCase):
                 self.assertIn(f"il comando «{name}» non è ancora implementato", err)
 
     def test_strict_is_accepted(self) -> None:
-        code, _, _ = run_cli("validate", "p.regodoc", "--strict")
+        code, _, _ = run_cli("canon", "p.regodoc", "-o", "q", "--strict")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
 
     def test_draft_json_report(self) -> None:
-        code, out, err = run_cli("validate", "p.regodoc", "--json")
+        code, out, err = run_cli("canon", "p.regodoc", "-o", "q", "--json")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
         self.assertEqual(err, "")
         report = json.loads(out)
         self.assertFalse(report["ok"])
-        self.assertEqual(report["command"], "validate")
+        self.assertEqual(report["exit_code"], 3)
+        self.assertEqual(report["command"], "canon")
         self.assertEqual(report["errors"][0]["code"], "regodoc.not_implemented")
+
+
+class ValidateCommandTest(unittest.TestCase):
+    EXAMPLE = str(Path(__file__).resolve().parent.parent / "examples" / "colle-rovere")
+
+    def test_example_is_valid(self) -> None:
+        code, out, err = run_cli("validate", self.EXAMPLE)
+        self.assertEqual(code, ExitCode.OK)
+        self.assertEqual(out, "")
+        self.assertIn("pacchetto valido (0 errori, 0 avvisi)", err)
+
+    def test_json_report(self) -> None:
+        code, out, _ = run_cli("validate", self.EXAMPLE, "--json")
+        self.assertEqual(code, ExitCode.OK)
+        report = json.loads(out)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["exit_code"], 0)
+        self.assertEqual(report["grammar"], "rego/1")
+        self.assertEqual(report["engine"]["version"], __version__)
+
+    def test_refused_and_strict(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "pkg"
+            shutil.copytree(self.EXAMPLE, target)
+            variables = target / "variables.toml"
+            variables.write_text(variables.read_text() + "spare = { number = 1 }\n")
+            code, _, err = run_cli("validate", str(target))
+            self.assertEqual(code, ExitCode.OK)
+            self.assertIn("avviso: variables.toml:11  regodoc.toml.unused_variable", err)
+            code, out, _ = run_cli("validate", str(target), "--strict", "--json")
+            self.assertEqual(code, ExitCode.REFUSED)
+            self.assertFalse(json.loads(out)["ok"])
+            (target / "structure.toml").write_text("[[part]\n")
+            code, _, err = run_cli("validate", str(target))
+            self.assertEqual(code, ExitCode.REFUSED)
+            self.assertIn("errore: structure.toml:1", err)
+
+    def test_missing_package_is_a_usage_error(self) -> None:
+        code, _, err = run_cli("validate", "/nessun/percorso.regodoc")
+        self.assertEqual(code, ExitCode.USAGE)
+        self.assertIn("non esiste", err)
 
 
 class UsageErrorTest(unittest.TestCase):

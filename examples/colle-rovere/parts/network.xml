@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Rete locale, collegamento a Internet e copertura senza fili della cantina e degli uffici.</summary>
+  <section id="lan">
+    <title>Rete locale</title>
+    <p><label type="observed"/> La rete collega <var name="accessPoints"/> punti di accesso a uno switch di <i>dodici anni</i>, senza alimentazione sui cavi; il dominio interno è <address>colle-rovere.example</address>.</p>
+    <p>Le segnalazioni vanno a <address>it@colle-rovere.example</address>; la guida dei punti di accesso è in <link href="https://docs.example.com/ap/installazione">Installazione dei punti di accesso</link><cite to="ap-guide"/>.</p>
+    <section id="wifi">
+      <title>Copertura senza fili</title>
+      <p>In barricaia il segnale è <tone type="warning">debole</tone> oltre la seconda fila di botti: "zona d'ombra" per i lettori delle etichette.</p>
+      <figure file="images/coverage.png" width="0.6">
+        <caption>Copertura misurata al <var name="surveyDate"/>.</caption>
+      </figure>
+    </section>
+  </section>
+  <section id="sources-network">
+    <title>Fonti</title>
+    <sources id="sources">
+      <source id="ap-guide" href="https://docs.example.com/ap/installazione" publisher="Example Networks" accessed="2026-09-10">Guida all'installazione dei punti di accesso</source>
+      <source href="https://docs.example.com/nas/copie" publisher="Example Storage">Copie pianificate sul NAS</source>
+    </sources>
+  </section>
+</part>

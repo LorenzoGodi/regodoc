@@ -11,9 +11,12 @@ import json
 import re
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import IO, NoReturn
 
 from regodoc import __version__, declaration
+from regodoc.diagnostics import Severity
+from regodoc.validate import Validation, validate_package
 
 
 class ExitCode(enum.IntEnum):
@@ -131,7 +134,7 @@ def build_parser() -> ItalianArgumentParser:
     validate = commands.add_parser("validate", help="controlla un pacchetto .regodoc")
     _add_package(validate)
     _add_json(validate)
-    validate.set_defaults(handler=_cmd_draft, lot="L4")
+    validate.set_defaults(handler=_cmd_validate)
 
     canon = commands.add_parser("canon", help="riscrive un pacchetto in forma canonica")
     _add_package(canon)
@@ -189,8 +192,19 @@ def _cmd_draft(args: argparse.Namespace) -> ExitCode:
                 "contract": declaration.CONTRACT_VERSION,
                 "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
                 "command": args.command,
+                "grammar": None,
+                "exit_code": int(ExitCode.ENVIRONMENT),
                 "ok": False,
-                "errors": [{"code": "regodoc.not_implemented", "message": message}],
+                "errors": [
+                    {
+                        "severity": "error",
+                        "code": "regodoc.not_implemented",
+                        "message": message,
+                        "file": "",
+                        "line": 0,
+                        "column": 0,
+                    }
+                ],
                 "warnings": [],
             }
         )
@@ -199,6 +213,74 @@ def _cmd_draft(args: argparse.Namespace) -> ExitCode:
     # Un comando non ancora implementato è un limite di questa versione del motore, cioè
     # dell'ambiente, non del pacchetto né della riga di comando.
     return ExitCode.ENVIRONMENT
+
+
+def _report(command: str, args: argparse.Namespace, validation: Validation) -> ExitCode:
+    """Scrive il rapporto e sceglie il codice d'uscita (0, oppure 1 con errori o --strict)."""
+    collector = validation.report
+    failed = collector.has_errors() or (args.strict and bool(collector.warnings))
+    code = ExitCode.REFUSED if failed else ExitCode.OK
+    if args.json:
+        _write_json(
+            {
+                "contract": declaration.CONTRACT_VERSION,
+                "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
+                "command": command,
+                "grammar": validation.grammar,
+                "exit_code": int(code),
+                "ok": not failed,
+                "errors": [d.to_json() for d in collector.errors],
+                "warnings": [d.to_json() for d in collector.warnings],
+            }
+        )
+    else:
+        for diagnostic in collector.items:
+            prefix = "errore" if diagnostic.severity is Severity.ERROR else "avviso"
+            _write(sys.stderr, f"{prefix}: {diagnostic}\n")
+        errors, warnings = len(collector.errors), len(collector.warnings)
+        verdict = "pacchetto rifiutato" if failed else "pacchetto valido"
+        _write(sys.stderr, f"regodoc: {verdict} ({errors} errori, {warnings} avvisi)\n")
+    return code
+
+
+def _cmd_validate(args: argparse.Namespace) -> ExitCode:
+    path = Path(args.package)
+    if not path.exists():
+        return _usage_error(args, f"il pacchetto «{args.package}» non esiste")
+    try:
+        validation = validate_package(path)
+    except PermissionError:
+        _write(sys.stderr, f"regodoc: non posso leggere «{args.package}»: permesso negato\n")
+        return ExitCode.ENVIRONMENT
+    return _report("validate", args, validation)
+
+
+def _usage_error(args: argparse.Namespace, message: str) -> ExitCode:
+    if args.json:
+        _write_json(
+            {
+                "contract": declaration.CONTRACT_VERSION,
+                "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
+                "command": args.command,
+                "grammar": None,
+                "exit_code": int(ExitCode.USAGE),
+                "ok": False,
+                "errors": [
+                    {
+                        "severity": "error",
+                        "code": "regodoc.usage",
+                        "message": message,
+                        "file": "",
+                        "line": 0,
+                        "column": 0,
+                    }
+                ],
+                "warnings": [],
+            }
+        )
+    else:
+        _write(sys.stderr, f"regodoc: {message}\n")
+    return ExitCode.USAGE
 
 
 def main(argv: Sequence[str] | None = None) -> int:
