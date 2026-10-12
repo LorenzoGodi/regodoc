@@ -81,8 +81,9 @@ nella CI, un pdflatex mancante diventa un errore.
 
 La CI usa GitHub Actions ed esegue ruff, il controllo d'igiene e le prove su Linux e macOS
 con Python 3.12 e 3.13. Verifica anche l'installazione in un venv pulito. Un job TeX compila
-due volte lo stesso sorgente su Debian con i pacchetti TeX Live elencati sopra, gli stessi
-dell'immagine di produzione di Rego, e confronta i PDF byte per byte.
+due volte lo stesso sorgente sulla stessa base dell'immagine di produzione di Rego
+(`python:3.12-slim` su Debian trixie, fissata per digest) con i pacchetti TeX Live elencati
+sopra, e confronta i PDF byte per byte.
 
 ## Licenza
 

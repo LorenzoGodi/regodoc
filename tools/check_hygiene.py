@@ -4,16 +4,24 @@ Il repository è pubblico: questo controllo impedisce che vi entrino nomi vietat
 attribuzione, caratteri invisibili pericolosi o file con codifica e fine riga sbagliati.
 
 I nomi vietati non sono scritti in chiaro, perché un elenco in chiaro violerebbe la regola
-stessa: il file ``hygiene_terms.sha256`` contiene le impronte sha256 dei termini in minuscolo.
-Il controllo calcola l'impronta di ogni parola e di ogni sequenza di due o tre parole del
-testo e la confronta con l'elenco. Le impronte non sono un segreto, servono solo a non
-stampare i nomi: chi vuole aggiungere un termine usa ``--hash-term``, che legge il termine da
-stdin e stampa la riga da aggiungere.
+stessa: il file ``hygiene_terms.sha256`` contiene, per ogni termine, il modo di confronto, la
+lunghezza e l'impronta sha256 della forma normalizzata (minuscole, ogni sequenza di caratteri
+non alfanumerici ridotta a uno spazio). I modi sono due:
+
+- ``s``, sottostringa: il controllo calcola l'impronta di ogni sottostringa del testo lunga
+  quanto un termine registrato, così un nome vietato è trovato anche dentro un'altra parola;
+- ``w``, parola intera: per i pochi termini che sono anche pezzi di parole comuni, dove il
+  confronto per sottostringa darebbe falsi allarmi continui; il controllo confronta parole e
+  sequenze di due o tre parole.
+
+Le impronte non sono un segreto, servono solo a non stampare i nomi: chi vuole aggiungere un
+termine usa ``--hash-term`` (o ``--hash-term --word``), che legge il termine da stdin e
+stampa la riga da aggiungere. L'elenco in chiaro sta fuori dal repository.
 
 Uso:
     python tools/check_hygiene.py                 # file tracciati da git
     python tools/check_hygiene.py --commits A..B  # anche i messaggi dei commit nell'intervallo
-    python tools/check_hygiene.py --hash-term < termine.txt
+    python tools/check_hygiene.py --hash-term [--word] < termine.txt
 """
 
 import argparse
@@ -31,6 +39,8 @@ TERMS_FILE = Path(__file__).resolve().parent / "hygiene_terms.sha256"
 
 # File che il controllo non legge come testo: ne verifica solo il percorso.
 BINARY_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".pdf", ".regodoc", ".zip"})
+# File che per specifica non hanno l'a capo finale: se ne verifica solo il percorso.
+EXACT_BYTES_NAMES = frozenset({"mimetype"})
 # File in cui il carattere di tabulazione è necessario.
 TAB_ALLOWED_NAMES = frozenset({"Makefile"})
 MAX_NGRAM = 3
@@ -62,20 +72,51 @@ class Problem:
         return f"{self.where}: {self.message}"
 
 
-def term_hash(term: str) -> str:
-    """Impronta di un termine nella forma normalizzata usata dal controllo."""
-    words = _words(term)
-    return hashlib.sha256(" ".join(words).encode("utf-8")).hexdigest()
+@dataclass(frozen=True)
+class Terms:
+    """Impronte dei termini vietati: per sottostringa, raggruppate per lunghezza, e per parola."""
+
+    substrings: dict[int, frozenset[bytes]]
+    words: frozenset[bytes]
+
+    @property
+    def longest(self) -> int:
+        """La lunghezza del termine per sottostringa più lungo."""
+        return max(self.substrings, default=0)
 
 
-def load_term_hashes(path: Path = TERMS_FILE) -> frozenset[str]:
+def normalize(text: str) -> str:
+    """Forma normalizzata: NFKC, minuscole, non alfanumerici ridotti a uno spazio."""
+    return " ".join(_WORD.findall(unicodedata.normalize("NFKC", text).casefold()))
+
+
+def _digest(text: str) -> bytes:
+    return hashlib.sha256(text.encode("utf-8")).digest()
+
+
+def term_line(term: str, *, word: bool = False) -> str:
+    """La riga da aggiungere a ``hygiene_terms.sha256`` per un termine."""
+    normal = normalize(term)
+    return f"{'w' if word else 's'} {len(normal)} {_digest(normal).hex()}"
+
+
+def load_terms(path: Path = TERMS_FILE) -> Terms:
     """Legge le impronte dei termini vietati, ignorando righe vuote e commenti."""
-    hashes = set()
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    substrings: dict[int, set[bytes]] = {}
+    words: set[bytes] = set()
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
-        if line and not line.startswith("#"):
-            hashes.add(line.lower())
-    return frozenset(hashes)
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) != 3 or parts[0] not in ("s", "w") or not parts[1].isdigit():
+            raise ValueError(f"{path.name}:{number}: riga non valida")
+        digest = bytes.fromhex(parts[2])
+        if parts[0] == "w":
+            words.add(digest)
+        else:
+            substrings.setdefault(int(parts[1]), set()).add(digest)
+    return Terms({k: frozenset(v) for k, v in substrings.items()}, frozenset(words))
 
 
 def _words(text: str) -> list[str]:
@@ -90,25 +131,37 @@ def _ngrams(words: list[str], starts: int) -> Iterator[str]:
                 yield " ".join(words[start : start + size])
 
 
-def find_terms(text: str, hashes: frozenset[str]) -> list[int]:
+def _has_substring(normal: str, starts: int, terms: Terms) -> bool:
+    """Vero se una sottostringa che comincia fra i primi ``starts`` caratteri è vietata."""
+    for length, digests in terms.substrings.items():
+        for start in range(min(starts, len(normal) - length + 1)):
+            if _digest(normal[start : start + length]) in digests:
+                return True
+    return False
+
+
+def find_terms(text: str, terms: Terms) -> list[int]:
     """Restituisce i numeri di riga (da 1) che contengono un termine vietato.
 
-    Le sequenze di parole sono cercate dentro la singola riga e a cavallo di due righe
-    consecutive, così un termine composto spezzato da un a capo non sfugge.
+    Le ricerche coprono la singola riga e il passaggio alla riga dopo, così un termine
+    spezzato da un a capo non sfugge; un termine si attribuisce alla riga dove comincia.
     """
     lines = text.splitlines()
     found: list[int] = []
     for index, line in enumerate(lines):
+        following = lines[index + 1] if index + 1 < len(lines) else ""
+        normal = normalize(line)
+        joined = f"{normal} {normalize(following)[: terms.longest]}".rstrip()
         words = _words(line)
-        following = _words(lines[index + 1])[: MAX_NGRAM - 1] if index + 1 < len(lines) else []
-        # Solo le sequenze che cominciano su questa riga: la riga dopo serve a completarle.
-        candidates = _ngrams(words + following, len(words))
-        if any(hashlib.sha256(c.encode("utf-8")).hexdigest() in hashes for c in candidates):
+        candidates = _ngrams(words + _words(following)[: MAX_NGRAM - 1], len(words))
+        if _has_substring(joined, len(normal), terms) or any(
+            _digest(c) in terms.words for c in candidates
+        ):
             found.append(index + 1)
     return found
 
 
-def check_text(where: str, data: bytes, hashes: frozenset[str], *, tabs: bool) -> list[Problem]:
+def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Problem]:
     """Controlla il contenuto di un file di testo."""
     try:
         text = data.decode("utf-8")
@@ -133,24 +186,24 @@ def check_text(where: str, data: bytes, hashes: frozenset[str], *, tabs: bool) -
                     problems.append(Problem(where, number, "tabulazione"))
             elif unicodedata.category(char) == "Cc":
                 problems.append(Problem(where, number, f"carattere di controllo U+{ord(char):04X}"))
-    problems.extend(Problem(where, n, "contiene un nome vietato") for n in find_terms(text, hashes))
+    problems.extend(Problem(where, n, "contiene un nome vietato") for n in find_terms(text, terms))
     return problems
 
 
-def check_file(root: Path, relative: str, hashes: frozenset[str]) -> list[Problem]:
+def check_file(root: Path, relative: str, terms: Terms) -> list[Problem]:
     """Controlla percorso e contenuto di un file del repository."""
     problems = (
         [Problem(relative, 0, "il percorso contiene un nome vietato")]
-        if find_terms(relative, hashes)
+        if find_terms(relative, terms)
         else []
     )
     path = root / relative
     if path.is_symlink() or not path.is_file():
         return problems
-    if path.suffix.lower() in BINARY_SUFFIXES:
+    if path.suffix.lower() in BINARY_SUFFIXES or path.name in EXACT_BYTES_NAMES:
         return problems
     tabs = path.name in TAB_ALLOWED_NAMES
-    return problems + check_text(relative, path.read_bytes(), hashes, tabs=tabs)
+    return problems + check_text(relative, path.read_bytes(), terms, tabs=tabs)
 
 
 def trailers(message: str) -> list[str]:
@@ -166,7 +219,7 @@ def trailers(message: str) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def check_message(where: str, message: str, hashes: frozenset[str]) -> list[Problem]:
+def check_message(where: str, message: str, terms: Terms) -> list[Problem]:
     """Controlla il messaggio di un commit secondo le regole del repository."""
     problems: list[Problem] = []
     lines = message.splitlines()
@@ -180,7 +233,7 @@ def check_message(where: str, message: str, hashes: frozenset[str]) -> list[Prob
             problems.append(Problem(where, number, "parola di chiusura con riferimento a issue"))
     problems.extend(Problem(where, 0, f"trailer non ammesso: {t}") for t in trailers(message))
     problems.extend(
-        Problem(where, n, "contiene un nome vietato") for n in find_terms(message, hashes)
+        Problem(where, n, "contiene un nome vietato") for n in find_terms(message, terms)
     )
     return problems
 
@@ -211,13 +264,13 @@ def commit_messages(root: Path, revision_range: str) -> Iterator[tuple[str, str]
 
 def run(root: Path, files: Iterable[str], revision_range: str | None) -> list[Problem]:
     """Esegue tutti i controlli e restituisce i problemi trovati."""
-    hashes = load_term_hashes()
+    terms = load_terms()
     problems: list[Problem] = []
     for relative in files:
-        problems.extend(check_file(root, relative, hashes))
+        problems.extend(check_file(root, relative, terms))
     if revision_range:
         for sha, message in commit_messages(root, revision_range):
-            problems.extend(check_message(f"commit {sha}", message, hashes))
+            problems.extend(check_message(f"commit {sha}", message, terms))
     return problems
 
 
@@ -226,9 +279,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Controllo d'igiene del repository.")
     parser.add_argument("--commits", metavar="INTERVALLO", help="intervallo di commit, A..B")
     parser.add_argument("--hash-term", action="store_true", help="impronta di un termine da stdin")
+    parser.add_argument("--word", action="store_true", help="con --hash-term: parola intera")
     args = parser.parse_args(argv)
     if args.hash_term:
-        print(term_hash(sys.stdin.read()))
+        print(term_line(sys.stdin.read(), word=args.word))
         return 0
     problems = run(ROOT, tracked_files(ROOT), args.commits)
     for problem in problems:

@@ -11,11 +11,12 @@ assert _SPEC and _SPEC.loader
 hygiene = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(hygiene)
 
-TERMS = frozenset(
-    {
-        hashlib.sha256(b"parolaproibita").hexdigest(),
-        hashlib.sha256(b"frase vietata qui").hexdigest(),
-    }
+TERMS = hygiene.Terms(
+    substrings={
+        len("proibito"): frozenset({hashlib.sha256(b"proibito").digest()}),
+        len("frase vietata"): frozenset({hashlib.sha256(b"frase vietata").digest()}),
+    },
+    words=frozenset({hashlib.sha256(b"rara").digest()}),
 )
 
 
@@ -24,13 +25,18 @@ def messages(problems: list) -> list[str]:
 
 
 class TermTest(unittest.TestCase):
-    def test_hash_normalizes(self) -> None:
+    def test_line_normalizes(self) -> None:
         self.assertEqual(
-            hygiene.term_hash("  Frase-VIETATA  qui\n"), hygiene.term_hash("frase vietata qui")
+            hygiene.term_line("  Frase-VIETATA\n"),
+            hygiene.term_line("frase vietata"),
         )
+        self.assertTrue(hygiene.term_line("rara", word=True).startswith("w 4 "))
 
-    def test_single_word_any_case(self) -> None:
-        self.assertEqual(hygiene.find_terms("ok\nUna ParolaProibita.\n", TERMS), [2])
+    def test_substring_inside_word(self) -> None:
+        self.assertEqual(hygiene.find_terms("ok\nnon è improibitoso\n", TERMS), [2])
+
+    def test_any_case(self) -> None:
+        self.assertEqual(hygiene.find_terms("PROIBITO", TERMS), [1])
 
     def test_phrase_with_punctuation(self) -> None:
         self.assertEqual(hygiene.find_terms("frase-vietata: qui", TERMS), [1])
@@ -39,15 +45,18 @@ class TermTest(unittest.TestCase):
         self.assertEqual(hygiene.find_terms("una frase\nvietata qui\n", TERMS), [1])
 
     def test_term_on_next_line_is_not_reported_twice(self) -> None:
-        self.assertEqual(hygiene.find_terms("prima\nparolaproibita\n", TERMS), [2])
+        self.assertEqual(hygiene.find_terms("prima\nproibito\n", TERMS), [2])
 
-    def test_substring_is_not_a_word(self) -> None:
-        self.assertEqual(hygiene.find_terms("parolaproibitamente", TERMS), [])
+    def test_word_mode_only_whole_words(self) -> None:
+        self.assertEqual(hygiene.find_terms("una rara occasione", TERMS), [1])
+        self.assertEqual(hygiene.find_terms("bizzarra, rarità", TERMS), [])
 
-    def test_repository_terms_file_is_hashes_only(self) -> None:
+    def test_repository_terms_file_format(self) -> None:
+        terms = hygiene.load_terms()
+        self.assertTrue(terms.substrings)
         for line in hygiene.TERMS_FILE.read_text(encoding="utf-8").splitlines():
             if line and not line.startswith("#"):
-                self.assertRegex(line, r"^[0-9a-f]{64}$")
+                self.assertRegex(line, r"^[sw] [1-9]\d* [0-9a-f]{64}$")
 
 
 class TextTest(unittest.TestCase):
@@ -84,7 +93,7 @@ class TextTest(unittest.TestCase):
         self.assertEqual(self.check(b"a\x07\n"), ["carattere di controllo U+0007"])
 
     def test_term(self) -> None:
-        self.assertEqual(self.check(b"parolaproibita\n"), ["contiene un nome vietato"])
+        self.assertEqual(self.check(b"parolaproibito\n"), ["contiene un nome vietato"])
 
 
 class MessageTest(unittest.TestCase):
@@ -114,7 +123,7 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(self.check("L1: x\n\nSi veda la issue 12.\n"), [])
 
     def test_term(self) -> None:
-        self.assertEqual(self.check("L1: x\n\nparolaproibita\n"), ["contiene un nome vietato"])
+        self.assertEqual(self.check("L1: x\n\nparolaproibito\n"), ["contiene un nome vietato"])
 
 
 if __name__ == "__main__":

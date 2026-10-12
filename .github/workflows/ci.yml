@@ -92,15 +92,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
-      image: debian:trixie-slim
+      # Stessa base, con lo stesso digest, dell'immagine di produzione di Rego (Debian trixie).
+      image: python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a
     steps:
-      - name: Pacchetti dell'immagine di Rego
+      - name: Pacchetti dell'immagine di Rego e di quella di collaudo
         run: |
+          sed -i 's#http://#https://#g' /etc/apt/sources.list.d/debian.sources
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra \
             texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science \
-            make poppler-utils python3 ca-certificates
+            make poppler-utils
+          rm -rf /var/lib/apt/lists/*
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
