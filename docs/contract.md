@@ -168,6 +168,7 @@ stderr dice che cosa è successo.
 | `version` | versione del motore, PEP 440 |
 | `contract` | versione corrente del contratto; `contracts` elenca tutte quelle supportate da `--contract` |
 | `contracts` | le versioni del contratto supportate |
+| `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`): chi riceve file li riconosce con questi valori, senza copiarli nel proprio codice |
 | `grammars` | `current`, la grammatica che il motore scrive, e `read`, quelle che sa leggere, dalla più vecchia |
 | `limits` | `envelope` e `content`, in byte o in unità contate, con i nomi del §7 della specifica |
 | `resources` | `time_seconds` per ciascun comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il limite di memoria è applicato) |

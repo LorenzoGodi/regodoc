@@ -15,6 +15,10 @@ from regodoc import __version__
 
 ENGINE_NAME: Final = "regodoc"
 
+# Tipo e estensione del pacchetto (specifica, §1.2): chi usa il motore li legge da qui.
+PACKAGE_MIMETYPE: Final = "application/vnd.regodoc.document"
+PACKAGE_EXTENSION: Final = ".regodoc"
+
 # Versione del contratto fra Rego e il motore (docs/contract.md). Resta 0 finché Lorenzo non
 # approva il contratto: con la versione 0 il contratto può ancora cambiare senza preavviso.
 CONTRACT_VERSION: Final = 0
@@ -131,6 +135,7 @@ def describe() -> dict[str, object]:
         "version": __version__,
         "contract": CONTRACT_VERSION,
         "contracts": list(CONTRACTS),
+        "package": {"mimetype": PACKAGE_MIMETYPE, "extension": PACKAGE_EXTENSION},
         "grammars": {"current": GRAMMAR_CURRENT, "read": list(GRAMMARS_READ)},
         "limits": {
             "envelope": dict(ENVELOPE_LIMITS),

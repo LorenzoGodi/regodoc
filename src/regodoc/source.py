@@ -16,10 +16,10 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc.declaration import ENVELOPE_LIMITS
+from regodoc.declaration import ENVELOPE_LIMITS, PACKAGE_MIMETYPE
 from regodoc.diagnostics import Collector
 
-MIMETYPE = b"application/vnd.regodoc.document"
+MIMETYPE = PACKAGE_MIMETYPE.encode("ascii")
 
 _CHUNK = 64 * 1024
 _RATIO_GRACE = 64 * 1024
