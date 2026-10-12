@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+.venv/
+venv/
+.ruff_cache/
+# file ausiliari di LaTeX lasciati da compilazioni manuali
+*.aux
+*.log
+*.out
+*.toc

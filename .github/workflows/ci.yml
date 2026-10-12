@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUFF_VERSION: "0.16.8"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "ruff==${RUFF_VERSION}"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  hygiene:
+    name: igiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: File e messaggi dei commit non ancora in main
+        run: python tools/check_hygiene.py --commits origin/main..HEAD
+
+  test:
+    name: prove (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -t . -v
+
+  install:
+    name: installazione in un venv pulito
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: pip install . e comando
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install .
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/venv/bin/regodoc" --version
+          "$RUNNER_TEMP/venv/bin/regodoc" info
+          "$RUNNER_TEMP/venv/bin/python" -m regodoc info > /dev/null
+          test -z "$("$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze | grep -v -E '^(pip|regodoc)==')"
+
+  tex:
+    name: TeX sull'immagine di riferimento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: debian:trixie-slim
+    steps:
+      - name: Pacchetti dell'immagine di Rego
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+            texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science \
+            make poppler-utils python3 ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Versioni
+        run: |
+          cat /etc/debian_version
+          pdflatex --version | head -n 1
+          python3 --version
+      - name: Compilazione riproducibile
+        env:
+          REGODOC_REQUIRE_TEX: "1"
+        run: python3 -m unittest tests.test_tex_smoke -v

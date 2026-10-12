@@ -1,0 +1,45 @@
+[build-system]
+requires = ["flit_core>=3.9,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "regodoc"
+dynamic = ["version", "description"]
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Lorenzo Godi" }]
+requires-python = ">=3.12"
+dependencies = []
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: Italian",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+    "Topic :: Text Processing :: Markup :: XML",
+]
+
+[project.urls]
+Source = "https://github.com/LorenzoGodi/regodoc"
+
+[project.scripts]
+regodoc = "regodoc.cli:main"
+
+[tool.flit.sdist]
+include = ["tests/", "tools/", "docs/"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PL", "PTH"]
+ignore = [
+    "PLR2004",  # costanti nelle prove
+    "S603",     # subprocess senza shell: e' il modo voluto di chiamare pdflatex e git
+    "RUF001", "RUF002", "RUF003",  # testi italiani con caratteri tipografici
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR0913"]
