@@ -650,7 +650,7 @@ class CrossReferenceTest(unittest.TestCase):
             '<p><cite to="nowhere"/></p>': "regodoc.xml.unknown_id",
             '<p><var name="nowhere"/></p>': "regodoc.xml.unknown_variable",
             '<p><var name="siteName" form="number"/></p>': "regodoc.xml.var_form",
-            '<p><var name="monthlyFee" form="max"/></p>': "regodoc.xml.var_form",
+            '<p><var name="cloudFee" form="max"/></p>': "regodoc.xml.var_form",
         }
         for xml, code in cases.items():
             with self.subTest(xml):

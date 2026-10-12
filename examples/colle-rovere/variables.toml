@@ -1,10 +1,10 @@
 surveyDate = { date = 2026-09-14 }
-nasUsed = { gb = "1.284,50" }
-fileCount = { count = 184302 }
-diskFill = { percent = "87,4" }
-accessPoints = { number = 6 }
-legacyWindow = { months = [6, 12] }
-switchCost = { eur = ["1.200", "1.650"], note = "listino del fornitore, settembre 2026" }
-monthlyFee = { eur = "18,90" }
-retention = { days = 30 }
+nasUsed = { gb = "2.310,75" }
+fileCount = { count = 96418 }
+diskFill = { percent = "61,2" }
+accessPoints = { number = 9 }
+upgradeMonths = { months = [3, 5] }
+switchCost = { eur = ["2.140", "2.680"], note = "due preventivi di installatori, settembre 2026" }
+cloudFee = { eur = "11,40" }
+versions = { days = 45 }
 siteName = { text = "Cantina Colle Rovere" }

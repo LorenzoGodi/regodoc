@@ -203,16 +203,16 @@ Ogni variabile è una riga: un nome e una tabella in linea con **una sola** chia
 più `note` facoltativa.
 
 ```toml
-surveyDate     = { date = 2026-09-14 }
-nasUsed        = { gb = "1.284,50" }
-fileCount      = { count = 184302 }
-diskFill       = { percent = "87,4" }
-accessPoints   = { number = 6 }
-legacyWindow   = { months = [6, 12] }
-switchCost     = { eur = ["1.200", "1.650"], note = "listino del fornitore, settembre 2026" }
-monthlyFee     = { eur = "18,90" }
-retention      = { days = 30 }
-siteName       = { text = "Cantina Colle Rovere" }
+surveyDate    = { date = 2026-09-14 }
+nasUsed       = { gb = "2.310,75" }
+fileCount     = { count = 96418 }
+diskFill      = { percent = "61,2" }
+accessPoints  = { number = 9 }
+upgradeMonths = { months = [3, 5] }
+switchCost    = { eur = ["2.140", "2.680"], note = "due preventivi di installatori, settembre 2026" }
+cloudFee      = { eur = "11,40" }
+versions      = { days = 45 }
+siteName      = { text = "Cantina Colle Rovere" }
 ```
 
 Un nome di variabile (§1.5) è unico. Le variabili sono di un solo documento: non esistono
@@ -224,11 +224,11 @@ variabili condivise fra documenti (decisione 5). Non esistono formule né variab
 | Tipo | Valore | Resa in italiano | Resa in inglese |
 |---|---|---|---|
 | `date` | data TOML senza ora | 14 settembre 2026 | 14 September 2026 |
-| `gb`, `tb` | numero italiano (stringa) | `1.284,50 GB`, in carattere monospaziato | `1,284.50 GB` |
-| `count` | intero non negativo | `184.302`, monospaziato | `184,302` |
+| `gb`, `tb` | numero italiano (stringa) | `2.310,75 GB`, in carattere monospaziato | `2,310.75 GB` |
+| `count` | intero non negativo | `96.418`, monospaziato | `96,418` |
 | `number` | intero, oppure numero italiano | `6`, `3,5` | `6`, `3.5` |
-| `percent` | numero italiano | `87,4%` | `87.4%` |
-| `eur` | numero italiano, al massimo due decimali | `1.200 euro`, `18,90 euro` | `EUR 1,200`, `EUR 18.90` |
+| `percent` | numero italiano | `61,2%` | `61.2%` |
+| `eur` | numero italiano, al massimo due decimali | `2.140 euro`, `11,40 euro` | `EUR 2,140`, `EUR 11.40` |
 | `hours`, `days`, `months` | intero non negativo, oppure numero italiano | `30 giorni`, `1 giorno` | `30 days`, `1 day` |
 | `text` | testo puro, da 1 a 500 caratteri | così com'è | così com'è |
 
@@ -239,8 +239,8 @@ I numeri TOML a virgola mobile, come `87.4`, sono un errore: si perderebbe la pr
 scritta. I valori si scrivono sempre all'italiana, qualunque sia la lingua del documento; la
 resa segue la lingua (§5.6).
 
-**Intervallo.** Lo stesso tipo con un array di due valori: `{ eur = ["1.200", "1.650"] }`. Il
-primo non può superare il secondo. Si rende `1.200–1.650 euro`, con l'unità una volta sola.
+**Intervallo.** Lo stesso tipo con un array di due valori: `{ eur = ["2.140", "2.680"] }`. Il
+primo non può superare il secondo. Si rende `2.140–2.680 euro`, con l'unità una volta sola.
 Ammesso per tutti i tipi tranne `date` e `text`.
 
 **Euro.** Gli importi sono editoriali: testo validato e formattato, mai collegato alla
@@ -362,22 +362,22 @@ Regole:
 ### 4.4 Tabelle
 
 ```xml
-<table columns="0.8cm 1.8cm *">
+<table columns="* 2.2cm 2.6cm">
   <head>
-    <cell>ID</cell><cell>Priorità</cell><cell>Intervento</cell>
+    <cell>Archivio</cell><cell>Dove</cell><cell>Copia</cell>
   </head>
   <row>
-    <cell>R1</cell>
-    <cell><tone type="critical">Alta</tone></cell>
     <cell>
-      <p>Prima della sostituzione:</p>
-      <list type="numbered"><item>inventario delle porte;</item><item>finestra di prova.</item></list>
+      <p>Etichette e grafica:</p>
+      <list><item>file di stampa;</item><item>fotografie delle annate.</item></list>
     </cell>
+    <cell>portatile grafico</cell>
+    <cell><tone type="critical">nessuna</tone></cell>
   </row>
   <separator/>
   <row type="total">
-    <cell span="2">Totale indicativo</cell>
-    <cell><var name="switchCost"/></cell>
+    <cell span="2">Spazio occupato</cell>
+    <cell><var name="nasUsed"/></cell>
   </row>
 </table>
 ```
@@ -526,8 +526,8 @@ generatore, e nessuna macro riceve nomi o comandi dal pacchetto.
 
 `language` in `structure.toml` sceglie la lingua delle parole che il motore stampa da sé:
 legenda delle etichette, «Fonti», «Figura», «Parte», nomi dei mesi e delle unità, e la
-sillabazione. Sceglie anche come si stampano i numeri: in italiano `1.284,50`, in inglese
-`1,284.50`. Il testo dell'autore non viene tradotto, e i valori in `variables.toml` si
+sillabazione. Sceglie anche come si stampano i numeri: in italiano `2.310,75`, in inglese
+`2,310.75`. Il testo dell'autore non viene tradotto, e i valori in `variables.toml` si
 scrivono sempre all'italiana.
 
 ---
@@ -765,56 +765,56 @@ accent = "sage"
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <part>
-  <summary>Stato delle copie di sicurezza al <var name="surveyDate"/> e interventi proposti.</summary>
+  <summary>Dove stanno gli archivi della cantina al <var name="surveyDate"/> e come renderli più sicuri.</summary>
   <section id="current-backup">
-    <title>Copie attuali</title>
-    <p><label type="observed"/> Il NAS dell'ufficio occupa <var name="nasUsed"/>, pari al <var name="diskFill"/> dei dischi, con <var name="fileCount"/> file.</p>
-    <p>Le copie restano disponibili per <var name="retention"/>; il rischio principale è descritto in <reference to="offsite"/>.</p>
-    <box type="warning">
-      <p><b>Una sola copia, nello stesso edificio.</b> Prima di cambiare l'apparato servono:</p>
+    <title>Archivi e copie</title>
+    <p><label type="observed"/> Il disco di rete in ufficio contiene <var name="nasUsed"/> in <var name="fileCount"/> file e ha i dischi pieni al <var name="diskFill"/>.</p>
+    <p>Ogni file modificato resta recuperabile per <var name="versions"/>; per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
+    <box type="status">
+      <p>Funziona già bene:</p>
       <list>
-        <item>una copia completa verificata;</item>
-        <item>una prova di ripristino di una cartella a scelta.</item>
+        <item>le versioni precedenti dei fogli di calcolo;</item>
+        <item>gli accessi separati per ufficio e laboratorio.</item>
       </list>
     </box>
-    <!-- Righe ordinate per priorità. -->
-    <table columns="0.8cm 1.8cm *">
+    <!-- Una riga per archivio, dal più consultato. -->
+    <table columns="* 2.2cm 2.6cm">
       <head>
-        <cell>ID</cell>
-        <cell>Priorità</cell>
-        <cell>Intervento</cell>
+        <cell>Archivio</cell>
+        <cell>Dove</cell>
+        <cell>Copia</cell>
       </head>
       <row>
-        <cell>B1</cell>
-        <cell><tone type="critical">Alta</tone></cell>
-        <cell>
-          <p>Copia fuori sede cifrata:</p>
-          <list type="numbered">
-            <item>scelta del servizio;</item>
-            <item>prima copia completa entro <var name="retention"/>.</item>
-          </list>
-        </cell>
+        <cell>Registro di cantina e analisi di laboratorio</cell>
+        <cell>disco di rete</cell>
+        <cell><tone type="warning">settimanale</tone></cell>
       </row>
       <row>
-        <cell>B2</cell>
-        <cell><tone type="ok">Media</tone></cell>
-        <cell>Prova di ripristino trimestrale, con registro dell'esito. <label type="proposed"/></cell>
+        <cell>
+          <p>Etichette e grafica:</p>
+          <list>
+            <item>file di stampa;</item>
+            <item>fotografie delle annate.</item>
+          </list>
+        </cell>
+        <cell>portatile grafico</cell>
+        <cell><tone type="critical">nessuna</tone> <label type="to-verify"/></cell>
       </row>
       <separator/>
       <row type="total">
-        <cell span="2">Spesa indicativa</cell>
-        <cell><var name="switchCost"/> una tantum, più <var name="monthlyFee"/> al mese</cell>
+        <cell span="2">Spazio occupato</cell>
+        <cell><var name="nasUsed" form="number"/> GB</cell>
       </row>
     </table>
     <section id="offsite">
-      <title>Copie fuori sede</title>
-      <p>La regola «3-2-1» chiede tre copie, su due supporti, di cui una fuori sede. Lo script di prova è:</p>
+      <title>Copia esterna</title>
+      <p>Una copia lontana dalla cantina protegge anche da incendio e furto. La prova a secco del trasferimento:</p>
       <listing>
-rsync -a --dry-run /volume1/dati/ backup@copie.example:/archivio/
-echo "fine prova"
+rclone sync --dry-run /volume1/archivi/ esterno:colle-rovere/
+echo "prova conclusa"
 </listing>
       <small>
-        <p>Il comando <code>rsync --dry-run</code> non copia nulla: elenca soltanto i file.</p>
+        <p>Con <code>--dry-run</code> il comando elenca i file senza trasferirli.</p>
       </small>
     </section>
   </section>

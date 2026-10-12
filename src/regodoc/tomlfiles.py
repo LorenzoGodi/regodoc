@@ -486,7 +486,7 @@ def _scalar(
             else None
         )
     if isinstance(value, float):
-        fail('un numero italiano fra virgolette, come "87,4"')
+        fail('un numero italiano fra virgolette, come "61,2"')
         return None
     integer_ok = kind in ("count", "number", "hours", "days", "months")
     string_ok = kind != "count"
@@ -512,5 +512,5 @@ def _scalar(
     elif integer_ok:
         fail("un intero o un numero italiano fra virgolette")
     else:
-        fail('un numero italiano fra virgolette, come "1.284,50"')
+        fail('un numero italiano fra virgolette, come "2.310,75"')
     return None

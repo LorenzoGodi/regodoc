@@ -2,12 +2,12 @@
 <opening>
   <section id="in-brief">
     <title>In breve</title>
-    <p>Questo rapporto descrive la rete e le copie di sicurezza di <var name="siteName"/> al <var name="surveyDate"/> e propone gli interventi per i prossimi <var name="legacyWindow" form="max"/>.</p>
+    <p>Il rapporto fotografa la rete e gli archivi di <var name="siteName"/> al <var name="surveyDate"/>; i lavori proposti stanno in <var name="upgradeMonths" form="max"/>.</p>
     <list type="numbered">
-      <item>Sostituire lo switch principale: costo stimato <var name="switchCost"/>.</item>
-      <item>Portare una copia dei dati fuori sede, con un canone di <var name="monthlyFee"/> al mese.</item>
-      <item>Verificare il ripristino almeno una volta a trimestre.</item>
+      <item>Nuovo apparato centrale con alimentazione sui cavi: <var name="switchCost"/>.</item>
+      <item>Copia notturna degli archivi in un centro dati esterno, <var name="cloudFee"/> al mese.</item>
+      <item>Esercitazione di recupero dei file a ogni fine vendemmia.</item>
     </list>
-    <p>I dettagli sono in <reference to="network" through="backup"/>.</p>
+    <p>Le analisi complete sono in <reference to="network" through="backup"/>.</p>
   </section>
 </opening>

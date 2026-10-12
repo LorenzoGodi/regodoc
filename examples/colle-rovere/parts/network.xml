@@ -3,7 +3,7 @@
   <summary>Rete locale, collegamento a Internet e copertura senza fili della cantina e degli uffici.</summary>
   <section id="lan">
     <title>Rete locale</title>
-    <p><label type="observed"/> La rete collega <var name="accessPoints"/> punti di accesso a uno switch di <i>dodici anni</i>, senza alimentazione sui cavi; il dominio interno è <address>colle-rovere.example</address>.</p>
+    <p><label type="observed"/> La rete collega <var name="accessPoints"/> punti di accesso a un apparato centrale di <i>vecchia generazione</i>, alimentati uno per uno; il dominio interno è <address>colle-rovere.example</address>.</p>
     <p>Le segnalazioni vanno a <address>it@colle-rovere.example</address>; la guida dei punti di accesso è in <link href="https://docs.example.com/ap/installazione">Installazione dei punti di accesso</link><cite to="ap-guide"/>.</p>
     <section id="wifi">
       <title>Copertura senza fili</title>
