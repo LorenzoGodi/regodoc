@@ -1,10 +1,8 @@
-surveyDate = { date = 2026-09-14 }
-nasUsed = { gb = "2.310,75" }
-fileCount = { count = 96418 }
-diskFill = { percent = "61,2" }
-accessPoints = { number = 9 }
-upgradeMonths = { months = [3, 5] }
-switchCost = { eur = ["2.140", "2.680"], note = "due preventivi di installatori, settembre 2026" }
-cloudFee = { eur = "11,40" }
-versions = { days = 45 }
 siteName = { text = "Cantina Colle Rovere" }
+restoreHours = { hours = 6 }
+archiveSize = { tb = "1,8" }
+workstations = { count = 14 }
+installDays = { days = [10, 14] }
+wifiCoverage = { percent = "72,5" }
+maintenanceFee = { eur = ["320", "410"], note = "due offerte di manutenzione annuale, settembre 2026" }
+inspectionDate = { date = 2026-09-30 }

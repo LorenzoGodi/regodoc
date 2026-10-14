@@ -16,8 +16,11 @@ ACCENTS = ("azure", "slate", "sage", "bronze", "plum", "brick", "olive", "gray")
 NUMERIC_TYPES = ("gb", "tb", "count", "number", "percent", "eur", "hours", "days", "months")
 VARIABLE_TYPES = ("date", *NUMERIC_TYPES, "text")
 VARIABLE_NAME = re.compile(r"[a-z][A-Za-z0-9]{0,47}")
-ITALIAN_NUMBER = re.compile(r"-?(?:\d{1,3}(?:\.\d{3})+|\d{1,3})(?:,\d+)?")
+# Primo gruppo senza zeri iniziali, salvo lo 0 da solo, che non ha gruppi dopo di sé.
+ITALIAN_NUMBER = re.compile(r"-?(?:0|[1-9]\d{0,2}(?:\.\d{3})*)(?:,\d+)?")
 _MAX_INTEGER = 10**15
+# Tipi che ammettono valori negativi (§3.1).
+NEGATIVE_TYPES = frozenset({"number", "percent", "eur"})
 _TOML_ERROR_POSITION = re.compile(r"\(at line (\d+), column (\d+)\)")
 _TOML_ERROR_END = re.compile(r"\(at end of document\)")
 
@@ -491,8 +494,10 @@ def _scalar(
     integer_ok = kind in ("count", "number", "hours", "days", "months")
     string_ok = kind != "count"
     if _is_int(value) and integer_ok:
-        if abs(value) > _MAX_INTEGER or (kind != "number" and value < 0):  # type: ignore[operator]
-            fail(f"un intero fra 0 e {_MAX_INTEGER}")
+        if abs(value) > _MAX_INTEGER or (kind not in NEGATIVE_TYPES and value < 0):  # type: ignore[operator]
+            fail(
+                f"un intero di valore assoluto non oltre {_MAX_INTEGER}, non negativo per «{kind}»"
+            )
             return None
         return Decimal(value)  # type: ignore[arg-type]
     if isinstance(value, str) and string_ok:
@@ -503,8 +508,11 @@ def _scalar(
         if kind == "eur" and "," in value and len(value.split(",")[1]) > 2:
             fail("un importo con al massimo due decimali")
             return None
-        if kind in ("hours", "days", "months") and number < 0:
+        if kind not in NEGATIVE_TYPES and number < 0:
             fail("un numero non negativo")
+            return None
+        if abs(number) > _MAX_INTEGER:
+            fail(f"un numero di valore assoluto non oltre {_MAX_INTEGER}")
             return None
         return number
     if kind == "count":

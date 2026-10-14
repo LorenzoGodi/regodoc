@@ -13,7 +13,8 @@ class LimitsTest(unittest.TestCase):
             {
                 "compressed_bytes": 12 * 1024 * 1024,
                 "expanded_bytes": 40 * 1024 * 1024,
-                "compression_ratio": 20,
+                "compression_ratio": 100,
+                "image_compression_ratio": 20,
                 "files": 200,
             },
         )

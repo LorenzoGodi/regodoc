@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <part>
-  <summary>Rete locale, collegamento a Internet e copertura senza fili della cantina e degli uffici.</summary>
+  <summary>Rete degli uffici, collegamento a Internet e copertura senza fili della cantina.</summary>
   <section id="lan">
     <title>Rete locale</title>
-    <p><label type="observed"/> La rete collega <var name="accessPoints"/> punti di accesso a un apparato centrale di <i>vecchia generazione</i>, alimentati uno per uno; il dominio interno è <address>colle-rovere.example</address>.</p>
+    <p><label type="observed"/> Le <var name="workstations"/> postazioni di ufficio e laboratorio passano da un apparato centrale di <i>vecchia generazione</i>; il dominio interno è <address>colle-rovere.example</address>.</p>
     <p>Le segnalazioni vanno a <address>it@colle-rovere.example</address>; la guida dei punti di accesso è in <link href="https://docs.example.com/ap/installazione">Installazione dei punti di accesso</link><cite to="ap-guide"/>.</p>
     <section id="wifi">
       <title>Copertura senza fili</title>
-      <p>In barricaia il segnale è <tone type="warning">debole</tone> oltre la seconda fila di botti: "zona d'ombra" per i lettori delle etichette.</p>
+      <p>La barricaia è coperta al <var name="wifiCoverage"/>: oltre la seconda fila di botti il segnale è <tone type="warning">debole</tone>, una "zona d'ombra" per i lettori delle etichette.</p>
       <figure file="images/coverage.png" width="0.6">
-        <caption>Copertura misurata al <var name="surveyDate"/>.</caption>
+        <caption>Copertura misurata il <var name="inspectionDate"/>.</caption>
       </figure>
     </section>
   </section>

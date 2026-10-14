@@ -53,9 +53,9 @@ Opzioni comuni:
 
 Ambiente:
 
-- Il motore legge solo `PATH`, per trovare `pdflatex`, e `TMPDIR`, per la cartella di lavoro
-  temporanea. Ignora `SOURCE_DATE_EPOCH` e ogni altra variabile: la data del PDF viene dal
-  pacchetto o dall'intestazione (§3.2), così due chiamanti diversi ottengono lo stesso PDF.
+- Il motore legge solo `PATH`, per trovare `pdflatex`, `TMPDIR`, per la cartella di lavoro
+  temporanea, e `SOURCE_DATE_EPOCH`, come ultimo ripiego della data (§3.2). Ignora ogni altra
+  variabile.
 - Il motore non usa la rete.
 - Il motore scrive solo nella propria cartella temporanea, che rimuove alla fine, e nel
   percorso dato con `-o`, che scrive in modo atomico: un file d'uscita esiste solo se il
@@ -92,9 +92,12 @@ servono alla cornice del tema. Chiavi ammesse e nessun'altra:
 | `document_created` | no | istante di creazione del documento, RFC 3339 con fuso; è il ripiego della data quando il pacchetto non ha `header.date` (A4) |
 | `frame` | no | dati della cornice per il tema: al massimo 50 chiavi `[a-z][a-z0-9_]{0,31}`, valori di testo puro da 1 a 500 caratteri, con le regole sui caratteri della specifica (§5.2) |
 
-La data del documento, nell'ordine: `header.date` del pacchetto; altrimenti
-`document_created` dell'intestazione, ridotta alla data nel suo fuso; altrimenti `build` esce
-con il codice 2. `SOURCE_DATE_EPOCH` è la mezzanotte UTC di quella data.
+La data del documento, nell'ordine (specifica, §2): `header.date` del pacchetto; altrimenti
+`document_created` dell'intestazione, ridotta alla data nel suo fuso; altrimenti
+`SOURCE_DATE_EPOCH` dell'ambiente, che è ignorata quando uno dei due valori precedenti c'è;
+altrimenti `build` esce con il codice 2. Il PDF usa come istante la mezzanotte UTC di quella
+data. Rego passa sempre `document_created`, quindi due chiamanti diversi ottengono lo stesso
+PDF.
 
 Titolo, oggetto e riferimento **non** stanno nell'intestazione: la loro fonte di verità è il
 pacchetto (decisione 20). Il motore non interpreta le chiavi di `frame`: le passa al tema, che
@@ -147,16 +150,17 @@ né durate, così due esecuzioni sullo stesso ingresso danno lo stesso rapporto.
 | `ok` | sì | `true` solo con il codice 0 |
 | `grammar` | sì | la grammatica letta dal manifesto, o `null` se non si è arrivati a leggerla |
 | `errors`, `warnings` | sì | i problemi, ciascuno con `severity`, `code`, `message`, `file`, `line`, `column` (§8 della specifica); `line` e `column` valgono 0 quando non si applicano |
-| `limits_active` | sì | i limiti di risorse davvero applicati: `time_seconds`, e `memory_bytes` oppure `null` dove il sistema non permette di limitare la memoria (macOS) |
+| `limits_active` | sì | i limiti di risorse davvero applicati: `time_seconds` e `memory_bytes`, ciascuno `null` quando non è applicato (la memoria su macOS; entrambi finché il motore non applica i limiti, lotto L4) |
 | `input` | se il pacchetto è stato letto | `sha256` e `bytes` del file ricevuto |
 | `outputs` | `canon`, `build`, `upgrade` riusciti | i file scritti, con `sha256` e `bytes` |
 | `passes` | `build` riuscito | le passate di pdflatex eseguite |
 | `theme` | `build` | il tema usato, dal suo `theme.toml` |
 | `grammar_in`, `grammar_out` | `upgrade` | la grammatica letta e quella scritta |
 
-Con il codice 2 per un file mancante il rapporto c'è, con un solo errore
-`regodoc.usage`. Con il codice 4 il rapporto **può mancare**: è un difetto del motore, e
-stderr dice che cosa è successo.
+Con `--json` il rapporto c'è per ogni codice d'uscita: 2 (`regodoc.usage`, anche per gli
+errori della riga di comando), 3 (`regodoc.environment` o `regodoc.not_implemented`), 4
+(`regodoc.internal`) e 130 (`regodoc.interrupted`). Fa eccezione l'uscita chiusa da chi legge:
+il rapporto non ha più dove andare, e il codice 3 basta.
 
 ## 5. La dichiarazione (`regodoc info`)
 
@@ -275,7 +279,7 @@ generatore usa per il contenuto.
 | 0 | esito positivo, anche con avvisi (senza `--strict`) | usa l'uscita |
 | 1 | pacchetto o tema rifiutato per errori, o per avvisi con `--strict`; l'elenco è nel rapporto | mostra gli errori a chi ha caricato il pacchetto |
 | 2 | errore d'uso: argomenti, file mancante, opzione sconosciuta, contratto non supportato, data mancante | corregge la chiamata: è un difetto del chiamante |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa da chi legge, comando non ancora disponibile | riprova più tardi o segnala l'ambiente |
+| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa da chi legge, comando non ancora disponibile | segnala l'ambiente; non ritenta alla cieca: un tempo superato si ripete con lo stesso pacchetto |
 | 4 | errore interno: un'eccezione non prevista | segnala un difetto del motore; non riprova |
 | 130 | interrotto | — |
 

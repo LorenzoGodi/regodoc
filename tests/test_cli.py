@@ -96,7 +96,7 @@ class ValidateCommandTest(unittest.TestCase):
             variables.write_text(variables.read_text() + "spare = { number = 1 }\n")
             code, _, err = run_cli("validate", str(target))
             self.assertEqual(code, ExitCode.OK)
-            self.assertIn("avviso: variables.toml:11  regodoc.toml.unused_variable", err)
+            self.assertIn("avviso: variables.toml:9  regodoc.toml.unused_variable", err)
             code, out, _ = run_cli("validate", str(target), "--strict", "--json")
             self.assertEqual(code, ExitCode.REFUSED)
             self.assertFalse(json.loads(out)["ok"])
@@ -104,6 +104,35 @@ class ValidateCommandTest(unittest.TestCase):
             code, _, err = run_cli("validate", str(target))
             self.assertEqual(code, ExitCode.REFUSED)
             self.assertIn("errore: structure.toml:1", err)
+
+    def test_json_report_for_every_exit_code(self) -> None:
+        cases = [
+            (("validate", "/nessun/percorso", "--json"), ExitCode.USAGE, "regodoc.usage"),
+            (("validate", self.EXAMPLE, "--json", "--colore"), ExitCode.USAGE, "regodoc.usage"),
+            (("canon", "p", "-o", "q", "--json"), ExitCode.ENVIRONMENT, "regodoc.not_implemented"),
+        ]
+        for argv, exit_code, code in cases:
+            with self.subTest(argv):
+                result, out, _ = run_cli(*argv)
+                self.assertEqual(result, exit_code)
+                report = json.loads(out)
+                self.assertEqual(report["exit_code"], exit_code)
+                self.assertEqual(report["errors"][0]["code"], code)
+                self.assertEqual(
+                    report["limits_active"], {"time_seconds": None, "memory_bytes": None}
+                )
+        for error, exit_code, code in (
+            (KeyboardInterrupt, ExitCode.INTERRUPTED, "regodoc.interrupted"),
+            (RuntimeError("guasto"), ExitCode.INTERNAL, "regodoc.internal"),
+            (OSError(28, "No space left on device"), ExitCode.ENVIRONMENT, "regodoc.environment"),
+        ):
+            with self.subTest(error), mock.patch("regodoc.cli.validate_package", side_effect=error):
+                result, out, err = run_cli("validate", self.EXAMPLE, "--json")
+                self.assertEqual(result, exit_code)
+                report = json.loads(out)
+                self.assertEqual(report["exit_code"], exit_code)
+                self.assertEqual(report["errors"][0]["code"], code)
+                self.assertNotIn("Traceback", err)
 
     def test_missing_package_is_a_usage_error(self) -> None:
         code, _, err = run_cli("validate", "/nessun/percorso.regodoc")

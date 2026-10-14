@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <part>
-  <summary>Dove stanno gli archivi della cantina al <var name="surveyDate"/> e come renderli più sicuri.</summary>
+  <summary>Dove stanno gli archivi della cantina e come renderli più sicuri.</summary>
   <section id="current-backup">
     <title>Archivi e copie</title>
-    <p><label type="observed"/> Il disco di rete in ufficio contiene <var name="nasUsed"/> in <var name="fileCount"/> file e ha i dischi pieni al <var name="diskFill"/>.</p>
-    <p>Ogni file modificato resta recuperabile per <var name="versions"/>; per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
+    <p><label type="observed"/> Il disco di rete in ufficio conserva <var name="archiveSize"/> di archivi; dopo un guasto il recupero completo richiede circa <var name="restoreHours"/>.</p>
+    <p>Per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
     <box type="status">
       <p>Funziona già bene:</p>
       <list>
@@ -38,7 +38,7 @@
       <separator/>
       <row type="total">
         <cell span="2">Spazio occupato</cell>
-        <cell><var name="nasUsed" form="number"/> GB</cell>
+        <cell><var name="archiveSize" form="number"/> TB</cell>
       </row>
     </table>
     <section id="offsite">

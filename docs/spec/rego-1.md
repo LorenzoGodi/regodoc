@@ -10,7 +10,9 @@ motore non indovina e non lascia passare testo che non capisce.
 La specifica sostituisce la bozza del 12/10 con i nomi italiani, che non è mai stata
 rilasciata. La corrispondenza fra i nomi della bozza e quelli di `rego/1` è
 nell'[appendice A](#appendice-a-corrispondenza-dei-nomi); l'[appendice B](#appendice-b-decisioni-applicate)
-elenca dove è applicata ciascuna decisione verificata il 12/10.
+elenca dove è applicata ciascuna decisione. «Decisione N» indica una delle decisioni sul
+formato verificate una per una il 12/10/2026; «decisione AN» uno dei punti aperti chiusi lo
+stesso giorno.
 
 ## 0. Convenzioni
 
@@ -23,7 +25,12 @@ elenca dove è applicata ciascuna decisione verificata il 12/10.
   messaggi d'errore del motore. Restano invariati i nomi `mimetype`, `manifest.json` e
   l'estensione `.regodoc`.
 - **Unità.** 1 KiB = 1024 byte; 1 MiB = 1024 KiB. I «caratteri» sono punti di codice
-  Unicode dopo la normalizzazione NFC.
+  Unicode.
+- **NFC.** Il testo deve essere già in forma normalizzata NFC: il motore non normalizza. Un
+  carattere combinante, come un accento scritto separato dalla sua lettera, è un errore
+  (§5.2).
+- **Codici.** Ogni errore e avviso ha un codice (§8). Il codice è normativo, il testo del
+  messaggio no: il messaggio può migliorare da una versione all'altra del motore.
 - **Posizioni.** Righe e colonne contano da 1. La colonna conta i caratteri, non i byte.
 - **Espressioni regolari.** Le forme come `[a-z][a-z0-9-]{0,47}` valgono sull'intero valore,
   dall'inizio alla fine, e solo con caratteri ASCII.
@@ -46,35 +53,29 @@ Un `.regodoc` è un archivio ZIP con questi file e nessun altro:
 | `parts/<id>.xml` | almeno uno | l'autore | il testo: un file per apertura o per parte (§4) |
 | `images/<nome>.png`, `.jpg` o `.jpeg` | no | l'autore | figure (§4.5) |
 
-Sono ammesse anche le voci di cartella `parts/` e `images/`, vuote. Qualunque altra voce è un
-errore, comprese quelle che i sistemi operativi aggiungono da soli, come `__MACOSX/` o
-`.DS_Store`. Il messaggio d'errore lo dice e suggerisce `regodoc canon` per ricostruire
-l'archivio.
+Sono ammesse anche le voci di cartella `parts/` e `images/`, vuote; non contano nel limite dei
+200 file (§7.1). Qualunque altra voce è un errore, comprese quelle che i sistemi operativi
+aggiungono da soli (`__MACOSX/`, `.DS_Store`, `._*`, `Thumbs.db`, `desktop.ini`): il messaggio
+d'errore lo dice e suggerisce `regodoc canon` per ricostruire l'archivio.
 
 Il file di una parte **si ricava dal suo id**: la parte `network` sta in `parts/network.xml`.
 Un file in `parts/` che non corrisponde a nessun id di `structure.toml` è un errore, e così un
 id senza file.
 
-### 1.6 Cartella
-
-Chi scrive può lavorare su una cartella con la stessa disposizione, senza archiviarla: il
-motore la accetta in `validate`, e `regodoc canon` la trasforma nell'archivio canonico. In una
-cartella valgono le stesse regole su nomi, disposizione e limiti, tranne quelle proprie
-dell'archivio ZIP. Collegamenti simbolici e file speciali sono errori. Chi riceve pacchetti da
-altri, come Rego, accetta solo archivi.
-
 ### 1.2 `mimetype`
 
 La prima voce dell'archivio deve chiamarsi `mimetype`, essere memorizzata senza
-compressione, cominciare all'inizio del file e contenere esattamente i byte ASCII
+compressione, cominciare all'inizio del file, non avere campo extra né descrittore di dati e
+contenere esattamente i byte ASCII
 
 ```
 application/vnd.regodoc.document
 ```
 
-senza a capo finale. Così un programma qualunque riconosce un `.regodoc` leggendo i primi
-byte. Un archivio con un'altra prima voce, o con un contenuto diverso, è rifiutato prima di
-leggere il resto.
+senza a capo finale. Così il valore sta sempre all'offset 38 del file, e un programma
+qualunque riconosce un `.regodoc` leggendo i primi byte. Il motore legge il contenuto subito
+dopo aver controllato la prima voce (§6.1, passo 4): un archivio con un'altra prima voce, o
+con un contenuto diverso, è rifiutato prima di leggere il resto.
 
 ### 1.3 `manifest.json`
 
@@ -99,14 +100,16 @@ Un oggetto JSON in UTF-8, al massimo 64 KiB, con queste chiavi e nessun'altra:
 | `format` | sì | esattamente `"regodoc"` |
 | `grammar` | sì | una grammatica che il motore sa leggere (§10) |
 | `document` | no | identificatore del documento presso chi ha esportato il pacchetto, `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` |
-| `base_version` | no | la versione da cui il pacchetto è stato esportato: `sha256:` seguito da 64 cifre esadecimali minuscole |
+| `base_version` | no | la versione da cui il pacchetto è stato esportato: `sha256:` seguito da 64 cifre esadecimali minuscole. Per il motore è un'impronta opaca, scelta da chi esporta (in Rego, lo sha256 del blob della versione), e verificata solo nella forma |
 | `files` | no | per ogni file del pacchetto tranne `mimetype` e `manifest.json`, l'impronta al momento dell'esportazione, nella stessa forma |
 | `generator` | no | `engine` e `version` del motore che ha scritto il pacchetto, testo puro di al massimo 64 caratteri |
 
 Le impronte servono a chi riceve il pacchetto modificato per capire che cosa è cambiato
 rispetto all'esportazione. **Non sono un controllo d'integrità**: l'autore modifica i file e
 le impronte smettono di coincidere, com'è normale. Chi importa ricalcola le impronte dai byte
-letti e usa del manifesto solo `base_version`, dopo averla verificata (decisione 13).
+letti e usa del manifesto solo `base_version`, dopo averla cercata fra le proprie versioni
+(decisione 13 del 12/10: Rego ricalcola tutto e del manifesto legge solo il riferimento alla
+versione di partenza).
 
 Sono errori: chiavi ripetute, chiavi non previste, valori di tipo sbagliato, `NaN` e
 `Infinity`, un percorso in `files` che non è un file ammesso dal §1.1.
@@ -129,6 +132,16 @@ solo per i limiti dell'involucro (§7.1).
 Un id o un nome d'immagine non può finire con `-`, non può contenere `--` e non può essere un
 nome riservato di Windows (`con`, `prn`, `aux`, `nul`, da `com1` a `com9`, da `lpt1` a
 `lpt9`): così ogni nome è un nome di file sicuro su ogni sistema (decisione 27).
+
+### 1.6 Cartella
+
+Chi scrive può lavorare su una cartella con la stessa disposizione, senza archiviarla: il
+motore la accetta in `validate`, e `regodoc canon` la trasforma nell'archivio canonico. In una
+cartella valgono le stesse regole su nomi, disposizione e limiti, tranne quelle proprie
+dell'archivio ZIP. Collegamenti simbolici e file speciali sono errori. I file che i sistemi
+operativi aggiungono da soli (`__MACOSX/`, `.DS_Store`, `._*`, `Thumbs.db`, `desktop.ini`)
+sono ignorati con l'avviso `regodoc.package.system_file`. Chi riceve pacchetti da altri, come
+Rego, accetta solo archivi.
 
 ---
 
@@ -178,13 +191,23 @@ accent = "sage"
 | `accent` | `part` | sì | uno degli otto ruoli della tavolozza: `azure`, `slate`, `sage`, `bronze`, `plum`, `brick`, `olive`, `gray` |
 
 Titolo, oggetto e riferimento sono la **fonte di verità** dell'intestazione: chi importa il
-pacchetto li copia nei propri campi a ogni importazione, come proiezione (decisione 20).
+pacchetto li copia nei propri campi a ogni importazione, come proiezione (decisione 20). Se
+`subject` o `reference` mancano, Rego scrive nei propri campi la stringa vuota.
 `version_label` vive solo nel PDF.
 
+`[header]` prevale sempre. L'intestazione in JSON che chi chiama passa a `build`
+(`docs/contract.md`, §3.2) porta solo i dati della cornice del tema e la data di ripiego; non
+può cambiare titolo, oggetto, riferimento né data del pacchetto.
+
 `date` è la data del documento. Dà la data stampata e l'istante usato per rendere il PDF
-riproducibile (`SOURCE_DATE_EPOCH`, mezzanotte UTC di quella data). Se manca, il motore usa la
-data fornita da chi lo chiama con l'intestazione in JSON; se manca anche quella, `build` si
-ferma con un errore d'uso.
+riproducibile: `SOURCE_DATE_EPOCH` vale la mezzanotte UTC di quella data. In ordine:
+
+1. `header.date` del pacchetto;
+2. altrimenti `document_created` dell'intestazione JSON, cioè l'istante di creazione del
+   documento (decisione A4);
+3. altrimenti `SOURCE_DATE_EPOCH` dell'ambiente, se chi chiama l'ha impostata; è ignorata
+   quando uno dei due valori precedenti c'è;
+4. altrimenti `build` si ferma con un errore d'uso (codice 2).
 
 Un'apertura è un capitolo senza numero e senza titolo proprio, prima delle parti: per esempio
 una sintesi. Le parti hanno un numero romano che **non si scrive**: deriva dall'ordine.
@@ -203,16 +226,14 @@ Ogni variabile è una riga: un nome e una tabella in linea con **una sola** chia
 più `note` facoltativa.
 
 ```toml
-surveyDate    = { date = 2026-09-14 }
-nasUsed       = { gb = "2.310,75" }
-fileCount     = { count = 96418 }
-diskFill      = { percent = "61,2" }
-accessPoints  = { number = 9 }
-upgradeMonths = { months = [3, 5] }
-switchCost    = { eur = ["2.140", "2.680"], note = "due preventivi di installatori, settembre 2026" }
-cloudFee      = { eur = "11,40" }
-versions      = { days = 45 }
-siteName      = { text = "Cantina Colle Rovere" }
+siteName = { text = "Cantina Colle Rovere" }
+restoreHours = { hours = 6 }
+archiveSize = { tb = "1,8" }
+workstations = { count = 14 }
+installDays = { days = [10, 14] }
+wifiCoverage = { percent = "72,5" }
+maintenanceFee = { eur = ["320", "410"], note = "due offerte di manutenzione annuale, settembre 2026" }
+inspectionDate = { date = 2026-09-30 }
 ```
 
 Un nome di variabile (§1.5) è unico. Le variabili sono di un solo documento: non esistono
@@ -221,40 +242,45 @@ variabili condivise fra documenti (decisione 5). Non esistono formule né variab
 
 ### 3.1 Tipi
 
-| Tipo | Valore | Resa in italiano | Resa in inglese |
-|---|---|---|---|
-| `date` | data TOML senza ora | 14 settembre 2026 | 14 September 2026 |
-| `gb`, `tb` | numero italiano (stringa) | `2.310,75 GB`, in carattere monospaziato | `2,310.75 GB` |
-| `count` | intero non negativo | `96.418`, monospaziato | `96,418` |
-| `number` | intero, oppure numero italiano | `6`, `3,5` | `6`, `3.5` |
-| `percent` | numero italiano | `61,2%` | `61.2%` |
-| `eur` | numero italiano, al massimo due decimali | `2.140 euro`, `11,40 euro` | `EUR 2,140`, `EUR 11.40` |
-| `hours`, `days`, `months` | intero non negativo, oppure numero italiano | `30 giorni`, `1 giorno` | `30 days`, `1 day` |
-| `text` | testo puro, da 1 a 500 caratteri | così com'è | così com'è |
+| Tipo | Valore | Negativi ammessi | Resa in italiano | Resa in inglese |
+|---|---|---|---|---|
+| `date` | data TOML senza ora | — | 30 settembre 2026 | 30 September 2026 |
+| `gb`, `tb` | numero italiano (stringa) | no | `2.310,75 GB`, in carattere monospaziato | `2,310.75 GB` |
+| `count` | intero | no | `96.418`, monospaziato | `96,418` |
+| `number` | intero, oppure numero italiano | sì | `6`, `3,5` | `6`, `3.5` |
+| `percent` | numero italiano | sì | `61,2%` | `61.2%` |
+| `eur` | numero italiano, al massimo due decimali | sì | `2.140 euro`, `11,40 euro` | `EUR 2,140`, `EUR 11.40` |
+| `hours`, `days`, `months` | intero, oppure numero italiano | no | `30 giorni`, `1 giorno` | `30 days`, `1 day` |
+| `text` | testo puro, da 1 a 500 caratteri | — | così com'è | così com'è |
 
-**Numero italiano.** Una stringa che rispetta `-?\d{1,3}(\.\d{3})*(,\d+)?` oppure
-`-?\d{1,3}(,\d+)?`: il punto separa sempre le migliaia, ed è obbligatorio da 1.000 in su; la
-virgola separa sempre i decimali. Così `"1.084"` vale milleottantaquattro, senza ambiguità.
+Interi e numeri italiani non possono superare 10^15 in valore assoluto.
+
+**Numero italiano.** Una stringa che rispetta `-?(0|[1-9]\d{0,2}(\.\d{3})*)(,\d+)?`: il
+punto separa sempre le migliaia, ed è obbligatorio da 1.000 in su; la virgola separa sempre i
+decimali. Il primo gruppo non ha zeri iniziali, salvo lo `0` da solo, che non è mai seguito
+da gruppi: `"0,5"` va bene, `"007"` e `"0.012"` sono errori. Così `"1.084"` vale
+milleottantaquattro, senza ambiguità.
 I numeri TOML a virgola mobile, come `87.4`, sono un errore: si perderebbe la precisione
 scritta. I valori si scrivono sempre all'italiana, qualunque sia la lingua del documento; la
 resa segue la lingua (§5.6).
 
-**Intervallo.** Lo stesso tipo con un array di due valori: `{ eur = ["2.140", "2.680"] }`. Il
-primo non può superare il secondo. Si rende `2.140–2.680 euro`, con l'unità una volta sola.
+**Intervallo.** Lo stesso tipo con un array di due valori: `{ eur = ["320", "410"] }`. Il
+primo non può superare il secondo. Si rende `320–410 euro`, con l'unità una volta sola.
 Ammesso per tutti i tipi tranne `date` e `text`.
 
 **Euro.** Gli importi sono editoriali: testo validato e formattato, mai collegato alla
 contabilità (decisione 7). Il motore li converte in centesimi interi solo per validarli e
 formattarli: senza decimali se i centesimi sono zero, altrimenti con due.
 
-**Singolare.** Per `hours`, `days` e `months` il valore 1 prende l'unità al singolare.
+**Singolare.** Per `hours`, `days` e `months` prende l'unità al singolare solo il valore
+scritto `1` o `"1"`: `"1,0"` resta al plurale. Un intervallo è sempre al plurale.
 
 **`note`.** Testo puro, da 1 a 500 caratteri: la provenienza del valore. Non si stampa mai.
 I commenti `#` invece si perdono, con un avviso (decisione 11): la provenienza va in `note`.
 
 ### 3.2 Richiamo
 
-Nel testo XML: `<var name="nasUsed"/>`. L'attributo facoltativo `form` sceglie che cosa
+Nel testo XML: `<var name="archiveSize"/>`. L'attributo facoltativo `form` sceglie che cosa
 stampare:
 
 | `form` | Ammesso per | Stampa |
@@ -287,7 +313,7 @@ Il formato delle parti è XML a vocabolario chiuso (decisione 24).
 - La radice è `<part>` per le parti e `<opening>` per le aperture, secondo come l'id compare
   in `structure.toml`. `<opening>` non ha `<summary>`.
 - Nessuno spazio dei nomi, nessun `DOCTYPE`, nessuna entità, nessuna istruzione di
-  elaborazione, nessuna sezione `CDATA` (§6.2).
+  elaborazione, nessuna sezione `CDATA` (§6.3).
 - Prima e dopo la radice sono ammessi solo spazi bianchi.
 
 ### 4.2 Blocchi
@@ -313,6 +339,13 @@ Il formato delle parti è XML a vocabolario chiuso (decisione 24).
 Dentro `<part>`, `<opening>` e `<section>` i blocchi vengono prima delle sezioni figlie: dopo
 la prima sezione figlia vengono solo altre sezioni. A stampa, un blocco dopo una sottosezione
 sembrerebbe far parte della sottosezione.
+
+**Blocco di testo misto.** Sono blocchi di testo misto `<p>`, `<summary>`, `<title>`,
+`<caption>`, il testo di `<item>` prima dell'eventuale elenco annidato, e `<cell>` quando
+contiene testo e non blocchi. Il contenuto di un blocco di testo misto è testo, con gli
+elementi in linea del §4.3. Le regole del §5.3 si applicano per blocco: le virgolette si
+appaiano dentro lo stesso blocco, compresi gli elementi in linea che contiene, salvo
+`<code>`.
 
 `<p>`, `<summary>`, `<title>`, `<item>`, `<caption>` e gli elementi in linea con contenuto
 (`<b>`, `<i>`, `<tone>`, `<link>`, `<code>`) non possono essere vuoti. Una cella può esserlo.
@@ -377,7 +410,7 @@ Regole:
   <separator/>
   <row type="total">
     <cell span="2">Spazio occupato</cell>
-    <cell><var name="nasUsed"/></cell>
+    <cell><var name="archiveSize"/></cell>
   </row>
 </table>
 ```
@@ -385,9 +418,10 @@ Regole:
 - `columns`: una voce per colonna, separate da uno spazio. `*` è una colonna che si allarga;
   una misura come `1.8cm` è una colonna fissa, da `0.5cm` a `12cm`, con il punto decimale, al
   massimo due decimali e solo l'unità `cm`. Almeno una colonna è `*`. Al massimo 10 colonne.
-- **Oltre le otto colonne**, cioè con nove o dieci, la tabella si stampa in carattere ridotto.
-  `orientation` vale `portrait`, il predefinito, oppure `landscape`, che mette la tabella su
+- `orientation` vale `portrait`, il predefinito, oppure `landscape`, che mette la tabella su
   pagine orizzontali; `landscape` è ammesso con qualunque numero di colonne.
+- **Oltre le otto colonne**, cioè con nove o dieci, la tabella si stampa in carattere ridotto
+  se è verticale, in carattere normale se è orizzontale.
 - `<head>`: facoltativa, al massimo una, prima di ogni riga. Contiene solo `<cell>`. Si
   ripete in cima a ogni pagina se la tabella continua.
 - `<row>`: almeno una. `type="total"` la rende in grassetto. `<separator/>` traccia un filetto
@@ -402,7 +436,7 @@ Regole:
 
 ```xml
 <figure file="images/rack-layout.png" width="0.8">
-  <caption>Disposizione dell'armadio di rete al <var name="surveyDate"/>.</caption>
+  <caption>Disposizione dell'armadio di rete il <var name="inspectionDate"/>.</caption>
 </figure>
 ```
 
@@ -425,11 +459,12 @@ caratteri.
 - Gli id di aperture e parti (in `structure.toml`), di sezioni, di `<sources>` e di fonti
   condividono un unico spazio: un id ripetuto nel documento è un errore.
 - Una sezione ha un id solo se è scritto: il motore non lo ricava dal titolo (decisione 23).
-- `<reference to="network"/>` verso una parte rende «Parte II». Con
-  `through="backup"` rende «Parti II–III»: `through` è ammesso solo fra due parti, e la
-  seconda deve venire dopo la prima.
+- Le aperture non hanno numero: la prima parte è la Parte I anche quando la precedono una o
+  più aperture. Nell'esempio del §11, `<reference to="network"/>` rende «Parte I»; con
+  `through="backup"` rende «Parti I–II»: `through` è ammesso solo fra due parti, e la seconda
+  deve venire dopo la prima.
 - Verso una sezione rende il suo titolo fra virgolette, seguito dalla parte se è un'altra:
-  «Copie fuori sede» (Parte III).
+  dalla parte `backup`, `<reference to="wifi"/>` rende «Copertura senza fili» (Parte I).
 - Un rimando verso un id inesistente, verso un'apertura, verso l'elenco `<sources>` o verso
   una fonte è un errore. Le fonti si citano con `<cite/>`.
 - Riordinare le parti aggiorna da solo tutti i numeri.
@@ -476,12 +511,21 @@ I commenti XML (`<!-- … -->`) sono conservati (decisione 31):
 
 ## 5. Regole sul testo
 
-### 5.1 Spazi
+### 5.1 Spazi, a capo e tabulazioni
 
 Nel testo misto ogni sequenza di spazi, tabulazioni e a capo vale un solo spazio, e gli spazi
 all'inizio e alla fine di un blocco si ignorano: rientri e a capo nel file non cambiano nulla
-nel PDF. Lo spazio non separabile (U+00A0) resta tale. Le eccezioni sono `<listing>` (§4.5) e
-il testo di `<code>`, dove gli spazi interni si conservano.
+nel PDF. Lo spazio non separabile (U+00A0) resta tale.
+
+| Contesto | A capo | Tabulazione |
+|---|---|---|
+| testo misto (§4.2) | ammesso, vale uno spazio | ammessa, vale uno spazio |
+| `<code>` | ammesso, vale uno spazio | errore |
+| `<listing>` | ammesso e conservato | errore |
+| commenti XML | ammesso | errore |
+| contenuto di `<source>` e di `<address>` | ammesso, vale uno spazio | errore |
+| attributi XML | l'XML li riduce a uno spazio prima di ogni controllo | come l'a capo |
+| testo puro in TOML | errore | errore |
 
 ### 5.2 Caratteri
 
@@ -494,21 +538,19 @@ Il testo, gli attributi e i valori TOML sono in Unicode normalizzato NFC. Sono a
 | Latin-1 | U+00A0–U+00FF, escluso U+00AD (trattino morbido) |
 | Latin Extended-A | U+0100–U+017F, escluso U+0149 |
 | simboli tipografici | – U+2013, — U+2014, ‘ U+2018, ’ U+2019, “ U+201C, ” U+201D, … U+2026, • U+2022, € U+20AC, ⇒ U+21D2 |
+| simboli tecnici | ≤ U+2264, ≥ U+2265, → U+2192, − U+2212 (segno meno) |
 
-Un carattere fuori elenco, per esempio un emoji, un carattere di controllo o un carattere di
-controllo bidirezionale, è un errore con la sua posizione: bloccherebbe la compilazione o
-nasconderebbe il testo a chi rilegge.
+Un carattere fuori elenco, per esempio un emoji, un carattere di controllo, un carattere di
+controllo bidirezionale o un carattere combinante, è un errore con la sua posizione
+(`regodoc.text.char`): bloccherebbe la compilazione o nasconderebbe il testo a chi rilegge.
 
 ### 5.3 Tipografia
 
-- `--` diventa il trattino breve –. Tre o più trattini di fila sono un errore: la lineetta —
-  si scrive direttamente.
-- Le virgolette dritte `"` si chiudono a coppie dentro lo stesso blocco e diventano “ ”; un
-  numero dispari nello stesso blocco è un errore (decisione 32). Vale anche per i valori di
-  testo puro di `structure.toml`, di `variables.toml` e degli attributi.
-- L'apostrofo dritto `'` diventa ’.
-- Dentro `<code>` e `<listing>` virgolette, apostrofi e trattini restano come sono e non
-  contano per le coppie.
+| Conversione | Dove vale | Dove no |
+|---|---|---|
+| `--` diventa il trattino breve –; tre o più trattini sono un errore (`regodoc.text.dashes`), la lineetta — si scrive direttamente | blocchi di testo misto; testo puro di TOML, attributi e `<source>` | `<code>`, `<listing>` |
+| `"` a coppie diventano “ ”; un numero dispari è un errore (`regodoc.text.quotes`, decisione 32) | per blocco di testo misto; per singolo valore di testo puro | `<code>`, `<listing>`, che non contano per le coppie |
+| `'` diventa ’ | blocchi di testo misto; testo puro | `<code>`, `<listing>` |
 
 ### 5.4 Riferimenti a caratteri
 
@@ -535,71 +577,71 @@ scrivono sempre all'italiana.
 ## 6. Sicurezza del parser
 
 Il pacchetto è un ingresso non fidato. Il motore lo legge con la sola libreria standard e lo
-rifiuta, con un errore e senza eccezioni grezze, nei casi seguenti. Ogni caso ha una prova
-automatica.
+rifiuta con un errore, mai con un'eccezione grezza. Ogni regola ha il suo codice: **il codice
+è normativo, il testo del messaggio no.** Ogni regola ha almeno una prova automatica.
+
+Il motore legge il pacchetto in passi numerati. Per ogni passo è detto se si ferma al primo
+errore o se raccoglie tutti gli errori del passo e poi si ferma. Un passo che trova errori
+impedisce i passi successivi, salvo dove è detto altrimenti.
 
 ### 6.1 Archivio
 
-Il motore legge l'archivio dalla directory centrale e verifica ogni voce contro la sua
-intestazione locale. È un errore:
+Il motore legge l'archivio da sé, senza fidarsi di nessun campo, e decomprime contando i byte
+consumati dal decompressore e i byte prodotti.
 
-1. una prima voce diversa da `mimetype`, compressa, che non comincia all'offset 0 o con un
-   contenuto diverso da quello del §1.2;
-2. **una voce ripetuta**, cioè due voci con lo stesso nome, anche se una è una cartella;
-3. **una voce cifrata, o compressa con un metodo diverso da «stored» (0) e «deflate» (8)**;
-4. un archivio diviso su più dischi, un archivio ZIP64, dati prima della prima voce o dopo la
-   fine della directory centrale;
-5. un nome diverso fra directory centrale e intestazione locale;
-6. un percorso assoluto, con `..`, con `\`, con separatori doppi, con componenti vuoti, con
-   caratteri fuori da `[a-z0-9._/-]`, o fuori dalla disposizione del §1.1;
-7. un collegamento simbolico o un file speciale, riconosciuto dagli attributi esterni;
-8. più di 200 voci;
-9. un archivio di più di 12 MiB;
-10. **più di 40 MiB espansi, misurati sui byte effettivamente letti durante l'estrazione**,
-    mai sulle dimensioni dichiarate nell'archivio, che possono mentire;
-11. un rapporto di compressione oltre 20: sull'archivio intero, come byte letti diviso byte
-    compressi; e su ogni voce appena i suoi byte letti superano 64 KiB, così i file piccoli
-    e ripetitivi non danno falsi allarmi;
-12. una voce i cui byte letti non coincidono con la dimensione o con il CRC dichiarati.
+| Passo | Che cosa controlla | Al primo errore | Codici |
+|---|---|---|---|
+| 1. Dimensione | il file non supera 12 MiB | si ferma | `regodoc.archive.too_large` |
+| 2. Struttura | il file comincia con un'intestazione locale; la fine della directory centrale è in coda, senza dati dopo; nessun commento d'archivio; niente ZIP64, niente dischi multipli; la directory centrale sta dove la fine dichiara | si ferma | `regodoc.archive.invalid`, `.trailing_data`, `.comment`, `.zip64`, `.multi_disk` |
+| 3. Numero di voci | al massimo 200 file; le due voci di cartella ammesse non contano | si ferma | `regodoc.archive.too_many_files` |
+| 4. Prima voce | si chiama `mimetype`, è all'offset 0, è «stored», non ha campo extra né descrittore di dati; il contenuto, letto subito, è quello del §1.2 e il suo CRC coincide | si ferma | `regodoc.archive.mimetype` |
+| 5. Voci | per ogni voce: nome non ripetuto, anche fra file e cartella (**voci ripetute**); non è un file di sistema; percorso relativo, senza `..`, `\`, separatori doppi o componenti vuoti, con caratteri in `[a-z0-9._/-]` salvo la voce `README.md`; nessun commento di voce; **né cifrata né compressa con un metodo diverso da «stored» (0) e «deflate» (8)**; niente estensioni ZIP64; né collegamento simbolico né file speciale, dagli attributi esterni; prevista dalla disposizione del §1.1; intestazione locale uguale alla directory centrale in nome, metodo, flag, CRC e dimensioni (o nel descrittore di dati, se c'è); voci contigue: nessun byte fra la fine di una voce, o del suo descrittore, e l'intestazione locale della successiva, né fra l'ultima voce e la directory centrale | raccoglie tutti gli errori delle voci, poi si ferma | `regodoc.archive.duplicate`, `.system_file`, `.path`, `.comment`, `.encrypted`, `.method`, `.zip64`, `.special_file`, `.layout`, `.header_mismatch`, `.gap`, `.corrupt` |
+| 6. Estrazione contata | **il totale dei byte prodotti non supera 40 MiB, misurato durante la decompressione**, mai sulle dimensioni dichiarate: il motore non produce mai più di un blocco di 64 KiB oltre il limite; i byte compressi consumati dal decompressore coincidono con la dimensione compressa dichiarata; i byte prodotti coincidono con la dimensione e con il CRC dichiarati; ogni voce in `images/` si espande al massimo 20 volte; alla fine, l'archivio intero si espande al massimo 100 volte, come byte prodotti diviso byte consumati | si ferma | `regodoc.archive.expanded_too_large`, `.size_mismatch`, `.corrupt`, `.ratio` |
 
-La lettura si ferma al primo superamento di un limite: il motore non espande mai più dei
-limiti, nemmeno per scrivere il messaggio d'errore.
+Il vero argine contro le bombe di compressione è il tetto dei 40 MiB, contato durante la
+decompressione. Il rapporto 100 sull'archivio intero lascia passare i documenti legittimi
+molto ripetitivi (una tabella di 600 righe si comprime più di 30 volte); il rapporto 20 resta
+sulle immagini, che sono già compresse e non hanno motivo di espandersi di più.
 
-### 6.2 XML
+### 6.2 Manifesto, grammatica e TOML
 
-Il parser usa `xml.parsers.expat` della libreria standard e rifiuta, **al primo evento**:
+| Passo | Che cosa controlla | Al primo errore | Codici |
+|---|---|---|---|
+| 7. Manifesto e grammatica | `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma se manca, non si legge, o la grammatica non è leggibile; raccoglie gli altri errori | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
+| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | `structure.toml` mancante o illeggibile ferma tutto; per il resto raccoglie tutti gli errori del file | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
 
-- una dichiarazione `DOCTYPE`, una dichiarazione di entità interna o esterna, un riferimento
-  a un'entità che non sia uno dei cinque predefiniti (decisione 24);
-- un'istruzione di elaborazione, salvo la dichiarazione XML in testa;
-- una sezione `CDATA`;
-- uno spazio dei nomi: un nome con `:` o un attributo `xmlns`;
-- un elemento o un attributo fuori vocabolario, o fuori posto;
-- più di 24 elementi annidati.
+### 6.3 XML
 
-Prima ancora di analizzare: dimensione del file entro il limite, UTF-8 valido, nessun BOM, la
-dichiarazione XML, se c'è, esattamente quella del §4.1. Dopo l'analisi: caratteri (§5.2),
-virgolette (§5.3), commenti (§4.8) e riferimenti (§4.6). Nessuna espressione regolare con
-backtracking esponenziale gira su testo arbitrario.
+Il parser usa `xml.parsers.expat` della libreria standard. Ogni parte è letta in tre tempi.
 
-### 6.3 TOML
+| Passo 9 | Che cosa controlla | Al primo errore | Codici |
+|---|---|---|---|
+| Prima dell'analisi | dimensione del file; nessun BOM; UTF-8 valido; dichiarazione XML, se c'è, esattamente quella del §4.1 | si ferma per quella parte e passa alla successiva | `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `regodoc.xml.declaration` |
+| Durante l'analisi, **al primo evento** | dichiarazione `DOCTYPE`; dichiarazione di entità interna o esterna, di notazione, riferimento a un'entità che non sia uno dei cinque predefiniti (decisione 24); istruzione di elaborazione, salvo la dichiarazione XML in testa; sezione `CDATA`; spazio dei nomi (un nome con `:` o un attributo `xmlns`); commento fuori dalla radice; più di 24 elementi annidati; XML non ben formato | si ferma per quella parte e passa alla successiva | `regodoc.xml.doctype`, `.entity`, `.processing_instruction`, `.cdata`, `.namespace`, `.comment_position`, `.syntax`, `regodoc.limit.depth` |
+| Dopo l'analisi | radice; elementi e attributi fuori vocabolario o fuori posto; contenuti, attributi e valori (§4); caratteri (§5.2); virgolette e trattini (§5.3); commenti (§4.8); limiti del contenuto (§7.2) | raccoglie tutti gli errori della parte | `regodoc.xml.*`, `regodoc.text.*`, `regodoc.limit.*` |
 
-Il motore legge i file TOML con `tomllib` della libreria standard, dopo aver controllato
-dimensione e codifica. È un errore: una chiave fuori vocabolario, un tipo sbagliato, un valore
-oltre i limiti, una data con ora o fuso, un array annidato o una tabella oltre la profondità
-prevista, un id che non è un nome di file sicuro (§1.5). Un commento `#` produce un avviso.
+Nessuna espressione regolare con backtracking esponenziale gira su testo arbitrario.
 
-### 6.4 Immagini
+### 6.4 Immagini, rimandi e totali
 
-Il motore verifica la struttura di ogni immagine senza decodificarne i pixel:
+| Passo | Che cosa controlla | Al primo errore | Codici |
+|---|---|---|---|
+| 10. Immagini | struttura di ogni immagine, senza decodificarne i pixel (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` |
+| 11. Rimandi e totali | id unici; rimandi, citazioni, variabili e figure verso oggetti che esistono e del tipo giusto; totali del §7.2 | raccoglie tutti | `regodoc.xml.duplicate_id`, `.unknown_id`, `.reference_target`, `.reference_through`, `.cite_target`, `.unknown_variable`, `.var_form`, `.missing_image`, `regodoc.package.missing_part`, `.orphan_part`, `regodoc.limit.characters`, `.references`, `.sources`; avvisi `regodoc.toml.unused_variable`, `regodoc.image.unused` |
 
-- **PNG**: firma, primo blocco `IHDR` con larghezza e altezza da 1 a 6.000 pixel, CRC di ogni
-  blocco, `IEND` presente e nient'altro dopo. Sono ammessi i blocchi `IHDR`, `PLTE`, `IDAT`,
-  `IEND`, `tRNS`, `gAMA`, `cHRM`, `sRGB`, `iCCP` e `pHYs`. Gli altri blocchi ancillari, per
-  esempio testo, data o animazione, producono un avviso e non finiscono nel PDF.
+Gli avvisi sulle variabili mai usate si danno solo se tutte le parti sono state lette: con una
+parte illeggibile, «mai usata» potrebbe essere falso.
+
+- **PNG**: firma, primo blocco `IHDR` con larghezza e altezza da 1 a 6.000 pixel e una
+  combinazione valida di tipo di colore e profondità, CRC di ogni blocco, almeno un `IDAT`,
+  `IEND` presente e nient'altro dopo. Sono ammessi i blocchi `IHDR`, `PLTE`, `IDAT`, `IEND`,
+  `tRNS`, `gAMA`, `cHRM`, `sRGB`, `iCCP` e `pHYs`. Gli altri blocchi ancillari, per esempio
+  testo, data o animazione, producono un avviso e non finiscono nel PDF; un blocco critico
+  sconosciuto è un errore.
 - **JPEG**: `SOI` in testa, segmenti ben formati, un solo frame `SOF0`, `SOF1` o `SOF2` con
-  precisione 8 bit, 1, 3 o 4 componenti, larghezza e altezza da 1 a 6.000 pixel, `EOI` in
-  coda e nient'altro dopo. I segmenti `APPn` di metadati producono un avviso.
+  precisione 8 bit, 1, 3 o 4 componenti, larghezza e altezza da 1 a 6.000 pixel, `EOI` in coda
+  e nient'altro dopo. I segmenti di metadati da `APP1` ad `APP15` e i commenti `COM` producono
+  un avviso; `APP0` (JFIF) no. Le codifiche senza perdita, aritmetiche o a 12 bit sono errori.
 - L'estensione deve corrispondere alla firma. SVG, PDF e ogni altro formato sono rifiutati.
 
 ### 6.5 Risorse ed esecuzione
@@ -626,9 +668,10 @@ Li applica chi riceve il pacchetto, per esempio Rego all'ingresso, e li ripete i
 | Voce | Limite |
 |---|---|
 | Archivio compresso | 12 MiB |
-| Contenuto espanso, misurato sui byte letti | 40 MiB |
-| Rapporto di compressione | 20 (§6.1, punto 11) |
-| Voci nell'archivio | 200 |
+| Contenuto espanso, misurato sui byte prodotti dal decompressore | 40 MiB |
+| Rapporto di compressione dell'archivio intero, sui byte consumati | 100 (§6.1, passo 6) |
+| Rapporto di compressione di ogni immagine | 20 |
+| File nell'archivio, senza contare le voci di cartella | 200 |
 
 ### 7.2 Contenuto
 
@@ -641,15 +684,22 @@ grammatica.
 | Un file di parte | 384 KiB |
 | `structure.toml` | 64 KiB |
 | `variables.toml` | 384 KiB |
-| Testo totale del documento | 1.500.000 caratteri |
+| Testo totale del documento | 1.500.000 caratteri (sotto) |
 | Immagini | 80, ognuna al massimo 8 MiB e 6.000 × 6.000 pixel, tutte insieme entro i 40 MiB espansi |
 | Tabella | 600 righe, 10 colonne, 2.000 caratteri per cella; oltre 8 colonne in carattere ridotto |
 | Annidamento | 3 livelli di sezione, 3 di elenco, 24 elementi in tutto |
 | Variabili | 1.500 |
-| Rimandi e citazioni | 10.000 |
+| Rimandi e citazioni (§4.6, §4.7) | 10.000 |
 | Fonti | 500 |
 | `href` | 2.000 caratteri |
 | Riga di un listato | 200 caratteri |
+| Interi e numeri delle variabili | 10^15 in valore assoluto |
+| Problemi elencati in un rapporto | 500; poi la lettura si ferma con `regodoc.limit.problems` |
+
+**Che cosa conta nei 1.500.000 caratteri.** Il testo dei blocchi di testo misto, dopo la
+riduzione degli spazi del §5.1; il contenuto di `<code>`, di `<address>` e dei titoli delle
+fonti (`<source>`); il corpo dei `<listing>`. Non contano: i titoli e gli altri valori di
+`structure.toml`, gli attributi, i commenti, i valori `text` delle variabili.
 
 ---
 
@@ -659,16 +709,19 @@ Ogni problema ha un codice stabile in inglese, il file, la riga, la colonna e un
 italiano. Per esempio:
 
 ```
-parts/network.xml:42:17  regodoc.xml.unknown_variable  la variabile «nasUsd» non esiste in variables.toml
+parts/network.xml:42:17  regodoc.xml.unknown_variable  la variabile «archivSize» non esiste in variables.toml
 ```
 
 Gli **errori** bloccano il pacchetto. Gli **avvisi** no: commenti TOML persi, variabili mai
 usate, immagini mai usate, metadati delle immagini ignorati. Con `--strict` gli avvisi
 contano come errori.
 
-I codici sono raggruppati per famiglia: `regodoc.archive.*`, `regodoc.manifest.*`,
-`regodoc.toml.*`, `regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`. Un
-codice, una volta pubblicato, non cambia significato.
+I codici sono raggruppati per famiglia: `regodoc.archive.*`, `regodoc.package.*`,
+`regodoc.manifest.*`, `regodoc.toml.*`, `regodoc.xml.*`, `regodoc.text.*`,
+`regodoc.image.*`, `regodoc.limit.*`. Fuori dalle famiglie: `regodoc.usage` (errore d'uso),
+`regodoc.environment` (errore d'ambiente), `regodoc.not_implemented` (comando non ancora
+disponibile), `regodoc.interrupted`, `regodoc.internal`. Un codice, una volta pubblicato, non
+cambia significato.
 
 Il comando esce con questi codici, che fanno parte del contratto del motore (`docs/contract.md`, §7):
 
@@ -677,32 +730,47 @@ Il comando esce con questi codici, che fanno parte del contratto del motore (`do
 | 0 | esito positivo, anche con avvisi |
 | 1 | pacchetto rifiutato per errori di validazione, o per avvisi con `--strict`; l'elenco è nel rapporto |
 | 2 | errore d'uso: argomenti, file mancante, opzione sconosciuta |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato |
+| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa da chi legge. Rego non ritenta alla cieca: un tempo superato si ripete con lo stesso pacchetto |
 | 4 | errore interno: un'eccezione non prevista; non deve mai accadere, e le prove avversarie lo dimostrano |
+| 130 | interrotto |
 
-Il rapporto JSON riporta sempre il codice d'uscita, errori e avvisi con la posizione, la
-versione del motore, la versione del contratto e la grammatica letta. La sua forma esatta è
-nel contratto (`docs/contract.md`).
+Con `--json`, i comandi che leggono un pacchetto scrivono un rapporto JSON per **ogni** codice
+d'uscita, 2, 3, 4 e 130 compresi; fa eccezione solo l'uscita chiusa, dove il rapporto non ha
+più dove andare. Il rapporto porta sempre il codice d'uscita, errori e avvisi con la
+posizione, la versione del motore, la versione del contratto, la grammatica letta e i limiti
+di risorse attivi (`limits_active`, con `null` per un limite non applicato). La sua forma
+esatta è nel contratto (`docs/contract.md`, §4). I codici d'uscita sono quelli decisi il
+12/10/2026 dopo la verifica delle decisioni.
 
 ---
 
 ## 9. Forma canonica
 
-Il motore scrive sempre questa forma, e `regodoc canon` la produce: esportare e reimportare
-senza modifiche non cambia un byte.
+Il motore scrive sempre questa forma, e `regodoc canon` la produce. **La garanzia byte per
+byte vale per i file del pacchetto**: esportare e reimportare senza modifiche non cambia i
+byte di nessun file, quindi le impronte che Rego confronta restano uguali. I byte
+dell'archivio possono invece cambiare fra piattaforme, perché librerie di compressione
+diverse (zlib, zlib-ng) producono flussi «deflate» diversi a parità di contenuto; per questo
+chi conserva le versioni confronta i file, non gli archivi.
 
 - **Archivio**: `mimetype` per prima, poi `manifest.json`, `README.md`, `structure.toml`,
   `variables.toml`, le parti nell'ordine di `structure.toml`, le immagini in ordine
   alfabetico. Nessuna voce di cartella. Tutte le voci tranne `mimetype` compresse con
-  «deflate»; data di modifica fissa, 1980-01-01 00:00; nessun attributo esterno oltre ai
-  permessi `0644`; nessun commento d'archivio.
-- **XML**: dichiarazione iniziale; rientro di due spazi per i blocchi; un blocco di testo
-  misto su una sola riga; attributi nell'ordine delle tabelle del §4; virgolette doppie;
-  elementi vuoti scritti `<x/>`; riferimenti a caratteri ridotti a `&lt;` e `&amp;`; a capo
-  finale.
-- **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; una variabile per
-  riga, nell'ordine scritto dall'autore, con la chiave di tipo prima di `note`; commenti
-  rimossi.
+  «deflate» al livello 9; data di modifica fissa, 1980-01-01 00:00; versione «creata da» 3.0
+  Unix e «necessaria» 2.0; flag a zero; nessun campo extra; attributi esterni
+  `0100644`; nessun commento d'archivio né di voce; nessun descrittore di dati.
+- **XML**: dichiarazione iniziale; rientro di due spazi per livello; un blocco di testo
+  misto su una sola riga, con le celle di testo su una riga sola; attributi nell'ordine delle
+  tabelle del §4; virgolette doppie; elementi vuoti scritti `<x/>`; nei testi, riferimenti a
+  caratteri ridotti a `&lt;` e `&amp;`; negli attributi, anche `&quot;`; `<listing>` con il
+  corpo da colonna 1, fra un a capo dopo il tag d'apertura e uno prima di quello di chiusura;
+  un commento su una riga sua, con lo stesso rientro dell'elemento che lo segue; nessuna
+  riga vuota; a capo finale.
+- **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
+  uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
+  vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
+  `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; stringhe
+  fra virgolette doppie; commenti rimossi.
 - **JSON**: chiavi in ordine alfabetico, rientro di due spazi, a capo finale.
 - Testo NFC, a capo LF, UTF-8 senza BOM.
 
@@ -719,8 +787,12 @@ Il manifesto dichiara la grammatica: `"grammar": "rego/1"`.
   grammatica corrente con una catena di aggiornatori sempre inclusa nel motore: `regodoc
   upgrade` (decisione 16bis). Chi conserva le versioni registra l'aggiornamento come
   versione nuova, tracciata, mai come riscrittura silenziosa.
-- Un pacchetto con una grammatica più nuova di quella del motore è rifiutato, con un
-  messaggio che indica la versione del motore necessaria.
+- Un pacchetto con una grammatica più nuova di quella del motore è rifiutato
+  (`regodoc.manifest.grammar_newer`), con un messaggio che indica la grammatica del pacchetto
+  e quelle che il motore sa leggere.
+- Le aggiunte dentro `rego/1` si leggono solo dai motori che le conoscono: un motore più
+  vecchio rifiuta un pacchetto che usa un elemento aggiunto dopo di lui, come un errore di
+  vocabolario.
 - `rego/1` è la prima grammatica pubblicata. La bozza del 12/10 con i nomi italiani non è
   mai stata rilasciata e il motore non la legge.
 
@@ -765,11 +837,11 @@ accent = "sage"
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <part>
-  <summary>Dove stanno gli archivi della cantina al <var name="surveyDate"/> e come renderli più sicuri.</summary>
+  <summary>Dove stanno gli archivi della cantina e come renderli più sicuri.</summary>
   <section id="current-backup">
     <title>Archivi e copie</title>
-    <p><label type="observed"/> Il disco di rete in ufficio contiene <var name="nasUsed"/> in <var name="fileCount"/> file e ha i dischi pieni al <var name="diskFill"/>.</p>
-    <p>Ogni file modificato resta recuperabile per <var name="versions"/>; per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
+    <p><label type="observed"/> Il disco di rete in ufficio conserva <var name="archiveSize"/> di archivi; dopo un guasto il recupero completo richiede circa <var name="restoreHours"/>.</p>
+    <p>Per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
     <box type="status">
       <p>Funziona già bene:</p>
       <list>
@@ -803,7 +875,7 @@ accent = "sage"
       <separator/>
       <row type="total">
         <cell span="2">Spazio occupato</cell>
-        <cell><var name="nasUsed" form="number"/> GB</cell>
+        <cell><var name="archiveSize" form="number"/> TB</cell>
       </row>
     </table>
     <section id="offsite">
@@ -846,11 +918,7 @@ nuova del motore o con una grammatica nuova.
 | Interruzioni di pagina e controllo dell'impaginazione | decide il tema | — |
 | Indice analitico e glossario | non usati nei documenti di Rego | — |
 | Testo in Markdown, modifiche parziali, importazione di singoli file | decisione 22 | il pacchetto completo |
-
-> **Da verificare.** L'elenco del «7% escluso» calcolato dalla Compilazione intermedia non era
-> nel materiale ricevuto dalla sessione regodoc: la tabella qui sopra è ricostruita dalle
-> decisioni e dalla bozza. Il capo progetto la confronta con l'elenco originale prima
-> dell'approvazione.
+| Diagrammi descritti con dati (sequenza, linea del tempo, barre, albero) | prima estensione prevista dopo la 4.0 | `<figure>` PNG o JPEG |
 
 ---
 
@@ -966,7 +1034,7 @@ testo monospaziato in linea (decisione 26).
 | 20 intestazione nel pacchetto | §2 |
 | 22 solo pacchetto completo | §12 |
 | 23 id espliciti, solo https, doppio trattino | §4.3, §4.6, §5.3 |
-| 24 XML a vocabolario chiuso, DOCTYPE rifiutato | §4, §6.2 |
+| 24 XML a vocabolario chiuso, DOCTYPE rifiutato | §4, §6.3 |
 | 25 chiavi di `structure.toml` | §2 |
 | 26 nomi brevi `b`, `i`, `code`, `var`, `label` | §4.3, appendice A |
 | 27 `parts/<id>.xml`, nomi di file sicuri | §1.1, §1.5 |
@@ -975,7 +1043,12 @@ testo monospaziato in linea (decisione 26).
 | 30 fonti strutturate e citazioni numerate | §4.7 |
 | 31 commenti XML conservati | §4.8 |
 | 32 virgolette a coppie, larghezza delle figure, `<code>` | §4.5, §5.3 |
-| A1 tre regole nuove dei paragrafi 6 e 7 | §6.1 punti 2, 3 e 10 |
-| unità binarie e codici d'uscita, decisi dopo la verifica | §0, §7, §8 |
+| A1 tre regole nuove dei paragrafi 6 e 7 | §6.1, passi 5 (voci ripetute, cifratura e metodi) e 6 (40 MiB sui byte prodotti) |
+| A4 data di ripiego: istante di creazione del documento | §2 |
+| A9 documento di prova sintetico e inventato | §11 |
+| A10 `README.md` generato dal motore e ignorato in lettura | §1.1, §1.4, §6.1 passo 5 |
+| 12/10/2026, dopo la verifica: unità binarie e codici d'uscita | §0, §7, §8 |
+| 12/10/2026, dopo la rilettura avversaria: rapporto 100 sull'archivio e 20 sulle immagini, sui byte consumati; voci contigue; dimensione dichiarata uguale ai byte consumati | §6.1, §7.1 |
+| 12/10/2026, dopo la rilettura avversaria: scelte di questa specifica ratificate (lingue, intestazione, cartella, nomi, regole di struttura, caratteri, limiti, forma canonica) | in tutta la specifica |
 
 Le decisioni 12, 16, 18, 19 e 21 riguardano Rego e non il formato.

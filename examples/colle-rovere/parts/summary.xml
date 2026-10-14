@@ -2,11 +2,11 @@
 <opening>
   <section id="in-brief">
     <title>In breve</title>
-    <p>Il rapporto fotografa la rete e gli archivi di <var name="siteName"/> al <var name="surveyDate"/>; i lavori proposti stanno in <var name="upgradeMonths" form="max"/>.</p>
+    <p>Il sopralluogo del <var name="inspectionDate"/> ha riguardato la rete e gli archivi di <var name="siteName"/>; i lavori proposti richiedono al massimo <var name="installDays" form="max"/>.</p>
     <list type="numbered">
-      <item>Nuovo apparato centrale con alimentazione sui cavi: <var name="switchCost"/>.</item>
-      <item>Copia notturna degli archivi in un centro dati esterno, <var name="cloudFee"/> al mese.</item>
-      <item>Esercitazione di recupero dei file a ogni fine vendemmia.</item>
+      <item>Rifare la copertura senza fili della barricaia.</item>
+      <item>Affidare la manutenzione a un installatore, per <var name="maintenanceFee"/> l'anno.</item>
+      <item>Provare il recupero dei file a ogni fine vendemmia.</item>
     </list>
     <p>Le analisi complete sono in <reference to="network" through="backup"/>.</p>
   </section>

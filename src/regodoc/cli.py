@@ -102,9 +102,18 @@ class ItalianArgumentParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> NoReturn:
         """Stampa l'uso e l'errore in italiano, poi esce con il codice d'uso."""
+        translated = translate_argparse_message(message)
         self.print_usage(sys.stderr)
-        _write(sys.stderr, f"{self.prog}: errore: {translate_argparse_message(message)}\n")
-        raise SystemExit(ExitCode.USAGE)
+        _write(sys.stderr, f"{self.prog}: errore: {translated}\n")
+        raise UsageExit(translated)
+
+
+class UsageExit(SystemExit):
+    """Uscita per un errore della riga di comando, con il messaggio già tradotto."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(ExitCode.USAGE)
+        self.message = message
 
 
 def _write(stream: IO[str], text: str) -> None:
@@ -210,36 +219,72 @@ def _cmd_info(_args: argparse.Namespace) -> ExitCode:
     return ExitCode.OK
 
 
+# Comandi che leggono un pacchetto: con --json rispondono sempre con un rapporto (§8 della
+# specifica, §4 del contratto), qualunque sia il codice d'uscita.
+PACKAGE_COMMANDS = ("validate", "canon", "build", "upgrade")
+
+
+def _problem(code: str, message: str) -> dict[str, object]:
+    return {
+        "severity": "error",
+        "code": code,
+        "message": message,
+        "file": "",
+        "line": 0,
+        "column": 0,
+    }
+
+
+def _payload(
+    command: str | None,
+    exit_code: ExitCode,
+    *,
+    grammar: str | None = None,
+    errors: Sequence[dict[str, object]] = (),
+    warnings: Sequence[dict[str, object]] = (),
+) -> dict[str, object]:
+    """Il rapporto JSON del contratto, uguale nella forma per ogni codice d'uscita."""
+    return {
+        "contract": declaration.CONTRACT_VERSION,
+        "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
+        "command": command,
+        "grammar": grammar,
+        "exit_code": int(exit_code),
+        "ok": exit_code is ExitCode.OK,
+        "errors": list(errors),
+        "warnings": list(warnings),
+        # Nessun limite di risorse è ancora applicato da questa versione: null lo dice.
+        "limits_active": {"time_seconds": None, "memory_bytes": None},
+    }
+
+
+def _finish(
+    wants_json: bool, command: str | None, exit_code: ExitCode, code: str, message: str
+) -> ExitCode:
+    """Chiude con un solo errore: rapporto JSON se richiesto, altrimenti un messaggio."""
+    if wants_json and command in PACKAGE_COMMANDS:
+        with contextlib.suppress(OSError, ValueError):
+            _write_json(_payload(command, exit_code, errors=[_problem(code, message)]))
+    _note(f"regodoc: {message}\n")
+    return exit_code
+
+
 def _cmd_draft(args: argparse.Namespace) -> ExitCode:
+    # Un comando non ancora implementato è un limite di questa versione del motore, cioè
+    # dell'ambiente, non del pacchetto né della riga di comando.
     message = (
         f"il comando «{args.command}» non è ancora implementato: arriva con il lotto {args.lot}"
     )
     if args.json:
         _write_json(
-            {
-                "contract": declaration.CONTRACT_VERSION,
-                "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
-                "command": args.command,
-                "grammar": None,
-                "exit_code": int(ExitCode.ENVIRONMENT),
-                "ok": False,
-                "errors": [
-                    {
-                        "severity": "error",
-                        "code": "regodoc.not_implemented",
-                        "message": message,
-                        "file": "",
-                        "line": 0,
-                        "column": 0,
-                    }
-                ],
-                "warnings": [],
-            }
+            _payload(
+                args.command,
+                ExitCode.ENVIRONMENT,
+                errors=[_problem("regodoc.not_implemented", message)],
+            )
         )
-    else:
-        _write(sys.stderr, f"regodoc: {message}\n")
-    # Un comando non ancora implementato è un limite di questa versione del motore, cioè
-    # dell'ambiente, non del pacchetto né della riga di comando.
+        return ExitCode.ENVIRONMENT
+    _write(sys.stderr, f"regodoc: {message}\n")
     return ExitCode.ENVIRONMENT
 
 
@@ -250,16 +295,13 @@ def _report(command: str, args: argparse.Namespace, validation: Validation) -> E
     code = ExitCode.REFUSED if failed else ExitCode.OK
     if args.json:
         _write_json(
-            {
-                "contract": declaration.CONTRACT_VERSION,
-                "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
-                "command": command,
-                "grammar": validation.grammar,
-                "exit_code": int(code),
-                "ok": not failed,
-                "errors": [d.to_json() for d in collector.errors],
-                "warnings": [d.to_json() for d in collector.warnings],
-            }
+            _payload(
+                command,
+                code,
+                grammar=validation.grammar,
+                errors=[d.to_json() for d in collector.errors],
+                warnings=[d.to_json() for d in collector.warnings],
+            )
         )
     else:
         for diagnostic in collector.items:
@@ -274,74 +316,88 @@ def _report(command: str, args: argparse.Namespace, validation: Validation) -> E
 def _cmd_validate(args: argparse.Namespace) -> ExitCode:
     path = Path(args.package)
     if not path.exists():
-        return _usage_error(args, f"il pacchetto «{args.package}» non esiste")
+        return _finish(
+            args.json,
+            "validate",
+            ExitCode.USAGE,
+            "regodoc.usage",
+            f"il pacchetto «{args.package}» non esiste",
+        )
     try:
         validation = validate_package(path)
     except PermissionError:
-        _write(sys.stderr, f"regodoc: non posso leggere «{args.package}»: permesso negato\n")
-        return ExitCode.ENVIRONMENT
-    return _report("validate", args, validation)
-
-
-def _usage_error(args: argparse.Namespace, message: str) -> ExitCode:
-    if args.json:
-        _write_json(
-            {
-                "contract": declaration.CONTRACT_VERSION,
-                "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
-                "command": args.command,
-                "grammar": None,
-                "exit_code": int(ExitCode.USAGE),
-                "ok": False,
-                "errors": [
-                    {
-                        "severity": "error",
-                        "code": "regodoc.usage",
-                        "message": message,
-                        "file": "",
-                        "line": 0,
-                        "column": 0,
-                    }
-                ],
-                "warnings": [],
-            }
+        return _finish(
+            args.json,
+            "validate",
+            ExitCode.ENVIRONMENT,
+            "regodoc.environment",
+            f"non posso leggere «{args.package}»: permesso negato",
         )
-    else:
-        _write(sys.stderr, f"regodoc: {message}\n")
-    return ExitCode.USAGE
+    return _report("validate", args, validation)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Esegue il comando e restituisce il codice d'uscita."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    wants_json = "--json" in arguments
+    command = next((a for a in arguments if a in PACKAGE_COMMANDS), None)
     parser = build_parser()
     try:
-        args = parser.parse_args(argv)
+        args = parser.parse_args(arguments)
         if args.contract is not None and args.contract not in declaration.CONTRACTS:
             supported = ", ".join(str(v) for v in declaration.CONTRACTS)
-            _write(
-                sys.stderr,
-                f"regodoc: questo motore non supporta il contratto {args.contract}; "
-                f"supporta: {supported}\n",
+            return int(
+                _finish(
+                    wants_json,
+                    command,
+                    ExitCode.USAGE,
+                    "regodoc.usage",
+                    f"questo motore non supporta il contratto {args.contract}; "
+                    f"supporta: {supported}",
+                )
             )
-            return int(ExitCode.USAGE)
         return int(args.handler(args))
+    except UsageExit as exit_:
+        # Errore della riga di comando: argparse ha già scritto uso e messaggio su stderr.
+        if wants_json and command is not None:
+            with contextlib.suppress(OSError, ValueError):
+                _write_json(
+                    _payload(
+                        command, ExitCode.USAGE, errors=[_problem("regodoc.usage", exit_.message)]
+                    )
+                )
+        return int(ExitCode.USAGE)
     except SystemExit as exit_:
-        # argparse esce con SystemExit per l'aiuto, la versione e gli errori d'uso.
+        # argparse esce con SystemExit anche per l'aiuto e la versione.
         return exit_.code if isinstance(exit_.code, int) else int(ExitCode.USAGE)
     except KeyboardInterrupt:
-        _note("regodoc: interrotto\n")
-        return int(ExitCode.INTERRUPTED)
+        return int(
+            _finish(wants_json, command, ExitCode.INTERRUPTED, "regodoc.interrupted", "interrotto")
+        )
     except BrokenPipeError:
-        # Chi legge l'uscita ha chiuso la pipe: è un fatto d'ambiente, non un difetto.
+        # Chi legge l'uscita ha chiuso la pipe: è un fatto d'ambiente, non un difetto. Il
+        # rapporto non ha più dove andare.
         _silence_stdout()
         _note("regodoc: errore d'ambiente: l'uscita è stata chiusa prima della fine\n")
         return int(ExitCode.ENVIRONMENT)
     except OSError as error:
-        _note(f"regodoc: errore d'ambiente: {error.strerror or type(error).__name__}\n")
-        return int(ExitCode.ENVIRONMENT)
-    except Exception as error:
-        _note(
-            f"regodoc: errore interno del motore ({type(error).__name__}); "
-            "è un difetto del motore, non del pacchetto\n"
+        return int(
+            _finish(
+                wants_json,
+                command,
+                ExitCode.ENVIRONMENT,
+                "regodoc.environment",
+                f"errore d'ambiente: {error.strerror or type(error).__name__}",
+            )
         )
-        return int(ExitCode.INTERNAL)
+    except Exception as error:
+        return int(
+            _finish(
+                wants_json,
+                command,
+                ExitCode.INTERNAL,
+                "regodoc.internal",
+                f"errore interno del motore ({type(error).__name__}); "
+                "è un difetto del motore, non del pacchetto",
+            )
+        )

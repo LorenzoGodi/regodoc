@@ -64,7 +64,7 @@ class ExampleTest(unittest.TestCase):
             [e.id for e in validation.structure.entries], ["summary", "network", "backup"]
         )
         self.assertEqual(validation.structure.entries[2].number, 2)
-        self.assertIn("switchCost", validation.variables)
+        self.assertIn("maintenanceFee", validation.variables)
 
 
 # --- Archivio --------------------------------------------------------------------------------
@@ -267,10 +267,11 @@ class ManifestTest(unittest.TestCase):
         )
 
     def test_newer_grammar(self) -> None:
-        self.assertEqual(
-            self.manifest('{"format": "regodoc", "grammar": "rego/2"}'),
-            ["regodoc.manifest.grammar_newer"],
-        )
+        text = '{"format": "regodoc", "grammar": "rego/2"}'
+        self.assertEqual(self.manifest(text), ["regodoc.manifest.grammar_newer"])
+        message = validate_files(with_file("manifest.json", text)).report.errors[0].message
+        self.assertIn("«rego/2»", message)
+        self.assertIn("rego/1", message)
 
     def test_bad_grammar(self) -> None:
         self.assertEqual(
@@ -419,12 +420,45 @@ class VariablesTest(unittest.TestCase):
             with self.subTest(line):
                 self.assertIn(f"regodoc.toml.{code}", self.variables(line))
 
+    def toml_codes(self, line: str) -> list[str]:
+        return [c for c in self.variables(line) if c.startswith("regodoc.toml")]
+
+    def test_italian_number_grammar(self) -> None:
+        for good in ('"0"', '"0,5"', '"1.084"', '"999"', '"12.345,6"', '"-0,25"'):
+            with self.subTest(good):
+                self.assertEqual(self.toml_codes(f"a = {{ number = {good} }}"), [])
+        for bad in ('"007"', '"0.012"', '"01"', '"1000"', '"1.08"', '"1,"', '",5"'):
+            with self.subTest(bad):
+                self.assertIn("regodoc.toml.value", self.toml_codes(f"a = {{ number = {bad} }}"))
+
+    def test_negative_values(self) -> None:
+        self.assertEqual(self.toml_codes('a = { eur = "-12,50" }'), [])
+        self.assertEqual(self.toml_codes('a = { percent = "-3,5" }'), [])
+        self.assertEqual(self.toml_codes("a = { number = -4 }"), [])
+        for line in (
+            'a = { gb = "-1" }',
+            'a = { tb = "-0,5" }',
+            "a = { days = -1 }",
+            'a = { hours = "-2" }',
+            "a = { count = -3 }",
+        ):
+            with self.subTest(line):
+                self.assertIn("regodoc.toml.value", self.toml_codes(line))
+
+    def test_integer_ceiling(self) -> None:
+        self.assertEqual(self.toml_codes("a = { number = 1000000000000000 }"), [])
+        self.assertIn("regodoc.toml.value", self.toml_codes("a = { number = 1000000000000001 }"))
+        self.assertIn(
+            "regodoc.toml.value",
+            self.toml_codes('a = { eur = "1.000.000.000.000.001" }'),
+        )
+
     def test_unused_variable_is_a_warning(self) -> None:
         text = (example_files()["variables.toml"] + b"spare = { n = 1 }\n").decode()
         text = text.replace("{ n = 1 }", "{ number = 1 }")
         validation = validate_files(with_file("variables.toml", text))
         self.assertEqual(codes(validation), ["regodoc.toml.unused_variable"])
-        self.assertEqual(validation.report.warnings[0].line, 11)
+        self.assertEqual(validation.report.warnings[0].line, 9)
 
 
 # --- XML -------------------------------------------------------------------------------------
@@ -544,6 +578,9 @@ class XmlVocabularyTest(unittest.TestCase):
         self.assert_error("<p>emoji \U0001f600</p>", "regodoc.text.char")
         self.assert_error("<p>e\u0301</p>", "regodoc.text.char")
         self.assertEqual(self.body("<p>Città, «così» — 37,65 € e ⇒ ok&#160;sì.</p>"), [])
+        self.assertEqual(
+            self.body("<p>Tempo \u2264 5 s, carico \u2265 2, A \u2192 B, \u22123 °C.</p>"), []
+        )
 
     def test_links_and_addresses(self) -> None:
         for href in (
@@ -650,7 +687,7 @@ class CrossReferenceTest(unittest.TestCase):
             '<p><cite to="nowhere"/></p>': "regodoc.xml.unknown_id",
             '<p><var name="nowhere"/></p>': "regodoc.xml.unknown_variable",
             '<p><var name="siteName" form="number"/></p>': "regodoc.xml.var_form",
-            '<p><var name="cloudFee" form="max"/></p>': "regodoc.xml.var_form",
+            '<p><var name="restoreHours" form="max"/></p>': "regodoc.xml.var_form",
         }
         for xml, code in cases.items():
             with self.subTest(xml):
@@ -659,8 +696,8 @@ class CrossReferenceTest(unittest.TestCase):
     def test_valid_references(self) -> None:
         xml = (
             '<p><reference to="network" through="backup"/> <reference to="wifi"/> '
-            '<cite to="ap-guide"/> <var name="switchCost" form="min"/> '
-            '<var name="nasUsed" form="number"/></p>'
+            '<cite to="ap-guide"/> <var name="maintenanceFee" form="min"/> '
+            '<var name="archiveSize" form="number"/></p>'
         )
         self.assertEqual(self.body(xml), [])
 
@@ -683,6 +720,12 @@ class CrossReferenceTest(unittest.TestCase):
         files["parts/network.xml"] = (network[:start] + sources + network[end:]).encode()
         found = [d.code for d in validate_files(files).report.errors]
         self.assertIn("regodoc.xml.sources_mixed", found)
+
+    def test_no_unused_warning_when_a_part_is_unreadable(self) -> None:
+        files = with_file("parts/backup.xml", "<part><p>non chiuso</part>")
+        validation = validate_files(files)
+        self.assertEqual(validation.report.warnings, [])
+        self.assertIn("regodoc.xml.syntax", [d.code for d in validation.report.errors])
 
     def test_root_and_files(self) -> None:
         files = with_file("parts/backup.xml", "<opening/>")

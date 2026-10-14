@@ -128,8 +128,9 @@ def _check_manifest(package: PackageFiles, report: Collector) -> str | None:
         if current and int(match.group(1)) > int(current.group(1)):
             report.error(
                 "regodoc.manifest.grammar_newer",
-                f"il pacchetto usa la grammatica «{grammar}», più nuova di quella di questo "
-                f"motore («{GRAMMAR_CURRENT}»): serve una versione più recente di regodoc",
+                f"il pacchetto usa la grammatica «{grammar}», più nuova di quelle che questo "
+                f"motore sa leggere ({', '.join(GRAMMARS_READ)}): serve una versione più "
+                "recente di regodoc",
                 file,
             )
         else:
@@ -193,10 +194,12 @@ def _check_parts(
                 "il file non corrisponde a nessun id di structure.toml",
                 path,
             )
+    complete = True  # falso se una parte manca o non si legge: gli usi sarebbero incompleti
     for entry in structure.entries:
         path = f"parts/{entry.id}.xml"
         data = package.get(path)
         if data is None:
+            complete = False
             report.error(
                 "regodoc.package.missing_part",
                 f"manca il file della {'parte' if entry.kind == 'part' else 'apertura'} "
@@ -205,7 +208,9 @@ def _check_parts(
             )
             continue
         root = parse_part(data, path, report)
-        if root is not None:
+        if root is None:
+            complete = False
+        else:
             PartChecker(context, path, entry).check_root(root)
     images = {path for path in package.files if IMAGE_PATH.fullmatch(path)}
     if len(images) > CONTENT_LIMITS["images"]:
@@ -215,11 +220,11 @@ def _check_parts(
         )
     for path in sorted(images):
         check_image(path, package.files[path], report)
-    _check_uses(context, images)
+    _check_uses(context, images, complete=complete)
     _check_totals(context)
 
 
-def _check_uses(context: Context, images: set[str]) -> None:
+def _check_uses(context: Context, images: set[str], *, complete: bool) -> None:
     report = context.report
     used_variables: set[str] = set()
     used_images: set[str] = set()
@@ -268,6 +273,8 @@ def _check_uses(context: Context, images: set[str]) -> None:
                 )
         elif use.kind == "reference":
             _check_reference(context, use)
+    if not complete:
+        return  # con una parte illeggibile, «mai usata» potrebbe essere falso
     for name, variable in context.variables.items():
         if name not in used_variables:
             report.warning(

@@ -39,7 +39,8 @@ ENVELOPE_LIMITS: Final = MappingProxyType(
     {
         "compressed_bytes": 12 * _MIB,
         "expanded_bytes": 40 * _MIB,
-        "compression_ratio": 20,
+        "compression_ratio": 100,
+        "image_compression_ratio": 20,
         "files": 200,
     }
 )

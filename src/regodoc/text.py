@@ -5,7 +5,9 @@ import unicodedata
 from collections.abc import Iterator
 
 # Simboli tipografici ammessi oltre ad ASCII, Latin-1 e Latin Extended-A (§5.2).
-_SYMBOLS = frozenset("–—‘’“”…•€⇒")
+_SYMBOLS = frozenset(
+    "\u2013\u2014\u2018\u2019\u201c\u201d\u2026\u2022\u20ac\u21d2\u2264\u2265\u2192\u2212"
+)
 _EXCLUDED = frozenset("\u00adŉ")
 _TRIPLE_HYPHEN = re.compile(r"-{3,}")
 

@@ -1,17 +1,19 @@
 """Lettura dell'involucro di un pacchetto: archivio ZIP o cartella (specifica §1 e §6.1).
 
-L'archivio è un ingresso non fidato. Prima di estrarre qualunque cosa il modulo verifica la
-struttura dell'archivio sui byte grezzi; poi estrae ogni voce a blocchi, contando i byte
-effettivamente letti, e si ferma al primo limite superato. Le dimensioni dichiarate
-nell'archivio non sono mai usate per decidere quanto leggere.
+L'archivio è un ingresso non fidato. Il modulo non usa ``zipfile``: legge da sé la directory
+centrale e le intestazioni locali, così può verificare ogni campo, e decomprime con ``zlib``
+contando i byte consumati e quelli prodotti. Segue i passi numerati del §6.1: i passi da 1 a
+4 si fermano al primo errore, il passo 5 raccoglie tutti i problemi delle voci e poi si
+ferma, il passo 6 si ferma al primo limite superato. Le dimensioni dichiarate nell'archivio
+non decidono mai quanto leggere: il decompressore non produce mai più di un blocco oltre il
+tetto dei byte espansi.
 """
 
-import io
+import itertools
 import os
 import re
 import stat
 import struct
-import zipfile
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,14 +24,22 @@ from regodoc.diagnostics import Collector
 MIMETYPE = PACKAGE_MIMETYPE.encode("ascii")
 
 _CHUNK = 64 * 1024
-_RATIO_GRACE = 64 * 1024
+_MIB = 1024 * 1024
 _EOCD = b"PK\x05\x06"
 _EOCD_SIZE = 22
 _ZIP64_LOCATOR = b"PK\x06\x07"
+_CENTRAL = b"PK\x01\x02"
+_CENTRAL_SIZE = 46
 _LOCAL = b"PK\x03\x04"
 _LOCAL_SIZE = 30
+_DESCRIPTOR = b"PK\x07\x08"
 _ZIP64_EXTRA_ID = 0x0001
 _ZIP64_MARKERS = (0xFFFF, 0xFFFFFFFF)
+_STORED = 0
+_DEFLATED = 8
+_FLAG_ENCRYPTED = 0x0001
+_FLAG_DESCRIPTOR = 0x0008
+_FLAG_STRONG_ENCRYPTION = 0x0040
 
 FIXED_FILES = frozenset(
     {"mimetype", "manifest.json", "README.md", "structure.toml", "variables.toml"}
@@ -41,6 +51,9 @@ PART_PATH = re.compile(rf"parts/(?P<id>{_ID})\.xml")
 IMAGE_PATH = re.compile(rf"images/(?P<name>{_IMAGE})\.(?:png|jpg|jpeg)")
 ID = re.compile(_ID)
 _PATH_CHARS = re.compile(r"[a-z0-9._/-]+")
+# File che i sistemi operativi aggiungono da soli (§1.6): ignorati in una cartella, rifiutati
+# in un archivio con il consiglio di ricostruirlo.
+_SYSTEM_NAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 
 
 @dataclass
@@ -60,6 +73,13 @@ def is_allowed_path(path: str) -> bool:
     return path in FIXED_FILES or bool(PART_PATH.fullmatch(path) or IMAGE_PATH.fullmatch(path))
 
 
+def is_system_file(path: str) -> bool:
+    """Vero per i file che i sistemi operativi aggiungono da soli (§1.6)."""
+    parts = path.split("/")
+    leaf = parts[-1]
+    return parts[0] == "__MACOSX" or leaf in _SYSTEM_NAMES or leaf.startswith("._")
+
+
 def _path_problem(name: str) -> str | None:
     """Spiega perché il nome di una voce non è ammesso, o None se lo è."""
     if name.startswith("/") or re.match(r"[A-Za-z]:", name):
@@ -71,23 +91,24 @@ def _path_problem(name: str) -> str | None:
         return "componente «..» o «.»"
     if "" in parts:
         return "separatori doppi o componente vuoto"
-    if not _PATH_CHARS.fullmatch(name):
+    if name != "README.md" and not _PATH_CHARS.fullmatch(name):
         return "caratteri fuori da [a-z0-9._/-]"
     return None
 
 
 def _layout_message(name: str) -> str:
-    leaf = name.rsplit("/", 1)[-1]
-    if name.startswith("__MACOSX/") or leaf == ".DS_Store" or name.startswith("._"):
-        return (
-            f"la voce «{name}» è stata aggiunta dal sistema operativo: ricostruisci "
-            "l'archivio con «regodoc canon»"
-        )
     if name.startswith("parts/"):
         return f"«{name}» non è un nome di parte valido: serve parts/<id>.xml (§1.5)"
     if name.startswith("images/"):
         return f"«{name}» non è un nome d'immagine valido: serve images/<nome>.png o .jpg (§1.5)"
     return f"la voce «{name}» non è prevista dalla disposizione del pacchetto (§1.1)"
+
+
+def _system_message(name: str) -> str:
+    return (
+        f"la voce «{name}» è stata aggiunta dal sistema operativo: ricostruisci "
+        "l'archivio con «regodoc canon»"
+    )
 
 
 class _Stop(Exception):
@@ -107,171 +128,194 @@ def read_package(path: Path, report: Collector) -> PackageFiles | None:
 # --- Archivio --------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _Entry:
+    """Una voce della directory centrale, con i campi che servono ai controlli."""
+
+    name: str
+    flags: int
+    method: int
+    crc: int
+    compressed: int
+    size: int
+    extra: bytes
+    comment: bytes
+    disk: int
+    external: int
+    offset: int
+
+    @property
+    def is_dir(self) -> bool:
+        return self.name.endswith("/")
+
+
 def _read_archive(path: Path, report: Collector) -> PackageFiles:
+    where = path.name
+    # Passo 1: dimensione del file.
     limit = ENVELOPE_LIMITS["compressed_bytes"]
     with path.open("rb") as handle:
         data = handle.read(limit + 1)
     if len(data) > limit:
-        report.error(
-            "regodoc.archive.too_large",
-            f"l'archivio supera {limit // (1024 * 1024)} MiB",
-            path.name,
-        )
+        report.error("regodoc.archive.too_large", f"l'archivio supera {limit // _MIB} MiB", where)
         raise _Stop
-    _check_structure(data, path.name, report)
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
-    except (
-        zipfile.BadZipFile,
-        zipfile.LargeZipFile,
-        NotImplementedError,
-        RuntimeError,
-        ValueError,
-        IndexError,
-        KeyError,
-        OverflowError,
-        struct.error,
-        OSError,
-    ):
-        # zipfile solleva eccezioni diverse secondo il punto in cui l'archivio è rovinato.
-        report.error("regodoc.archive.invalid", "il file non è un archivio ZIP valido", path.name)
-        raise _Stop from None
-    with archive:
-        entries = archive.infolist()
-        _check_entries(data, entries, report)
-        return _extract(archive, entries, report)
+    # Passo 2: struttura. Passo 3: numero di voci.
+    entries = _read_central_directory(data, where, report)
+    # Passo 4: prima voce.
+    _check_first_entry(data, entries, report)
+    # Passo 5: controlli per voce.
+    _check_entries(data, entries, report)
+    # Passo 6: estrazione contata.
+    return _extract(data, entries, report)
 
 
-def _check_structure(data: bytes, where: str, report: Collector) -> None:
-    """Controlli sui byte grezzi: firma iniziale, fine della directory centrale, ZIP64."""
+def _fail(report: Collector, code: str, message: str, where: str = "") -> None:
+    report.error(code, message, where)
+    raise _Stop
+
+
+def _read_central_directory(data: bytes, where: str, report: Collector) -> list[_Entry]:
+    """Passi 2 e 3: firma iniziale, fine della directory centrale, ZIP64, dischi, voci."""
     if not data.startswith(_LOCAL):
-        report.error(
+        _fail(
+            report,
             "regodoc.archive.invalid",
             "il file non comincia con una voce ZIP: non è un pacchetto, oppure ha dati in testa",
             where,
         )
-        raise _Stop
     eocd = data.rfind(_EOCD, max(0, len(data) - _EOCD_SIZE - 0xFFFF))
     if eocd < 0 or eocd + _EOCD_SIZE > len(data):
-        report.error("regodoc.archive.invalid", "manca la fine della directory centrale", where)
-        raise _Stop
+        _fail(report, "regodoc.archive.invalid", "manca la fine della directory centrale", where)
     (_, disk, cd_disk, on_disk, total, cd_size, cd_offset, comment_len) = struct.unpack(
         "<4sHHHHIIH", data[eocd : eocd + _EOCD_SIZE]
     )
     if eocd + _EOCD_SIZE + comment_len != len(data):
-        report.error(
-            "regodoc.archive.trailing_data",
-            "ci sono dati dopo la fine dell'archivio",
-            where,
-        )
-        raise _Stop
-    if disk or cd_disk or on_disk != total:
-        report.error("regodoc.archive.multi_disk", "archivio diviso su più dischi", where)
-        raise _Stop
+        _fail(report, "regodoc.archive.trailing_data", "ci sono dati dopo la fine dell'archivio")
+    if comment_len:
+        _fail(report, "regodoc.archive.comment", "l'archivio ha un commento: non è ammesso")
     if (
         total in _ZIP64_MARKERS
         or cd_size in _ZIP64_MARKERS
         or cd_offset in _ZIP64_MARKERS
         or data.rfind(_ZIP64_LOCATOR, max(0, eocd - 20), eocd) >= 0
     ):
-        report.error("regodoc.archive.zip64", "gli archivi ZIP64 non sono ammessi", where)
-        raise _Stop
+        _fail(report, "regodoc.archive.zip64", "gli archivi ZIP64 non sono ammessi")
+    if disk or cd_disk or on_disk != total:
+        _fail(report, "regodoc.archive.multi_disk", "archivio diviso su più dischi")
     if cd_offset + cd_size != eocd:
-        report.error(
+        _fail(
+            report,
             "regodoc.archive.invalid",
             "la directory centrale non è dove l'archivio dichiara",
-            where,
         )
-        raise _Stop
-    if total > ENVELOPE_LIMITS["files"]:
-        report.error(
+    # Le voci di cartella non contano nel limite dei file, ma ne sono ammesse al massimo due.
+    if total > ENVELOPE_LIMITS["files"] + len(FOLDERS):
+        _fail(
+            report,
             "regodoc.archive.too_many_files",
-            f"l'archivio ha {total} voci, il massimo è {ENVELOPE_LIMITS['files']}",
-            where,
+            f"l'archivio ha {total} voci, il massimo è {ENVELOPE_LIMITS['files']} file",
         )
-        raise _Stop
+    entries: list[_Entry] = []
+    position = cd_offset
+    for _ in range(total):
+        if position + _CENTRAL_SIZE > eocd or data[position : position + 4] != _CENTRAL:
+            _fail(report, "regodoc.archive.invalid", "directory centrale danneggiata")
+        (
+            _,
+            _made_by,
+            _needed,
+            flags,
+            method,
+            _time,
+            _date,
+            crc,
+            compressed,
+            size,
+            name_len,
+            extra_len,
+            entry_comment_len,
+            disk_start,
+            _internal,
+            external,
+            offset,
+        ) = struct.unpack_from("<4sHHHHHHIIIHHHHHII", data, position)
+        start = position + _CENTRAL_SIZE
+        end = start + name_len + extra_len + entry_comment_len
+        if end > eocd:
+            _fail(report, "regodoc.archive.invalid", "directory centrale danneggiata")
+        raw_name = data[start : start + name_len]
+        entries.append(
+            _Entry(
+                name=raw_name.decode("latin-1"),
+                flags=flags,
+                method=method,
+                crc=crc,
+                compressed=compressed,
+                size=size,
+                extra=data[start + name_len : start + name_len + extra_len],
+                comment=data[start + name_len + extra_len : end],
+                disk=disk_start,
+                external=external,
+                offset=offset,
+            )
+        )
+        position = end
+    if position != eocd:
+        _fail(report, "regodoc.archive.invalid", "directory centrale danneggiata")
+    files = sum(1 for entry in entries if not entry.is_dir)
+    if files > ENVELOPE_LIMITS["files"]:
+        _fail(
+            report,
+            "regodoc.archive.too_many_files",
+            f"l'archivio ha {files} file, il massimo è {ENVELOPE_LIMITS['files']}",
+        )
+    return entries
 
 
-def _check_entries(data: bytes, entries: list[zipfile.ZipInfo], report: Collector) -> None:
-    """Controlli sulle voci: prima voce, nomi, doppioni, metodi, cifratura, tipi di file."""
-    if len(entries) > ENVELOPE_LIMITS["files"]:
-        report.error(
-            "regodoc.archive.too_many_files",
-            f"l'archivio ha {len(entries)} voci, il massimo è {ENVELOPE_LIMITS['files']}",
-        )
-        raise _Stop
+def _local_header(data: bytes, entry: _Entry) -> tuple[int, int, int, int, int, int, int, bytes]:
+    """Campi dell'intestazione locale: flags, metodo, crc, compresso, espanso, nome, extra."""
+    start = entry.offset
+    if start + _LOCAL_SIZE > len(data) or data[start : start + 4] != _LOCAL:
+        raise ValueError
+    (_, _needed, flags, method, _time, _date, crc, compressed, size, name_len, extra_len) = (
+        struct.unpack_from("<4sHHHHHIIIHH", data, start)
+    )
+    name = data[start + _LOCAL_SIZE : start + _LOCAL_SIZE + name_len]
+    extra = data[start + _LOCAL_SIZE + name_len : start + _LOCAL_SIZE + name_len + extra_len]
+    return flags, method, crc, compressed, size, name_len, extra_len, name + b"\0" + extra
+
+
+def _check_first_entry(data: bytes, entries: list[_Entry], report: Collector) -> None:
+    """Passo 4: la prima voce è mimetype, stored, all'offset 0, senza extra né descrittore,
+    con il contenuto atteso, letto subito (§1.2)."""
+    message = (
+        "la prima voce dell'archivio deve essere «mimetype», non compressa, senza campo extra "
+        "né descrittore di dati, con il contenuto «application/vnd.regodoc.document» (§1.2)"
+    )
     first = entries[0] if entries else None
     if (
         first is None
-        or first.filename != "mimetype"
-        or first.header_offset != 0
-        or first.compress_type != zipfile.ZIP_STORED
+        or first.name != "mimetype"
+        or first.offset != 0
+        or first.method != _STORED
+        or first.flags & (_FLAG_DESCRIPTOR | _FLAG_ENCRYPTED)
+        or first.extra
+        or first.compressed != len(MIMETYPE)
+        or first.size != len(MIMETYPE)
     ):
-        report.error(
-            "regodoc.archive.mimetype",
-            "la prima voce dell'archivio deve essere «mimetype», non compressa (§1.2)",
-        )
-        raise _Stop
-    seen: set[str] = set()
-    fatal = False
-    for entry in entries:
-        name = entry.filename
-        key = name.rstrip("/")
-        if key in seen:
-            report.error("regodoc.archive.duplicate", f"la voce «{key}» compare più di una volta")
-            fatal = True
-            continue
-        seen.add(key)
-        problem = _path_problem(name[:-1] if name.endswith("/") else name)
-        if problem:
-            report.error("regodoc.archive.path", f"nome di voce non ammesso «{name}»: {problem}")
-            fatal = True
-            continue
-        if entry.flag_bits & 0x1:
-            report.error("regodoc.archive.encrypted", f"la voce «{name}» è cifrata")
-            fatal = True
-        if entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
-            report.error(
-                "regodoc.archive.method",
-                f"la voce «{name}» usa il metodo di compressione {entry.compress_type}: "
-                "sono ammessi solo «stored» e «deflate»",
-            )
-            fatal = True
-        if _has_zip64_extra(entry.extra):
-            report.error("regodoc.archive.zip64", f"la voce «{name}» usa estensioni ZIP64")
-            fatal = True
-        mode = entry.external_attr >> 16
-        is_dir = name.endswith("/")
-        if (
-            mode
-            and stat.S_IFMT(mode)
-            and not (stat.S_ISREG(mode) or (is_dir and stat.S_ISDIR(mode)))
-        ):
-            kind = "un collegamento simbolico" if stat.S_ISLNK(mode) else "un file speciale"
-            report.error("regodoc.archive.special_file", f"la voce «{name}» è {kind}")
-            fatal = True
-            continue
-        if is_dir:
-            if key not in FOLDERS or entry.file_size or entry.compress_size > 2:
-                report.error("regodoc.archive.layout", _layout_message(name))
-                fatal = True
-            continue
-        if not is_allowed_path(name):
-            report.error("regodoc.archive.layout", _layout_message(name))
-            fatal = True
-            continue
-        if _local_has_zip64(data, entry):
-            report.error("regodoc.archive.zip64", f"la voce «{name}» usa estensioni ZIP64")
-            fatal = True
-            continue
-        if not _local_header_matches(data, entry):
-            report.error(
-                "regodoc.archive.header_mismatch",
-                f"l'intestazione locale della voce «{name}» non coincide con la directory centrale",
-            )
-            fatal = True
-    if fatal:
-        raise _Stop
+        _fail(report, "regodoc.archive.mimetype", message)
+    flags, method, crc, compressed, size, name_len, extra_len, _ = _local_header(data, first)
+    content_start = _LOCAL_SIZE + name_len + extra_len
+    content = data[content_start : content_start + len(MIMETYPE)]
+    if (
+        flags & (_FLAG_DESCRIPTOR | _FLAG_ENCRYPTED)
+        or method != _STORED
+        or extra_len
+        or (compressed, size) != (len(MIMETYPE), len(MIMETYPE))
+        or content != MIMETYPE
+        or zlib.crc32(content) != crc
+        or crc != first.crc
+    ):
+        _fail(report, "regodoc.archive.mimetype", message, "mimetype")
 
 
 def _has_zip64_extra(extra: bytes) -> bool:
@@ -284,112 +328,223 @@ def _has_zip64_extra(extra: bytes) -> bool:
     return False
 
 
-def _local_has_zip64(data: bytes, entry: zipfile.ZipInfo) -> bool:
-    """Vero se l'intestazione locale della voce porta un campo extra ZIP64."""
-    start = entry.header_offset
-    if start + _LOCAL_SIZE > len(data) or data[start : start + 4] != _LOCAL:
-        return False
-    name_len, extra_len = struct.unpack_from("<HH", data, start + 26)
-    extra_start = start + _LOCAL_SIZE + name_len
-    return _has_zip64_extra(data[extra_start : extra_start + extra_len])
-
-
-def _local_header_matches(data: bytes, entry: zipfile.ZipInfo) -> bool:
-    """Confronta nome, metodo e cifratura dell'intestazione locale con la directory centrale."""
-    start = entry.header_offset
-    if start + _LOCAL_SIZE > len(data) or data[start : start + 4] != _LOCAL:
-        return False
-    flags, method = struct.unpack_from("<HH", data, start + 6)
-    name_len, extra_len = struct.unpack_from("<HH", data, start + 26)
-    name = data[start + _LOCAL_SIZE : start + _LOCAL_SIZE + name_len]
-    extra = data[start + _LOCAL_SIZE + name_len : start + _LOCAL_SIZE + name_len + extra_len]
-    return (
-        name == entry.filename.encode("ascii", "replace")
-        and method == entry.compress_type
-        and (flags & 0x1) == (entry.flag_bits & 0x1)
-        and not _has_zip64_extra(extra)
-    )
-
-
-def _extract(
-    archive: zipfile.ZipFile, entries: list[zipfile.ZipInfo], report: Collector
-) -> PackageFiles:
-    """Estrae le voci a blocchi, contando i byte letti e il rapporto di compressione."""
-    expanded_limit = ENVELOPE_LIMITS["expanded_bytes"]
-    ratio = ENVELOPE_LIMITS["compression_ratio"]
-    result = PackageFiles("archive")
-    total_read = 0
-    total_compressed = 0
+def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> None:
+    """Passo 5: controlli su ogni voce; raccoglie tutti i problemi, poi si ferma se ce n'è."""
+    before = len(report.errors)
+    seen: set[str] = set()
+    ends: list[tuple[int, int, str]] = []
     for entry in entries:
-        if entry.filename.endswith("/"):
+        name = entry.name
+        key = name.rstrip("/")
+        if key in seen:
+            report.error("regodoc.archive.duplicate", f"la voce «{key}» compare più di una volta")
             continue
-        total_compressed += entry.compress_size
-        chunks: list[bytes] = []
-        entry_read = 0
-        try:
-            with archive.open(entry) as stream:
-                while chunk := stream.read(_CHUNK):
-                    entry_read += len(chunk)
-                    total_read += len(chunk)
-                    if total_read > expanded_limit:
-                        report.error(
-                            "regodoc.archive.expanded_too_large",
-                            f"il contenuto espanso supera {expanded_limit // (1024 * 1024)} MiB "
-                            f"(misurato durante l'estrazione di «{entry.filename}»)",
-                        )
-                        raise _Stop
-                    if entry_read > _RATIO_GRACE and entry_read > ratio * max(
-                        entry.compress_size, 1
-                    ):
-                        report.error(
-                            "regodoc.archive.ratio",
-                            f"la voce «{entry.filename}» si espande più di {ratio} volte",
-                        )
-                        raise _Stop
-                    if total_read > _RATIO_GRACE and total_read > ratio * max(total_compressed, 1):
-                        report.error(
-                            "regodoc.archive.ratio",
-                            f"l'archivio si espande più di {ratio} volte",
-                        )
-                        raise _Stop
-                    chunks.append(chunk)
-        except _Stop:
-            raise
-        except NotImplementedError:
+        seen.add(key)
+        if is_system_file(key):
+            report.error("regodoc.archive.system_file", _system_message(name))
+            continue
+        problem = _path_problem(key)
+        if problem:
+            report.error("regodoc.archive.path", f"nome di voce non ammesso «{name}»: {problem}")
+            continue
+        if entry.comment:
+            report.error("regodoc.archive.comment", f"la voce «{name}» ha un commento")
+        if entry.flags & (_FLAG_ENCRYPTED | _FLAG_STRONG_ENCRYPTION):
+            report.error("regodoc.archive.encrypted", f"la voce «{name}» è cifrata")
+            continue
+        if entry.method not in (_STORED, _DEFLATED):
             report.error(
                 "regodoc.archive.method",
-                f"la voce «{entry.filename}» richiede una funzione ZIP non ammessa",
+                f"la voce «{name}» usa il metodo di compressione {entry.method}: "
+                "sono ammessi solo «stored» e «deflate»",
             )
-            raise _Stop from None
-        except (
-            zipfile.BadZipFile,
-            zlib.error,
-            EOFError,
-            OSError,
-            ValueError,
-            RuntimeError,
-            struct.error,
+            continue
+        if _has_zip64_extra(entry.extra) or entry.disk:
+            report.error("regodoc.archive.zip64", f"la voce «{name}» usa estensioni ZIP64")
+            continue
+        mode = entry.external >> 16
+        if (
+            mode
+            and stat.S_IFMT(mode)
+            and not (stat.S_ISREG(mode) or (entry.is_dir and stat.S_ISDIR(mode)))
         ):
-            report.error(
-                "regodoc.archive.corrupt",
-                f"la voce «{entry.filename}» è danneggiata: CRC o dimensione non coincidono",
-            )
-            raise _Stop from None
-        if entry_read != entry.file_size:
-            report.error(
-                "regodoc.archive.corrupt",
-                f"la voce «{entry.filename}» non ha la dimensione dichiarata",
-            )
-            raise _Stop
-        result.files[entry.filename] = b"".join(chunks)
-    if result.files.get("mimetype") != MIMETYPE:
-        report.error(
-            "regodoc.archive.mimetype",
-            "il contenuto di «mimetype» non è «application/vnd.regodoc.document» (§1.2)",
-            "mimetype",
-        )
+            kind = "un collegamento simbolico" if stat.S_ISLNK(mode) else "un file speciale"
+            report.error("regodoc.archive.special_file", f"la voce «{name}» è {kind}")
+            continue
+        if entry.is_dir:
+            if key not in FOLDERS or entry.size or entry.compressed > 2:
+                report.error("regodoc.archive.layout", _layout_message(name))
+                continue
+        elif not is_allowed_path(name):
+            report.error("regodoc.archive.layout", _layout_message(name))
+            continue
+        end = _local_end(data, entry, report)
+        if end is not None:
+            ends.append((entry.offset, end, name))
+    if len(report.errors) == before:
+        _check_contiguity(data, entries, ends, report)
+    if len(report.errors) > before:
         raise _Stop
+
+
+def _local_end(data: bytes, entry: _Entry, report: Collector) -> int | None:
+    """Verifica l'intestazione locale contro la directory centrale e restituisce l'offset
+    subito dopo i dati della voce, descrittore compreso; None se non coincide."""
+    name = entry.name
+    mismatch = (
+        "regodoc.archive.header_mismatch",
+        f"l'intestazione locale della voce «{name}» non coincide con la directory centrale: "
+        "nome, metodo, flag, CRC e dimensioni devono essere uguali",
+    )
+    try:
+        flags, method, crc, compressed, size, name_len, extra_len, name_extra = _local_header(
+            data, entry
+        )
+    except (ValueError, struct.error):
+        report.error(*mismatch)
+        return None
+    local_name, _, local_extra = name_extra.partition(b"\0")
+    if _has_zip64_extra(local_extra):
+        report.error("regodoc.archive.zip64", f"la voce «{name}» usa estensioni ZIP64")
+        return None
+    same = local_name == name.encode("latin-1") and method == entry.method and flags == entry.flags
+    descriptor = bool(entry.flags & _FLAG_DESCRIPTOR)
+    if not descriptor:
+        same = same and (crc, compressed, size) == (entry.crc, entry.compressed, entry.size)
+    if not same:
+        report.error(*mismatch)
+        return None
+    end = entry.offset + _LOCAL_SIZE + name_len + extra_len + entry.compressed
+    if end > len(data):
+        report.error("regodoc.archive.corrupt", f"la voce «{name}» è troncata")
+        return None
+    if descriptor:
+        expected = struct.pack("<III", entry.crc, entry.compressed, entry.size)
+        if data[end : end + 4] == _DESCRIPTOR and data[end + 4 : end + 16] == expected:
+            end += 16
+        elif data[end : end + 12] == expected:
+            end += 12
+        else:
+            report.error(*mismatch)
+            return None
+    return end
+
+
+def _check_contiguity(
+    data: bytes, entries: list[_Entry], ends: list[tuple[int, int, str]], report: Collector
+) -> None:
+    """Nessun byte fra la fine di una voce e l'intestazione locale della successiva, né fra
+    l'ultima voce e la directory centrale (§6.1, passo 5)."""
+    spans = sorted(ends)
+    cd_offset = (
+        len(data)
+        - _EOCD_SIZE
+        - sum(
+            _CENTRAL_SIZE + len(e.name.encode("latin-1")) + len(e.extra) + len(e.comment)
+            for e in entries
+        )
+    )
+    if not spans or spans[0][0] != 0:
+        report.error("regodoc.archive.gap", "l'archivio non comincia con la prima voce")
+        return
+    for (_, end, name), (next_start, _, _) in itertools.pairwise(spans):
+        if next_start != end:
+            report.error(
+                "regodoc.archive.gap",
+                f"ci sono byte fuori posto dopo la voce «{name}»: le voci devono essere contigue",
+            )
+            return
+    if spans and spans[-1][1] != cd_offset:
+        report.error(
+            "regodoc.archive.gap",
+            "ci sono byte fuori posto fra l'ultima voce e la directory centrale",
+        )
+
+
+def _extract(data: bytes, entries: list[_Entry], report: Collector) -> PackageFiles:
+    """Passo 6: estrae le voci contando i byte consumati e quelli prodotti."""
+    expanded_limit = ENVELOPE_LIMITS["expanded_bytes"]
+    result = PackageFiles("archive")
+    total_out = 0
+    total_in = 0
+    for entry in entries:
+        if entry.is_dir:
+            continue
+        start = entry.offset + _LOCAL_SIZE
+        name_len, extra_len = struct.unpack_from("<HH", data, entry.offset + 26)
+        start += name_len + extra_len
+        raw = data[start : start + entry.compressed]
+        content, consumed = _decompress(entry, raw, expanded_limit - total_out, report)
+        total_out += len(content)
+        total_in += consumed
+        if consumed != entry.compressed:
+            _fail(
+                report,
+                "regodoc.archive.size_mismatch",
+                f"la voce «{entry.name}» dichiara {entry.compressed} byte compressi, il "
+                f"decompressore ne consuma {consumed}",
+            )
+        if len(content) != entry.size or zlib.crc32(content) != entry.crc:
+            _fail(
+                report,
+                "regodoc.archive.corrupt",
+                f"la voce «{entry.name}» è danneggiata: CRC o dimensione non coincidono",
+            )
+        image_ratio = ENVELOPE_LIMITS["image_compression_ratio"]
+        if entry.name.startswith("images/") and len(content) > image_ratio * max(consumed, 1):
+            _fail(
+                report,
+                "regodoc.archive.ratio",
+                f"l'immagine «{entry.name}» si espande più di {image_ratio} volte",
+            )
+        result.files[entry.name] = content
+    ratio = ENVELOPE_LIMITS["compression_ratio"]
+    if total_out > ratio * max(total_in, 1):
+        _fail(
+            report,
+            "regodoc.archive.ratio",
+            f"l'archivio si espande più di {ratio} volte: {total_out} byte da {total_in}",
+        )
     return result
+
+
+def _decompress(entry: _Entry, raw: bytes, budget: int, report: Collector) -> tuple[bytes, int]:
+    """Decomprime una voce senza mai produrre più di un blocco oltre ``budget``.
+
+    Restituisce il contenuto e i byte compressi effettivamente consumati.
+    """
+    too_large = (
+        "regodoc.archive.expanded_too_large",
+        f"il contenuto espanso supera {ENVELOPE_LIMITS['expanded_bytes'] // _MIB} MiB "
+        f"(misurato durante l'estrazione di «{entry.name}»)",
+    )
+    if entry.method == _STORED:
+        if len(raw) > budget:
+            _fail(report, *too_large)
+        return raw, len(raw)
+    decompressor = zlib.decompressobj(-15)
+    chunks: list[bytes] = []
+    produced = 0
+    position = 0
+    try:
+        while not decompressor.eof:
+            pending = decompressor.unconsumed_tail
+            if not pending:
+                if position >= len(raw):
+                    break
+                pending = raw[position : position + _CHUNK]
+                position += len(pending)
+            chunk = decompressor.decompress(pending, _CHUNK)
+            produced += len(chunk)
+            if produced > budget:
+                _fail(report, *too_large)
+            chunks.append(chunk)
+    except zlib.error:
+        _fail(report, "regodoc.archive.corrupt", f"la voce «{entry.name}» è danneggiata")
+    if not decompressor.eof:
+        _fail(report, "regodoc.archive.corrupt", f"la voce «{entry.name}» è troncata")
+    consumed = position - len(decompressor.unused_data) - len(decompressor.unconsumed_tail)
+    return b"".join(chunks), consumed
 
 
 # --- Cartella --------------------------------------------------------------------------------
@@ -415,6 +570,12 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
                 )
                 fatal = True
                 dirs.remove(name)
+            elif is_system_file(relative):
+                report.warning(
+                    "regodoc.package.system_file",
+                    f"«{relative}/» è stata aggiunta dal sistema operativo: è ignorata",
+                )
+                dirs.remove(name)
             elif relative not in FOLDERS:
                 report.error("regodoc.archive.layout", _layout_message(relative + "/"))
                 fatal = True
@@ -422,13 +583,19 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
         for name in sorted(files):
             relative = f"{relative_dir}/{name}" if relative_dir != "." else name
             entry = here / name
+            if is_system_file(relative) and not entry.is_symlink():
+                report.warning(
+                    "regodoc.package.system_file",
+                    f"«{relative}» è stato aggiunto dal sistema operativo: è ignorato",
+                )
+                continue
             count += 1
             if count > ENVELOPE_LIMITS["files"]:
-                report.error(
+                _fail(
+                    report,
                     "regodoc.archive.too_many_files",
                     f"la cartella ha più di {ENVELOPE_LIMITS['files']} file",
                 )
-                raise _Stop
             info = entry.lstat()
             if not stat.S_ISREG(info.st_mode):
                 kind = "un collegamento simbolico" if stat.S_ISLNK(info.st_mode) else "speciale"
@@ -449,19 +616,19 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
                 data = handle.read(remaining + 1)
             total += len(data)
             if total > expanded_limit:
-                report.error(
+                _fail(
+                    report,
                     "regodoc.archive.expanded_too_large",
-                    f"il contenuto supera {expanded_limit // (1024 * 1024)} MiB",
+                    f"il contenuto supera {expanded_limit // _MIB} MiB",
                 )
-                raise _Stop
             result.files[relative] = data
     if fatal:
         raise _Stop
     if result.files.get("mimetype") != MIMETYPE:
-        report.error(
+        _fail(
+            report,
             "regodoc.archive.mimetype",
             "manca «mimetype» o il suo contenuto non è «application/vnd.regodoc.document»",
             "mimetype",
         )
-        raise _Stop
     return result
