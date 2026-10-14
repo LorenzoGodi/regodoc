@@ -383,11 +383,11 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
             empty = (entry.method == _STORED and entry.compressed == 0) or (
                 entry.method == _DEFLATED and entry.compressed == len(_EMPTY_DEFLATE)
             )
-            if key not in FOLDERS or entry.size or not empty:
+            if key not in FOLDERS or entry.size or entry.crc or not empty:
                 report.error(
                     "regodoc.archive.layout",
                     f"la voce di cartella «{name}» deve essere «parts/» o «images/», vuota: "
-                    "«stored» senza dati, oppure «deflate» con il solo flusso vuoto",
+                    "«stored» senza dati, oppure «deflate» con il solo flusso vuoto, e CRC 0",
                 )
                 continue
         elif not is_allowed_path(name):
@@ -554,12 +554,17 @@ def _decompress(entry: _Entry, raw: bytes, budget: int, report: Collector) -> tu
     try:
         while not decompressor.eof:
             pending = decompressor.unconsumed_tail
-            if not pending:
-                if position >= len(raw):
-                    break
+            drained = False
+            if not pending and position < len(raw):
                 pending = raw[position : position + _CHUNK]
                 position += len(pending)
+            elif not pending:
+                # Ingresso finito, ma zlib può avere ancora uscita in sospeso, trattenuta dal
+                # tetto di _CHUNK byte: si chiede finché ne arriva.
+                drained = True
             chunk = decompressor.decompress(pending, _CHUNK)
+            if drained and not chunk:
+                break
             produced += len(chunk)
             if produced > budget:
                 _fail(report, *too_large)

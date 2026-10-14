@@ -500,6 +500,50 @@ class CollectAndContinueTest(unittest.TestCase):
         del files["structure.toml"]
         self.assertEqual(errors(files), ["regodoc.package.missing"])
 
+    def test_format_stops_the_reading(self) -> None:
+        for manifest in ('{"format": "altro", "grammar": "rego/1"}', '{"grammar": "rego/1"}'):
+            with self.subTest(manifest):
+                files = with_part(section('<p><var name="nowhere"/></p>'))
+                files["manifest.json"] = manifest.encode()
+                self.assertEqual(errors(files), ["regodoc.manifest.format"])
+
+    def test_invalid_part_id_is_reported_once(self) -> None:
+        for old, new in (('id = "backup"', 'id = "Backup"'), ('id = "network"', 'id = "a--b"')):
+            with self.subTest(new):
+                files = example_files()
+                files["structure.toml"] = files["structure.toml"].replace(
+                    old.encode(), new.encode()
+                )
+                self.assertEqual(codes(validate_files(files)), ["regodoc.toml.id"])
+
+    def test_unreadable_part_gives_no_unknown_id(self) -> None:
+        summary = example_files()["parts/summary.xml"].decode()
+        summary = summary.replace(
+            '<reference to="network" through="backup"/>', '<reference to="wifi"/>'
+        )
+        files = with_file("parts/summary.xml", summary)
+        self.assertEqual(codes(validate_files(files)), [])
+        files["parts/network.xml"] = b"<part"
+        self.assertEqual(codes(validate_files(files)), ["regodoc.xml.syntax"])
+
+    def test_orphan_part_makes_the_reading_incomplete(self) -> None:
+        text = example_files()["variables.toml"].decode() + "spare = { number = 1 }\n"
+        files = with_file("variables.toml", text)
+        files["parts/extra.xml"] = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n<part>\n'
+            b'  <section id="extra">\n    <title>Extra</title>\n'
+            b'    <p><var name="spare"/> <reference to="altrove"/></p>\n  </section>\n</part>\n'
+        )
+        self.assertEqual(codes(validate_files(files)), ["regodoc.package.orphan_part"])
+
+    def test_no_parts_declared(self) -> None:
+        text = example_files()["structure.toml"].decode()
+        files = with_file("structure.toml", text[: text.index("[[part]]")])
+        self.assertEqual(
+            codes(validate_files(files)),
+            ["regodoc.toml.missing", "regodoc.package.orphan_part", "regodoc.package.orphan_part"],
+        )
+
 
 # --- XML -------------------------------------------------------------------------------------
 
@@ -652,7 +696,7 @@ class XmlVocabularyTest(unittest.TestCase):
         self.assertEqual(self.body("<p><address>a.b_c@x-y.example</address></p>"), [])
 
     def test_address_has_no_newline_or_tab(self) -> None:
-        for value in ("a@b.\nexample", "a@b.\texample", "\na@b.example"):
+        for value in ("a@b.\nexample", "a@b.\texample", "\na@b.example", "a@b&#13;.example"):
             with self.subTest(repr(value)):
                 self.assertEqual(
                     self.body(f"<p><address>{value}</address></p>"), ["regodoc.text.char"]

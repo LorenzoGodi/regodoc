@@ -44,6 +44,10 @@ class Structure:
     toc: bool = False
     header: dict[str, object] = field(default_factory=dict)
     entries: list[PartEntry] = field(default_factory=list)
+    # Voci dichiarate ma escluse da ``entries`` perché il loro id non è valido, o perché
+    # l'array che le contiene non è un array di tabelle. Con almeno una voce esclusa il
+    # motore non sa a quale file corrisponde: una parte «orfana» potrebbe essere sua.
+    invalid_entries: int = 0
 
 
 @dataclass(frozen=True)
@@ -300,6 +304,7 @@ def _read_entries(
         items = document.get(kind, [])
         if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
             report.error("regodoc.toml.type", f"«{kind}» deve essere un array di tabelle", file)
+            structure.invalid_entries += 1
             continue
         allowed = ("id",) if kind == "opening" else ("id", "title", "accent")
         for position, item in enumerate(items, start=1):
@@ -317,6 +322,7 @@ def _read_entries(
                     "senza «--», senza «-» finale, non un nome riservato (§1.5)",
                     file,
                 )
+                structure.invalid_entries += 1
                 continue
             title = ""
             accent = ""

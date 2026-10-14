@@ -97,19 +97,20 @@ def emitted_codes() -> set[str]:
     """Tutti i codici scritti come stringa nei sorgenti del motore."""
     found: set[str] = set()
     for path in (ROOT / "src" / "regodoc").glob("*.py"):
-        found |= set(re.findall(r'"(regodoc\.[a-z_]+(?:\.[a-z_]+)?)"', path.read_text("utf-8")))
+        text = path.read_text("utf-8")
+        found |= set(re.findall(r'"(regodoc\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"', text))
     return found
 
 
 class CodeIndexTest(unittest.TestCase):
     def test_every_emitted_code_is_in_the_index(self) -> None:
-        indexed = set(re.findall(r"^\| `(regodoc\.[a-z_.]+)` \|", subsection("8.1"), re.M))
+        indexed = set(re.findall(r"^\| `(regodoc\.[a-z0-9_.]+)` \|", subsection("8.1"), re.M))
         self.assertGreater(len(indexed), 100)
         self.assertEqual(sorted(emitted_codes() - indexed), [], "codici senza regola nel §8.1")
         self.assertEqual(sorted(indexed - emitted_codes()), [], "codici del §8.1 mai emessi")
 
     def test_every_index_row_cites_a_rule(self) -> None:
-        for code, rule in re.findall(r"^\| `(regodoc\.[a-z_.]+)` \| (.+) \|$", SPEC, re.M):
+        for code, rule in re.findall(r"^\| `(regodoc\.[a-z0-9_.]+)` \| (.+) \|$", SPEC, re.M):
             with self.subTest(code):
                 self.assertRegex(rule, r"§\d|contratto")
 
@@ -154,13 +155,19 @@ class TextRulesInSpecTest(unittest.TestCase):
 
     def test_date_from_instant(self) -> None:
         text = section("2.")
-        self.assertIn("il giorno\n  di calendario **in quel fuso**", text)
-        self.assertIn("la\n  data stampata è il giorno di calendario **in UTC**", text)
+        flat = " ".join(text.split())
+        self.assertIn("la data stampata è il giorno di calendario **in quel fuso**", flat)
+        self.assertIn("la data stampata è il giorno di calendario **in UTC**", flat)
+        self.assertIn("numero intero **non negativo**", flat)
 
     def test_collect_and_continue_from_step_7(self) -> None:
         text = section("6.")
         self.assertIn("**Dal passo 7 in poi**", text)
-        self.assertIn("i suoi richiami non danno\n`regodoc.xml.unknown_variable`", text)
+        flat = " ".join(text.split())
+        self.assertIn("i suoi richiami non danno `regodoc.xml.unknown_variable`", flat)
+        self.assertIn("Fermano la lettura solo questi casi, ed è l'elenco completo", flat)
+        self.assertIn('`format` manca o non vale `"regodoc"`', flat)
+        self.assertIn("**il pacchetto è letto per intero**", flat)
 
 
 class ExampleVariablesTest(unittest.TestCase):

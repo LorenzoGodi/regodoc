@@ -323,6 +323,8 @@ class Context:
     targets: dict[str, Target] = field(default_factory=dict)
     uses: list[Use] = field(default_factory=list)
     declared_variables: set[str] | None = field(default_factory=set)
+    # Falso se qualche parte non è stata letta: gli id raccolti sono incompleti.
+    complete: bool = True
     sources_blocks: int = 0
     sources: int = 0
     characters: int = 0
@@ -988,11 +990,13 @@ class PartChecker:
             self.check_attributes(node)
             self.check_text_only(node)
             value = self.text_of(node)
-            # La tabulazione l'ha già segnalata check_text_only; l'a capo, ammesso negli altri
-            # testi senza elementi, qui è un errore (§5.1).
+            # Un carattere vietato, tabulazione compresa, l'ha già segnalato check_text_only;
+            # l'a capo, ammesso negli altri testi senza elementi, qui è un errore (§5.1). Con
+            # uno dei due l'indirizzo non si controlla: sarebbe un secondo errore per lo
+            # stesso carattere.
             if "\n" in value:
                 self.at(node, "regodoc.text.char", "a capo dentro <address>")
-            elif "\t" not in value and (problem := check_address(value)):
+            elif next(find_bad_chars(value), None) is None and (problem := check_address(value)):
                 self.at(node, "regodoc.xml.address", f"<address>: {problem}")
         elif tag == "var":
             self.check_empty(node)

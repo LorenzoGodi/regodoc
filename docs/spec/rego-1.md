@@ -206,7 +206,7 @@ riproducibile. In ordine:
 2. altrimenti l'**istante** `document_created` dell'intestazione JSON, così com'è: l'istante
    di creazione del documento (decisione A4);
 3. altrimenti `SOURCE_DATE_EPOCH` dell'ambiente, se chi chiama l'ha impostata; è ignorata
-   quando uno dei due valori precedenti c'è;
+   quando uno dei due valori precedenti c'è, e allora non si controlla nemmeno la sua forma;
 4. altrimenti `build` si ferma con un errore d'uso (codice 2).
 
 Dall'istante alla data stampata:
@@ -214,9 +214,10 @@ Dall'istante alla data stampata:
 - `document_created` è scritto in RFC 3339 con il proprio fuso; la data stampata è il giorno
   di calendario **in quel fuso**, senza conversioni: `2026-10-06T00:30:00+02:00` stampa
   6 ottobre 2026, anche se in UTC è ancora il 5;
-- `SOURCE_DATE_EPOCH` è un numero intero di secondi dal 1° gennaio 1970 UTC, senza fuso; la
-  data stampata è il giorno di calendario **in UTC**. `1791237600` (2026-10-05T22:00:00Z)
-  stampa 5 ottobre 2026, anche dove in quel momento è già il 6;
+- `SOURCE_DATE_EPOCH` è un numero intero **non negativo**, scritto con sole cifre, di
+  secondi dal 1° gennaio 1970 UTC, senza fuso; la data stampata è il giorno di calendario
+  **in UTC**. `1791237600` (2026-10-05T22:00:00Z) stampa 5 ottobre 2026, anche dove in quel
+  momento è già il 6. Un valore negativo è malformato;
 - un valore che non rispetta queste forme è un errore d'uso (codice 2), non un ripiego al
   passo successivo.
 
@@ -618,14 +619,35 @@ errore o se raccoglie tutti gli errori del passo.
 - **Passi da 1 a 6** (archivio): un passo che trova errori ferma la lettura; i passi
   successivi non partono.
 - **Dal passo 7 in poi**: il motore raccoglie gli errori e prosegue con i passi successivi,
-  così un solo rapporto elenca tutti i problemi del pacchetto. Fanno eccezione tre casi, che
-  fermano la lettura: `manifest.json` mancante o illeggibile; la grammatica del manifesto non
-  leggibile da questo motore; `structure.toml` mancante o illeggibile.
+  così un solo rapporto elenca tutti i problemi del pacchetto. Fermano la lettura solo questi
+  casi, ed è l'elenco completo:
+  - `manifest.json` (passo 7): manca; supera 64 KiB; non è UTF-8; non è JSON valido, anche
+    per una chiave ripetuta, un `NaN` o un `Infinity`; non è un oggetto; `format` manca o non
+    vale `"regodoc"`; `grammar` manca, non ha la forma del §1.3, oppure nomina una grammatica
+    che questo motore non legge (sconosciuta o più nuova). Una chiave non prevista o un
+    valore facoltativo sbagliato non fermano la lettura;
+  - `structure.toml` (passo 8): manca; supera 64 KiB; comincia con un BOM; non è UTF-8;
+    contiene un carattere fuori elenco (§5.2); `tomllib` non lo legge, per sintassi o
+    annidamento. Chiavi, tipi e valori sbagliati non fermano la lettura.
 
-Proseguire non deve produrre errori falsi. Una variabile dichiarata ma con un valore
-sbagliato è segnalata una volta sola, in `variables.toml`: i suoi richiami non danno
-`regodoc.xml.unknown_variable`. Se `variables.toml` non si legge affatto, nessun richiamo dà
-`regodoc.xml.unknown_variable`, perché il motore non sa quali variabili esistano.
+  Lo stesso vale per `variables.toml`, che però non ferma mai la lettura: se una delle
+  verifiche preliminari o `tomllib` lo rifiutano, il motore prosegue senza variabili.
+
+**Proseguire non deve produrre errori falsi.** Quando una parte dei dati manca, il motore
+tace sui problemi che quella mancanza potrebbe causare:
+
+- una variabile dichiarata ma con un valore sbagliato è segnalata una volta sola, in
+  `variables.toml`: i suoi richiami non danno `regodoc.xml.unknown_variable`. Se
+  `variables.toml` non si legge affatto, nessun richiamo dà `regodoc.xml.unknown_variable`,
+  perché il motore non sa quali variabili esistano;
+- una voce di `structure.toml` con l'id non valido è segnalata una volta sola, con
+  `regodoc.toml.id`: nessun file di parte dà `regodoc.package.orphan_part`, perché potrebbe
+  essere il suo;
+- **il pacchetto è letto per intero** se ogni voce di `structure.toml` è valida, ogni parte
+  dichiarata esiste e si legge, e nessun file di parte è orfano. Se non è letto per intero,
+  gli id raccolti e gli usi sono incompleti: un rimando o una citazione verso un id che non
+  si trova non dà `regodoc.xml.unknown_id` né `regodoc.xml.reference_through`, e non si
+  danno gli avvisi `regodoc.toml.unused_variable` e `regodoc.image.unused`.
 
 ### 6.1 Archivio
 
@@ -638,7 +660,7 @@ consumati dal decompressore e i byte prodotti.
 | 2. Struttura | il file comincia con un'intestazione locale; la fine della directory centrale è in coda, senza dati dopo; nessun commento d'archivio; niente ZIP64, niente dischi multipli; la directory centrale sta dove la fine dichiara | si ferma | `regodoc.archive.invalid`, `.trailing_data`, `.comment`, `.zip64`, `.multi_disk` |
 | 3. Numero di voci | prima di leggere la directory centrale: le voci dichiarate dalla fine della directory non superano 202, cioè 200 file più le due voci di cartella ammesse; dopo averla letta: al massimo 200 file, senza contare le voci di cartella | si ferma | `regodoc.archive.too_many_files` |
 | 4. Prima voce | si chiama `mimetype`, è all'offset 0, è «stored», non ha campo extra né descrittore di dati; il contenuto, letto subito, è quello del §1.2 e il suo CRC coincide | si ferma | `regodoc.archive.mimetype` |
-| 5. Voci | per ogni voce: nome non ripetuto, anche fra file e cartella (**voci ripetute**); non è un file di sistema; percorso relativo, senza `..`, `\`, separatori doppi o componenti vuoti, con caratteri in `[a-z0-9._/-]` salvo la voce `README.md`; nessun commento di voce; **né cifrata né compressa con un metodo diverso da «stored» (0) e «deflate» (8)**; niente estensioni ZIP64; né collegamento simbolico né file speciale, dagli attributi esterni; prevista dalla disposizione del §1.1; una voce di cartella (`parts/` o `images/`, con una sola barra finale) è vuota: «stored» con 0 byte, oppure «deflate» con il solo flusso vuoto `03 00`; intestazione locale uguale alla directory centrale in nome, metodo, flag, CRC e dimensioni (o nel descrittore di dati, se c'è); voci contigue: nessun byte fra la fine di una voce, o del suo descrittore, e l'intestazione locale della successiva, né fra l'ultima voce e la directory centrale | un errore per voce: al primo problema di una voce passa alla successiva; raccoglie gli errori di tutte le voci, poi si ferma. Le voci contigue (`.gap`) si controllano solo se nessuna voce ha altri errori | `regodoc.archive.duplicate`, `.system_file`, `.path`, `.comment`, `.encrypted`, `.method`, `.zip64`, `.special_file`, `.multi_disk`, `.layout`, `.header_mismatch`, `.gap`, `.corrupt` |
+| 5. Voci | per ogni voce: nome non ripetuto, anche fra file e cartella (**voci ripetute**); non è un file di sistema; percorso relativo, senza `..`, `\`, separatori doppi o componenti vuoti, con caratteri in `[a-z0-9._/-]` salvo la voce `README.md`; nessun commento di voce; **né cifrata né compressa con un metodo diverso da «stored» (0) e «deflate» (8)**; niente estensioni ZIP64; né collegamento simbolico né file speciale, dagli attributi esterni; prevista dalla disposizione del §1.1; una voce di cartella (`parts/` o `images/`, con una sola barra finale) è vuota: «stored» con 0 byte, oppure «deflate» con il solo flusso vuoto `03 00`, e in entrambi i casi CRC 0; intestazione locale uguale alla directory centrale in nome, metodo, flag, CRC e dimensioni (o nel descrittore di dati, se c'è); voci contigue: nessun byte fra la fine di una voce, o del suo descrittore, e l'intestazione locale della successiva, né fra l'ultima voce e la directory centrale | un errore per voce: al primo problema di una voce passa alla successiva; raccoglie gli errori di tutte le voci, poi si ferma. Le voci contigue (`.gap`) si controllano solo se nessuna voce ha altri errori | `regodoc.archive.duplicate`, `.system_file`, `.path`, `.comment`, `.encrypted`, `.method`, `.zip64`, `.special_file`, `.multi_disk`, `.layout`, `.header_mismatch`, `.gap`, `.corrupt` |
 | 6. Estrazione contata | **il totale dei byte prodotti non supera 40 MiB, misurato durante la decompressione**, mai sulle dimensioni dichiarate: il motore non produce mai più di un blocco di 64 KiB oltre il limite; i byte compressi consumati dal decompressore coincidono con la dimensione compressa dichiarata; i byte prodotti coincidono con la dimensione e con il CRC dichiarati; ogni voce in `images/` si espande al massimo 20 volte; alla fine, l'archivio intero si espande al massimo 100 volte, come byte prodotti diviso byte consumati | si ferma | `regodoc.archive.expanded_too_large`, `.size_mismatch`, `.corrupt`, `.ratio` |
 
 Il vero argine contro le bombe di compressione è il tetto dei 40 MiB, contato durante la
@@ -650,8 +672,8 @@ sulle immagini, che sono già compresse e non hanno motivo di espandersi di più
 
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
-| 7. Manifesto e grammatica | `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma se manca, non si legge, o la grammatica non è leggibile; altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
-| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | `structure.toml` mancante o illeggibile ferma tutto; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
+| 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
+| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
 
 ### 6.3 XML
 
@@ -672,8 +694,8 @@ Nessuna espressione regolare con backtracking esponenziale gira su testo arbitra
 | 10. Immagini | struttura di ogni immagine, senza decodificarne i pixel (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` |
 | 11. Rimandi e totali | id unici; rimandi, citazioni, variabili e figure verso oggetti che esistono e del tipo giusto; totali del §7.2 | raccoglie tutti | `regodoc.xml.duplicate_id`, `.unknown_id`, `.reference_target`, `.reference_through`, `.cite_target`, `.unknown_variable`, `.var_form`, `.missing_image`, `regodoc.package.missing_part`, `.orphan_part`, `regodoc.limit.characters`, `.references`, `.sources`; avvisi `regodoc.toml.unused_variable`, `regodoc.image.unused` |
 
-Gli avvisi sulle variabili mai usate si danno solo se tutte le parti sono state lette: con una
-parte illeggibile, «mai usata» potrebbe essere falso.
+Gli avvisi sulle variabili e sulle immagini mai usate si danno solo se il pacchetto è letto per
+intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
 
 - **PNG**: firma, primo blocco `IHDR` con larghezza e altezza da 1 a 6.000 pixel e una
   combinazione valida di tipo di colore e profondità, CRC di ogni blocco, almeno un `IDAT`,
@@ -691,7 +713,8 @@ parte illeggibile, «mai usata» potrebbe essere falso.
 
 - Ogni fase ha un tempo massimo e, dove il sistema lo permette, un limite di memoria; oggi il
   limite di memoria è applicato solo su Linux. I valori, e i sistemi dove la memoria è
-  limitata, li dichiara il motore (`regodoc info`, `resources`). Superarli è un errore d'ambiente (§8).
+  limitata, li dichiara il motore (`regodoc info`, `resources`). Superarli è un errore
+  d'ambiente (§8).
 - Il motore non scrive mai fuori dalla propria cartella di lavoro temporanea e dal file
   d'uscita indicato da chi lo chiama.
 - Il contenuto del pacchetto non diventa mai un comando: pdflatex gira con `shell escape`
@@ -1218,7 +1241,7 @@ testo monospaziato in linea (decisione 26).
 | A9 documento di prova sintetico e inventato | §11 |
 | A10 `README.md` generato dal motore e ignorato in lettura | §1.1, §1.4, §6.1 passo 5 |
 | 12/10/2026, dopo la verifica: unità binarie e codici d'uscita | §0, §7, §8 |
-| 12/10/2026, dopo la rilettura avversaria: rapporto 100 sull'archivio e 20 sulle immagini, sui byte consumati; voci contigue; dimensione dichiarata uguale ai byte consumati; `mimetype` all'offset 38, senza campo extra né descrittore di dati; limite di memoria applicato solo su Linux | §1.2, §6.1, §6.5, §7.1 |
+| 12/10/2026, dopo la rilettura avversaria: rapporto 100 sull'archivio e 20 sulle immagini, sui byte consumati; voci contigue; dimensione dichiarata uguale ai byte consumati; il valore di `mimetype` all'offset 38, senza campo extra né descrittore di dati; limite di memoria applicato solo su Linux | §1.2, §6.1, §6.5, §7.1 |
 | 12/10/2026, dopo la rilettura avversaria: scelte di questa specifica ratificate (lingue, intestazione, cartella, nomi, regole di struttura, caratteri, limiti, forma canonica) | in tutta la specifica |
 
 Le decisioni 12, 16, 18, 19 e 21 riguardano Rego e non il formato.

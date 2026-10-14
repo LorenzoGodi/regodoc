@@ -31,6 +31,8 @@ class Raw:
     comment: bytes = b""
     descriptor: bool = False
     gap: bytes = b""  # byte messi dopo la voce, prima della successiva
+    crc: int | None = None  # None = il CRC vero del contenuto
+    disk: int = 0  # disco d'inizio dichiarato nella directory centrale
 
 
 def deflate(content: bytes) -> bytes:
@@ -46,7 +48,7 @@ def handmade_zip(entries: list[Raw], archive_comment: bytes = b"") -> bytes:
         data = entry.data
         if data is None:
             data = entry.content if entry.method == 0 else deflate(entry.content)
-        crc = zlib.crc32(entry.content)
+        crc = zlib.crc32(entry.content) if entry.crc is None else entry.crc
         flags = entry.flags | (0x08 if entry.descriptor else 0)
         local_sizes = (0, 0, 0) if entry.descriptor else (crc, len(data), len(entry.content))
         name = entry.name.encode("ascii")
@@ -82,7 +84,7 @@ def handmade_zip(entries: list[Raw], archive_comment: bytes = b"") -> bytes:
             len(name),
             len(entry.extra),
             len(entry.comment),
-            0,
+            entry.disk,
             0,
             0o100644 << 16,
             offset,
@@ -210,6 +212,11 @@ class EntryLayoutTest(unittest.TestCase):
         found = errors_of(handmade_zip(entries))
         self.assertEqual(found, ["regodoc.archive.size_mismatch"])
 
+    def test_entry_on_another_disk(self) -> None:
+        entries = example_raw()
+        entries[2].disk = 1
+        self.assertEqual(errors_of(handmade_zip(entries)), ["regodoc.archive.multi_disk"])
+
     def test_comments(self) -> None:
         self.assertEqual(
             errors_of(handmade_zip(example_raw(), archive_comment=b"ciao")),
@@ -276,6 +283,10 @@ class FolderEntryTest(unittest.TestCase):
             with self.subTest(name):
                 found = errors_of(handmade_zip(with_folder(Raw(name, b"", method=0))))
                 self.assertEqual(found, ["regodoc.archive.path"])
+
+    def test_folder_crc_must_be_zero(self) -> None:
+        entry = Raw("parts/", b"", method=0, crc=0xDEADBEEF)
+        self.assertEqual(errors_of(handmade_zip(with_folder(entry))), ["regodoc.archive.layout"])
 
     def test_folder_with_data_is_refused(self) -> None:
         cases = {
@@ -352,6 +363,17 @@ class ReadmeTest(unittest.TestCase):
             [(d.code, d.file) for d in over.report.errors],
             [("regodoc.limit.file_size", "README.md")],
         )
+
+    def test_output_held_back_by_zlib_is_read(self) -> None:
+        # A ingresso finito zlib può trattenere uscita oltre il tetto di un blocco: una voce
+        # integra di 65.537 «x» non è «troncata».
+        for size in (65537, 65599, 3 * 65536 + 1):
+            with self.subTest(size):
+                found = validate_bytes(build_zip({**example_files(), "README.md": b"x" * size}))
+                self.assertEqual(
+                    [(d.code, d.file) for d in found.report.items],
+                    [("regodoc.limit.file_size", "README.md")],
+                )
 
     def test_other_uppercase_names_are_refused(self) -> None:
         files = {**example_files(), "README.txt": b"x"}

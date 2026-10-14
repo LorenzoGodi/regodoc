@@ -287,15 +287,21 @@ def _check_parts(
     context.declared_variables = declared
     for entry in structure.entries:
         context.define(entry.id, Target(entry.kind, "structure.toml", 0, 0, entry.id))
+    # Falso se una parte manca, non si legge o non si legge affatto perché orfana, o se una
+    # voce di structure.toml è esclusa: allora gli id e gli usi raccolti sono incompleti, e
+    # «non esiste» o «mai usata» potrebbero essere falsi (§6).
+    complete = structure.invalid_entries == 0
     declared = {f"parts/{entry.id}.xml" for entry in structure.entries}
     for path in package.files:
         if PART_PATH.fullmatch(path) and path not in declared:
+            complete = False
+            if structure.invalid_entries:
+                continue  # il file potrebbe essere di una voce con l'id sbagliato
             report.error(
                 "regodoc.package.orphan_part",
                 "il file non corrisponde a nessun id di structure.toml",
                 path,
             )
-    complete = True  # falso se una parte manca o non si legge: gli usi sarebbero incompleti
     for entry in structure.entries:
         path = f"parts/{entry.id}.xml"
         data = package.get(path)
@@ -321,6 +327,7 @@ def _check_parts(
         )
     for path in sorted(images):
         check_image(path, package.files[path], report)
+    context.complete = complete
     _check_uses(context, images, complete=complete)
     _check_totals(context)
 
@@ -370,6 +377,8 @@ def _check_uses(context: Context, images: set[str], *, complete: bool) -> None:
             used_images.add(use.name)
         elif use.kind == "cite":
             target = context.targets.get(use.name)
+            if target is None and not complete:
+                continue  # l'id potrebbe stare in una parte non letta
             if target is None:
                 report.error("regodoc.xml.unknown_id", f"l'id «{use.name}» non esiste", *where)
             elif target.kind != "source":
@@ -399,7 +408,8 @@ def _check_reference(context: Context, use: Use) -> None:
     where = (use.file, use.line, use.column)
     target = context.targets.get(use.name)
     if target is None:
-        report.error("regodoc.xml.unknown_id", f"l'id «{use.name}» non esiste", *where)
+        if context.complete:
+            report.error("regodoc.xml.unknown_id", f"l'id «{use.name}» non esiste", *where)
         return
     if target.kind == "source":
         report.error(
@@ -418,6 +428,8 @@ def _check_reference(context: Context, use: Use) -> None:
     if not use.extra:
         return
     end = context.targets.get(use.extra)
+    if end is None and not context.complete:
+        return  # l'id finale potrebbe stare in una parte non letta
     if target.kind != "part" or end is None or end.kind != "part":
         report.error(
             "regodoc.xml.reference_through",
