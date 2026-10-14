@@ -595,6 +595,49 @@ class CollectAndContinueTest(unittest.TestCase):
                 ):
                     self.assertNotIn(false, found)
 
+    def test_skipped_elements_give_no_false_unused(self) -> None:
+        deep = (
+            '<section id="l3"><title>T</title><section id="deep"><title>T</title>'
+            '<p><var name="spare"/></p></section></section>'
+        )
+        deep_list = (
+            "<list><item>a<list><item>b<list><item>c<list><item>"
+            '<var name="spare"/></item></list></item></list></item></list></item></list>'
+        )
+        cases = {
+            "sezione al quarto livello": (deep, "regodoc.xml.section_depth"),
+            "elenco al quarto livello": (deep_list, "regodoc.xml.list_depth"),
+            "<b> dentro <b>": (
+                '<p><b>x <b><var name="spare"/></b></b></p>',
+                "regodoc.xml.nested_inline",
+            ),
+            "<var> con un attributo non previsto": (
+                '<p><var name="spare" colore="x"/></p>',
+                "regodoc.xml.unknown_attribute",
+            ),
+        }
+        variables = example_files()["variables.toml"].decode() + "spare = { number = 1 }\n"
+        network = example_files()["parts/network.xml"].decode()
+        anchor = "      <p>La barricaia"
+        summary = (
+            example_files()["parts/summary.xml"]
+            .decode()
+            .replace('<reference to="network" through="backup"/>', '<reference to="deep"/>')
+        )
+        for label, (fragment, code) in cases.items():
+            with self.subTest(label):
+                files = with_file("variables.toml", variables)
+                if "deep" in fragment:
+                    # Le sezioni vengono dopo i blocchi: in fondo alla sezione wifi.
+                    wifi = network.index('<section id="wifi">')
+                    end = network.index("\n    </section>", wifi)
+                    part = network[:end] + f"\n      {fragment}" + network[end:]
+                    files["parts/summary.xml"] = summary.encode()
+                else:
+                    part = network.replace(anchor, f"      {fragment}\n{anchor}", 1)
+                files["parts/network.xml"] = part.encode()
+                self.assertEqual(codes(validate_files(files)), [code])
+
     def test_repeated_structure_id_is_excluded(self) -> None:
         for new in ('id = "network"', 'id = "summary"'):
             with self.subTest(new):

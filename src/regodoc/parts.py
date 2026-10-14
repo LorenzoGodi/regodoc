@@ -597,6 +597,7 @@ class PartChecker:
                 "regodoc.xml.section_depth",
                 f"più di {CONTENT_LIMITS['section_depth']} livelli di sezione",
             )
+            self.skipped()
             return
         self.check_attributes(node, optional=("id",))
         identifier = self.check_id_attribute(node)
@@ -634,6 +635,7 @@ class PartChecker:
                 "regodoc.xml.list_depth",
                 f"più di {CONTENT_LIMITS['list_depth']} livelli di elenco",
             )
+            self.skipped()
             return
         self.check_element_only(node, ("item",))
         items = node.elements()
@@ -977,6 +979,7 @@ class PartChecker:
             elif child.tag not in allowed:
                 self.unexpected(child, node)
             elif child.tag in ancestors and child.tag in ("b", "i", "tone", "link"):
+                self.skipped()
                 self.at(
                     child,
                     "regodoc.xml.nested_inline",
@@ -1022,8 +1025,11 @@ class PartChecker:
                 self.at(node, "regodoc.xml.address", f"<address>: {problem}")
         elif tag == "var":
             self.check_empty(node)
-            if self.check_attributes(node, required=("name",), optional=("form",)):
-                name = node.attrs["name"]
+            self.check_attributes(node, required=("name",), optional=("form",))
+            name = node.attrs.get("name")
+            if name is not None:
+                # L'uso si registra anche con un altro attributo sbagliato, come per <figure>:
+                # altrimenti l'avviso «mai usata» sarebbe falso.
                 self.check_choice(node, "form", VAR_FORMS)
                 if not VARIABLE_NAME.fullmatch(name):
                     self.at(node, "regodoc.xml.var_name", f"«{name}» non è un nome di variabile")

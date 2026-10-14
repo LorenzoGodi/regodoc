@@ -651,8 +651,11 @@ tace sui problemi che quella mancanza potrebbe causare:
   ripetuto, ogni parte dichiarata esiste, si legge ed è percorsa per intero, e nessun file di
   parte è orfano. Una parte non è percorsa per intero quando il motore non scende in uno dei
   suoi elementi: con la radice sbagliata (`regodoc.xml.root`) non scende affatto, e non
-  scende in un elemento fuori vocabolario o fuori posto, né nei figli di un elemento che
-  deve essere vuoto o contenere solo testo. Se non è letto per intero,
+  scende in un elemento fuori vocabolario o fuori posto, nei figli di un elemento che deve
+  essere vuoto o contenere solo testo, in una sezione oltre il terzo livello
+  (`regodoc.xml.section_depth`), in un elenco oltre il terzo livello
+  (`regodoc.xml.list_depth`), né in un `<b>`, `<i>`, `<tone>` o `<link>` dentro uno uguale
+  (`regodoc.xml.nested_inline`). Se non è letto per intero,
   gli id raccolti e gli usi sono incompleti: un rimando o una citazione verso un id che non
   si trova non dà `regodoc.xml.unknown_id` né `regodoc.xml.reference_through`, e non si
   danno gli avvisi `regodoc.toml.unused_variable` e `regodoc.image.unused`.
@@ -681,7 +684,7 @@ sulle immagini, che sono già compresse e non hanno motivo di espandersi di più
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
 | 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
-| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
+| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
 
 ### 6.3 XML
 
@@ -891,7 +894,7 @@ non bloccano il pacchetto.
 | `regodoc.xml.caption` | §4.5 |
 | `regodoc.xml.missing_image` | §4.5, §6.4 passo 11 |
 | `regodoc.xml.id` | §1.5, §4.6 |
-| `regodoc.xml.duplicate_id` | §4.6, §6.4 passo 11 |
+| `regodoc.xml.duplicate_id` | §4.6, §6.2 passo 8 (voce ripetuta di `structure.toml`), §6.4 passo 11 |
 | `regodoc.xml.unknown_id` | §4.6, §6.4 passo 11 |
 | `regodoc.xml.reference_target` | §4.6, §6.4 passo 11 |
 | `regodoc.xml.reference_through` | §4.6, §6.4 passo 11 |
