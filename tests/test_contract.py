@@ -206,7 +206,7 @@ class DeclarationContractTest(unittest.TestCase):
 
 
 MINIMAL = set(table_keys(section("4.1")))
-PACKAGE = set(table_names(section("4.2")))
+PACKAGE = set(table_names(section("4.2"))) - {"grammar_in"}  # grammar_in: solo upgrade
 
 
 class ReportContractTest(unittest.TestCase):
@@ -291,6 +291,8 @@ class ReportContractTest(unittest.TestCase):
             ({**good, "extra": "x"}, None),
             ({"engine": ["a"], "version": "1"}, None),
             ({"engine": "x" * 60000, "version": "1"}, None),
+            ({"engine": "rego\ndoc", "version": "1"}, None),
+            ({"engine": "rego\u202edoc", "version": "1"}, None),
             ("regodoc 0.1.0", None),
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -335,6 +337,32 @@ class MessageContractTest(unittest.TestCase):
         self.assertEqual(collector.strict_warnings, [])
         self.assertEqual(len(collector.warnings), 1)
         self.assertFalse(collector.has_errors())
+
+
+class VersionOneTest(unittest.TestCase):
+    def test_contract_is_version_one(self) -> None:
+        self.assertEqual(declaration.CONTRACT_VERSION, 1)
+        self.assertEqual(declaration.CONTRACTS, (1,))
+        self.assertIn("Stato: **versione 1**", CONTRACT)
+        self.assertNotIn("in approvazione", CONTRACT)
+        self.assertIn("`--contract 0` esce con il codice 2", flat(section("9")))
+
+    def test_draft_contract_is_not_served(self) -> None:
+        code, _, err = run_cli("--contract", "0", "info")
+        self.assertEqual(code, ExitCode.USAGE)
+        self.assertIn("non supporta il contratto 0", err)
+
+    def test_header_example_is_valid_for_version_one(self) -> None:
+        example = re.search(r"```json\n(\{.*?\})\n```", section("3.2"), re.S)
+        assert example is not None
+        self.assertEqual(json.loads(example.group(1))["contract"], declaration.CONTRACT_VERSION)
+
+    def test_grammar_in_is_in_the_table(self) -> None:
+        self.assertIn("| `grammar_in` |", section("4.2"))
+        self.assertNotIn("grammar_out", CONTRACT)
+
+    def test_entry_errors_have_no_file(self) -> None:
+        self.assertIn("anche per gli errori di una sola voce", flat(section("4.4")))
 
 
 class ContractOptionTest(unittest.TestCase):

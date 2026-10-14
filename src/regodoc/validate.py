@@ -17,6 +17,7 @@ from regodoc.diagnostics import Collector, TooManyProblems, clip
 from regodoc.images import check_image
 from regodoc.parts import Context, PartChecker, Target, Use, parse_part
 from regodoc.source import IMAGE_PATH, PART_PATH, PackageFiles, is_allowed_path, read_package
+from regodoc.text import find_bad_chars
 from regodoc.tomlfiles import (
     NUMERIC_TYPES,
     Structure,
@@ -84,12 +85,16 @@ class Validation:
 
 
 def well_formed_generator(value: object) -> dict[str, str] | None:
-    """``generator`` del manifesto se ha esattamente ``engine`` e ``version``, testi da 1 a
-    64 caratteri; altrimenti None, così il rapporto non ripete valori arbitrari."""
+    """``generator`` del manifesto se ha esattamente ``engine`` e ``version``, testi puri da
+    1 a 64 caratteri (specifica, §1.3); altrimenti None, così il rapporto non ripete valori
+    arbitrari."""
     if not isinstance(value, dict) or set(value) != {"engine", "version"}:
         return None
-    if any(not isinstance(v, str) or not 0 < len(v) <= 64 for v in value.values()):
-        return None
+    for text in value.values():
+        if not isinstance(text, str) or not 0 < len(text) <= 64 or not text.strip():
+            return None
+        if next(find_bad_chars(text), None) is not None:
+            return None  # a capo, controlli, caratteri bidirezionali: non è testo puro
     return {"engine": value["engine"], "version": value["version"]}
 
 
@@ -284,7 +289,9 @@ def _check_manifest_optional(manifest: dict[str, object], report: Collector) -> 
                 file,
             )
         else:
-            report.error("regodoc.manifest.value", "«generator»: testi da 1 a 64 caratteri", file)
+            report.error(
+                "regodoc.manifest.value", "«generator»: testi puri da 1 a 64 caratteri", file
+            )
 
 
 def _check_parts(

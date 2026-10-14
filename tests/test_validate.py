@@ -291,6 +291,9 @@ class ManifestTest(unittest.TestCase):
             '{"engine": "regodoc"}',
             '{"version": "1"}',
             '{"engine": "a", "version": ""}',
+            '{"engine": "rego\\ndoc", "version": "1"}',
+            '{"engine": "rego\\u202edoc", "version": "1"}',
+            '{"engine": "   ", "version": "1"}',
         ):
             with self.subTest(generator):
                 text = f'{{"format": "regodoc", "grammar": "rego/1", "generator": {generator}}}'
@@ -677,6 +680,21 @@ class XmlParsingTest(unittest.TestCase):
         for text, code in cases.items():
             with self.subTest(text):
                 self.assertEqual(self.part(text), [code])
+
+    def test_expat_messages_by_code(self) -> None:
+        cases = {
+            "<part>&nbsp;</part>": "entità non definita",
+            "<part></par>": "il tag di chiusura non corrisponde",
+            '<part a="1" a="2"/>': "attributo ripetuto",
+            "<part": "il file finisce in mezzo a un tag",
+            "<part/><part/>": "contenuto dopo la radice",
+            "<part>&#0;</part>": "riferimento a un carattere non valido",
+        }
+        for text, message in cases.items():
+            with self.subTest(text):
+                found = validate_files(with_file("parts/network.xml", text)).report.errors
+                self.assertEqual([d.code for d in found], ["regodoc.xml.syntax"])
+                self.assertIn(message, found[0].message)
 
     def test_declaration(self) -> None:
         self.assertEqual(self.part("<?xml version='1.0'?><part/>"), ["regodoc.xml.declaration"])

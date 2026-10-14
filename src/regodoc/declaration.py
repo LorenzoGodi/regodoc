@@ -21,11 +21,11 @@ ENGINE_NAME: Final = "regodoc"
 PACKAGE_MIMETYPE: Final = "application/vnd.regodoc.document"
 PACKAGE_EXTENSION: Final = ".regodoc"
 
-# Versione del contratto fra Rego e il motore (docs/contract.md). Resta 0 finché il contratto
-# non è approvato: con la versione 0 può ancora cambiare senza preavviso.
-CONTRACT_VERSION: Final = 0
-# Versioni del contratto che il motore sa servire con --contract.
-CONTRACTS: Final = (0,)
+# Versione del contratto fra Rego e il motore (docs/contract.md), approvata il 14/10/2026.
+CONTRACT_VERSION: Final = 1
+# Versioni del contratto che il motore sa servire con --contract. La bozza dichiarata come 0
+# non è servita (contratto, §9).
+CONTRACTS: Final = (1,)
 
 # Grammatica scritta dal motore e grammatiche che sa leggere, dalla più vecchia.
 GRAMMAR_CURRENT: Final = "rego/1"

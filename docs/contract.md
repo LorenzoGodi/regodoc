@@ -1,8 +1,8 @@
 # Contratto del motore regodoc
 
-Stato: **seconda stesura, in approvazione**, ottobre 2026. Diventa la versione 1 del contratto
-quando viene approvata. Fino ad allora `regodoc info` dichiara `"contract": 0`, cioè
-«contratto in bozza, può cambiare senza preavviso».
+Stato: **versione 1**, approvata il 14/10/2026. `regodoc info` dichiara `"contract": 1`. La
+bozza che la precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama
+passa `--contract 1`.
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -120,8 +120,8 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto finché `e
     `regodoc.limit.memory`. Se invece il sistema uccide il processo (per esempio il cgroup
     con `SIGKILL`), chi chiama tratta il caso come codice 3 con `regodoc.limit.memory`.
 - Con `enforced: true` il motore applica i limiti da sé ed esce con il codice 3 e
-  `regodoc.limit.time` o `regodoc.limit.memory`. Da quella versione accetta `--max-seconds S`, che abbassa il tempo
-  dichiarato; un valore più alto è ignorato.
+  `regodoc.limit.time` o `regodoc.limit.memory`. Da quella versione accetta
+  `--max-seconds S`, che abbassa il tempo dichiarato; un valore più alto è ignorato.
 - Un tempo superato o la memoria esaurita non si ritentano alla cieca: con lo stesso pacchetto
   si ripetono.
 
@@ -143,8 +143,7 @@ regolare o una cartella: una FIFO o un dispositivo danno il codice 2.
 
 Un file JSON con i dati che il pacchetto non contiene e che servono alla cornice del tema. Si
 legge con le regole del manifesto (specifica, §1.3): al massimo 64 KiB, UTF-8, nessuna chiave
-ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e nessun'altra. L'esempio è scritto per
-la versione 1 del contratto; finché il contratto è in bozza `contract` vale 0:
+ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e nessun'altra:
 
 ```json
 {
@@ -233,6 +232,7 @@ pacchetto che la contiene.
 |---|---|
 | `input` | `sha256` e `bytes` del file ricevuto; `null` per una cartella e per un file oltre `limits.envelope.compressed_bytes`, che il motore non legge per intero |
 | `grammar` | la grammatica dichiarata nel manifesto |
+| `grammar_in` | solo per `upgrade`: la grammatica del pacchetto ricevuto; `grammar` è quella d'uscita |
 | `generator` | `engine` e `version` del motore che ha scritto il pacchetto, dal manifesto; `null` se `generator` non ha esattamente queste due chiavi, testi da 1 a 64 caratteri |
 | `document`, `base_version` | i valori del manifesto, verificati solo nella forma (specifica, §1.3): il motore non sa che cosa identificano |
 | `files` | i file di contenuto, cioè tutti tranne `mimetype`, `manifest.json` e `README.md`, nell'ordine canonico (specifica, §9), ciascuno con `path`, `sha256` e `bytes` |
@@ -283,7 +283,9 @@ Ogni problema ha `severity`, `code`, `message`, `file`, `line` e `column` (speci
 `line` e `column` valgono 0 quando non si applicano. `file` è il percorso nel pacchetto;
 vale `""` per un problema che non riguarda un file del pacchetto, per esempio un errore
 dell'archivio intero, che non nomina mai il file ricevuto: chi chiama lo passa spesso con un
-nome temporaneo. `severity` vale:
+nome temporaneo. Vale `""` anche per gli errori di una sola voce dell'archivio (per esempio
+`regodoc.archive.corrupt`, `.duplicate` o `.path`), che nominano la voce nel messaggio.
+`severity` vale:
 
 - `error`: il pacchetto, l'intestazione o il tema è rifiutato;
 - `warning`: un problema di chi ha scritto il pacchetto che non blocca; conta come errore con
@@ -510,9 +512,10 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
 - `upgrade` è una funzione pura e idempotente: lo stesso ingresso dà sempre la stessa uscita,
   e aggiornare un pacchetto già nella grammatica corrente dà gli stessi byte di `canon` senza
   opzioni. `upgrade` conserva `document` e `base_version` del manifesto d'ingresso così come
-  sono; chi vuole valori diversi li riscrive con `canon`. Il rapporto dice `grammar_in` e
-  `grammar_out`; i campi del §4.2 descrivono l'uscita. Chi conserva le versioni registra l'uscita come **versione
-  nuova**, tracciata, mai come riscrittura della precedente.
+  sono; chi vuole valori diversi li riscrive con `canon`. Il rapporto dice la grammatica
+  ricevuta in `grammar_in` e quella d'uscita in `grammar` (§4.2). Chi conserva le versioni
+  registra l'uscita come **versione nuova**, tracciata, mai come riscrittura della
+  precedente.
 - `canon` non aggiorna mai la grammatica: su una grammatica precedente scrive la forma
   canonica di quella grammatica, se il motore la sa ancora scrivere, altrimenti rifiuta con il
   codice 1 e l'errore `regodoc.manifest.grammar_old`, che rimanda a `upgrade`.
@@ -561,7 +564,9 @@ Cambiano il contratto, e richiedono una versione nuova di chi chiama:
   `info.theme.contracts`).
 
 Il motore supporta la versione corrente del contratto e, per almeno una versione minore del
-motore dopo un cambiamento, anche la precedente, scelta con `--contract`.
+motore dopo un cambiamento, anche la precedente, scelta con `--contract`. La regola vale
+dalla versione 1: la bozza dichiarata come versione 0 non era una versione supportata, e
+`--contract 0` esce con il codice 2.
 
 ## 10. Riproducibilità
 

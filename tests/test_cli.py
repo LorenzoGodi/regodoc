@@ -333,10 +333,12 @@ class MemoryTest(unittest.TestCase):
             archive = Path(folder) / "p.regodoc"
             archive.write_bytes(build_zip(example_files()))
             for target, options, package in cases:
-                with self.subTest(target), mock.patch(target, **options):
-                    code, out, _ = run_cli("validate", package or str(archive), "--json")
-                self.assertEqual(code, ExitCode.ENVIRONMENT)
-                self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.limit.memory")
+                with self.subTest(target):
+                    with mock.patch(target, **options):
+                        code, out, _ = run_cli("validate", package or str(archive), "--json")
+                    self.assertEqual(code, ExitCode.ENVIRONMENT)
+                    report = json.loads(out)
+                    self.assertEqual(report["errors"][0]["code"], "regodoc.limit.memory")
 
     def test_other_zlib_errors_stay_corrupt(self) -> None:
         broken = mock.Mock()
