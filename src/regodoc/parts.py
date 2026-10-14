@@ -490,7 +490,13 @@ class PartChecker:
         for problem in plain_text_problems(value, max_length=max_length):
             self.at(node, "regodoc.text.plain", f"attributo «{name}»: {problem}")
 
+    def skipped(self) -> None:
+        """Il controllore non scende in un elemento: id e usi che contiene non si raccolgono,
+        quindi la lettura del pacchetto non è completa (specifica, §6)."""
+        self.context.complete = False
+
     def unexpected(self, node: Node, parent: Node) -> None:
+        self.skipped()
         if node.tag not in ELEMENTS:
             self.at(node, "regodoc.xml.unknown_element", f"<{node.tag}> non è nel vocabolario")
         else:
@@ -529,6 +535,7 @@ class PartChecker:
                 f"la radice deve essere <{expected}>, come dichiarato in structure.toml, "
                 f"non <{root.tag}>",
             )
+            self.skipped()
             return
         self.check_attributes(root)
         self.check_container(root, depth=0)
@@ -836,6 +843,7 @@ class PartChecker:
                 elif child.tag == "list":
                     self.check_list(child, 1)
                 else:
+                    self.skipped()
                     self.at(
                         child,
                         "regodoc.xml.cell_mixed",
@@ -1050,11 +1058,14 @@ class PartChecker:
 
     def check_empty(self, node: Node) -> None:
         if node.children:
+            if node.elements():
+                self.skipped()
             self.at(node, "regodoc.xml.not_empty", f"<{node.tag}/> deve essere vuoto")
 
     def check_text_only(self, node: Node) -> None:
         for child in node.children:
             if isinstance(child, Node):
+                self.skipped()
                 self.at(
                     child,
                     "regodoc.xml.misplaced_element",

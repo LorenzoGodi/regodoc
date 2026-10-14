@@ -336,8 +336,9 @@ def _check_parts(
         )
     for path in sorted(images):
         check_image(path, package.files[path], report)
-    context.complete = complete
-    _check_uses(context, images, complete=complete)
+    # Il controllore delle parti segna da sé gli elementi in cui non è sceso.
+    context.complete = context.complete and complete
+    _check_uses(context, images, complete=context.complete)
     _check_totals(context)
 
 

@@ -628,7 +628,9 @@ errore o se raccoglie tutti gli errori del passo.
     valore facoltativo sbagliato non fermano la lettura;
   - `structure.toml` (passo 8): manca; supera 64 KiB; comincia con un BOM; non è UTF-8;
     contiene un carattere fuori elenco (§5.2); `tomllib` non lo legge, per sintassi o
-    annidamento. Chiavi, tipi e valori sbagliati non fermano la lettura.
+    annidamento. Chiavi, tipi e valori sbagliati non fermano la lettura;
+  - in qualunque passo, il limite dei problemi: dopo 500 problemi la lettura si ferma con
+    `regodoc.limit.problems` (§7.2).
 
   Lo stesso vale per `variables.toml`, che però non ferma mai la lettura: se una delle
   verifiche preliminari o `tomllib` lo rifiutano, il motore prosegue senza variabili.
@@ -641,10 +643,16 @@ tace sui problemi che quella mancanza potrebbe causare:
   `variables.toml` non si legge affatto, nessun richiamo dà `regodoc.xml.unknown_variable`,
   perché il motore non sa quali variabili esistano;
 - una voce di `structure.toml` con l'id non valido è segnalata una volta sola, con
-  `regodoc.toml.id`: nessun file di parte dà `regodoc.package.orphan_part`, perché potrebbe
-  essere il suo;
-- **il pacchetto è letto per intero** se ogni voce di `structure.toml` è valida, ogni parte
-  dichiarata esiste e si legge, e nessun file di parte è orfano. Se non è letto per intero,
+  `regodoc.toml.id`, e una voce con l'id già usato da un'altra voce con
+  `regodoc.xml.duplicate_id`. Entrambe sono escluse: il file della voce ripetuta si legge una
+  volta sola, e nessun file di parte dà `regodoc.package.orphan_part`, perché potrebbe essere
+  di una voce esclusa;
+- **il pacchetto è letto per intero** se ogni voce di `structure.toml` ha l'id valido e non
+  ripetuto, ogni parte dichiarata esiste, si legge ed è percorsa per intero, e nessun file di
+  parte è orfano. Una parte non è percorsa per intero quando il motore non scende in uno dei
+  suoi elementi: con la radice sbagliata (`regodoc.xml.root`) non scende affatto, e non
+  scende in un elemento fuori vocabolario o fuori posto, né nei figli di un elemento che
+  deve essere vuoto o contenere solo testo. Se non è letto per intero,
   gli id raccolti e gli usi sono incompleti: un rimando o una citazione verso un id che non
   si trova non dà `regodoc.xml.unknown_id` né `regodoc.xml.reference_through`, e non si
   danno gli avvisi `regodoc.toml.unused_variable` e `regodoc.image.unused`.

@@ -536,6 +536,51 @@ class CollectAndContinueTest(unittest.TestCase):
         )
         self.assertEqual(codes(validate_files(files)), ["regodoc.package.orphan_part"])
 
+    def test_wrong_root_makes_the_reading_incomplete(self) -> None:
+        network = example_files()["parts/network.xml"].decode()
+        network = network.replace("<part>", "<opening>").replace("</part>", "</opening>")
+        files = with_file("parts/network.xml", network)
+        summary = (
+            files["parts/summary.xml"]
+            .decode()
+            .replace('<reference to="network" through="backup"/>', '<reference to="wifi"/>')
+        )
+        files["parts/summary.xml"] = summary.encode()
+        self.assertEqual(codes(validate_files(files)), ["regodoc.xml.root"])
+
+    def test_misplaced_element_makes_the_reading_incomplete(self) -> None:
+        network = example_files()["parts/network.xml"].decode()
+        start = network.index('    <section id="wifi">')
+        end = network.index("    </section>", start) + len("    </section>\n")
+        wifi = network[start:end]
+        summary = (
+            example_files()["parts/summary.xml"]
+            .decode()
+            .replace('<reference to="network" through="backup"/>', '<reference to="wifi"/>')
+        )
+        for wrapper in ('<box type="note">{}</box>', "<p>{}</p>"):
+            with self.subTest(wrapper):
+                inner = network[:start] + wrapper.format(wifi) + network[end:]
+                files = with_file("parts/network.xml", inner)
+                files["parts/summary.xml"] = summary.encode()
+                found = codes(validate_files(files))
+                self.assertIn("regodoc.xml.misplaced_element", found)
+                for false in (
+                    "regodoc.xml.unknown_id",
+                    "regodoc.toml.unused_variable",
+                    "regodoc.image.unused",
+                ):
+                    self.assertNotIn(false, found)
+
+    def test_repeated_structure_id_is_excluded(self) -> None:
+        for new in ('id = "network"', 'id = "summary"'):
+            with self.subTest(new):
+                files = example_files()
+                files["structure.toml"] = files["structure.toml"].replace(
+                    b'id = "backup"', new.encode()
+                )
+                self.assertEqual(codes(validate_files(files)), ["regodoc.xml.duplicate_id"])
+
     def test_no_parts_declared(self) -> None:
         text = example_files()["structure.toml"].decode()
         files = with_file("structure.toml", text[: text.index("[[part]]")])

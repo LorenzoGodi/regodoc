@@ -300,6 +300,7 @@ def _read_entries(
     document: dict[str, object], structure: Structure, file: str, report: Collector
 ) -> None:
     number = 0
+    seen: set[str] = set()
     for kind in ("opening", "part"):
         items = document.get(kind, [])
         if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
@@ -324,6 +325,17 @@ def _read_entries(
                 )
                 structure.invalid_entries += 1
                 continue
+            if identifier in seen:
+                # Una voce ripetuta si esclude, come un id non valido: il suo file si legge una
+                # volta sola, con la prima voce.
+                report.error(
+                    "regodoc.xml.duplicate_id",
+                    f"l'id «{identifier}» è già usato da un'altra voce di structure.toml",
+                    file,
+                )
+                structure.invalid_entries += 1
+                continue
+            seen.add(identifier)
             title = ""
             accent = ""
             if kind == "part":
