@@ -272,6 +272,29 @@ class ManifestTest(unittest.TestCase):
         message = validate_files(with_file("manifest.json", text)).report.errors[0].message
         self.assertIn("«rego/2»", message)
         self.assertIn("rego/1", message)
+        self.assertNotIn("scritto da", message)
+        # Con un generator valido il messaggio nomina il motore che ha scritto il pacchetto;
+        # con uno sbagliato no.
+        written = (
+            '{"format": "regodoc", "grammar": "rego/2", '
+            '"generator": {"engine": "regodoc", "version": "0.9.0"}}'
+        )
+        message = validate_files(with_file("manifest.json", written)).report.errors[0].message
+        self.assertIn("scritto da regodoc 0.9.0", message)
+        self.assertIn("questo motore (", message)
+        broken = '{"format": "regodoc", "grammar": "rego/2", "generator": {"version": "0.9.0"}}'
+        message = validate_files(with_file("manifest.json", broken)).report.errors[0].message
+        self.assertNotIn("scritto da", message)
+
+    def test_generator_rules_match_the_report(self) -> None:
+        for generator in (
+            '{"engine": "regodoc"}',
+            '{"version": "1"}',
+            '{"engine": "a", "version": ""}',
+        ):
+            with self.subTest(generator):
+                text = f'{{"format": "regodoc", "grammar": "rego/1", "generator": {generator}}}'
+                self.assertEqual(self.manifest(text), ["regodoc.manifest.value"])
 
     def test_bad_grammar(self) -> None:
         self.assertEqual(

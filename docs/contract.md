@@ -47,7 +47,7 @@ JSON (§4.1): chi chiama da un programma usa `info`.
 |---|---|---|---|
 | `info` | `[--json]` | dichiarazione JSON su stdout (§5) | `--json` è accettata e non cambia nulla: `info` scrive sempre JSON |
 | `validate` | `PACCHETTO` | solo il rapporto | archivio o cartella |
-| `canon` | `PACCHETTO -o ARCHIVIO [--document ID] [--base-version IMPRONTA] [--files-dir CARTELLA]` | l'archivio in forma canonica, con `README.md` e manifesto scritti dal motore | da archivio o cartella; `--document` e `--base-version` scrivono i campi del manifesto (specifica, §1.3); `--files-dir` scrive anche i file di contenuto canonici uno per uno, nella cartella data, che deve essere vuota |
+| `canon` | `PACCHETTO -o ARCHIVIO [--document ID] [--base-version IMPRONTA] [--files-dir CARTELLA]` | l'archivio in forma canonica, con `README.md` e manifesto scritti dal motore | da archivio o cartella; `--document` e `--base-version` scrivono i campi del manifesto (specifica, §1.3), e senza di loro restano i valori del manifesto d'ingresso, se ci sono; `--files-dir` scrive anche i file di contenuto canonici uno per uno, nella cartella data, che deve essere vuota |
 | `build` | `PACCHETTO -o FILE [--format pdf\|latex] [--header JSON] [--theme CARTELLA]` | PDF, oppure una cartella con il LaTeX | solo archivi |
 | `upgrade` | `PACCHETTO -o ARCHIVIO` | l'archivio nella grammatica corrente, in forma canonica | solo archivi |
 
@@ -120,7 +120,7 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto finché `e
     `regodoc.limit.memory`. Se invece il sistema uccide il processo (per esempio il cgroup
     con `SIGKILL`), chi chiama tratta il caso come codice 3 con `regodoc.limit.memory`.
 - Con `enforced: true` il motore applica i limiti da sé ed esce con il codice 3 e
-  `regodoc.limit.time`. Da quella versione accetta `--max-seconds S`, che abbassa il tempo
+  `regodoc.limit.time` o `regodoc.limit.memory`. Da quella versione accetta `--max-seconds S`, che abbassa il tempo
   dichiarato; un valore più alto è ignorato.
 - Un tempo superato o la memoria esaurita non si ritentano alla cieca: con lo stesso pacchetto
   si ripetono.
@@ -205,6 +205,10 @@ due, ed è l'elenco completo:
   codice 3 con `regodoc.limit.time`, oppure con `regodoc.limit.memory` se l'ha ucciso il
   limite di memoria.
 
+Fuori da queste due eccezioni, un'uscita con `--json` senza un rapporto JSON valido su stdout
+non dovrebbe esistere; se capita, chi chiama la tratta come codice 3 con
+`regodoc.environment`, qualunque sia il codice d'uscita del processo.
+
 | Chiave | Contenuto |
 |---|---|
 | `contract` | la versione del contratto del rapporto |
@@ -242,6 +246,14 @@ salvo `input`, descrive **l'archivio d'uscita**: `grammar` è la grammatica d'us
 d'uscita, `files` e `files_sha256` sono i file canonici, `package_header` è quello d'uscita.
 `input` resta il file ricevuto.
 
+**Il manifesto d'uscita di `canon` e `upgrade`.** `format` e `grammar` sono quelli d'uscita;
+`generator` è questo motore. `document` e `base_version` sono quelli di `--document` e
+`--base-version` per `canon`, altrimenti quelli del manifesto d'ingresso, così come sono, o
+assenti se mancavano. La chiave `files` del manifesto è sempre riscritta: le impronte dei
+file dell'archivio d'uscita, tranne `mimetype` e `manifest.json` (specifica, §1.3), cioè le
+impronte al momento di questa scrittura. Le `files` del manifesto d'ingresso non passano
+mai nell'uscita.
+
 **`files_sha256`.** È lo sha256 di un testo UTF-8 con una riga per file di `files`,
 nell'ordine di `files`: l'impronta esadecimale minuscola, uno spazio, la dimensione in byte
 in decimale, uno spazio, il percorso, un a capo. Due pacchetti con gli stessi file di
@@ -268,7 +280,10 @@ prodotti.
 ### 4.4 Errori e avvisi
 
 Ogni problema ha `severity`, `code`, `message`, `file`, `line` e `column` (specifica, §8);
-`line` e `column` valgono 0 quando non si applicano. `severity` vale:
+`line` e `column` valgono 0 quando non si applicano. `file` è il percorso nel pacchetto;
+vale `""` per un problema che non riguarda un file del pacchetto, per esempio un errore
+dell'archivio intero, che non nomina mai il file ricevuto: chi chiama lo passa spesso con un
+nome temporaneo. `severity` vale:
 
 - `error`: il pacchetto, l'intestazione o il tema è rifiutato;
 - `warning`: un problema di chi ha scritto il pacchetto che non blocca; conta come errore con
@@ -604,8 +619,8 @@ tabella cambia schema per un'evoluzione del formato.
   `canon` (o `upgrade`), cioè dei file in forma canonica, **non quelle di `validate`**, che
   descrivono i file così come sono arrivati: un autore che ha solo cambiato i rientri
   avrebbe impronte diverse senza aver cambiato niente.
-- **PDF già prodotti.** Cambiano generatore quando cambia la versione del motore o
-  `theme.sha256` (§4.3): chi li conserva li considera da rigenerare.
+- **PDF già prodotti.** Cambiano generatore quando cambia la versione del motore,
+  `theme.sha256` o `tex.version_line` (§4.3): chi li conserva li segna come da rigenerare.
 - **Spazio.** Ogni versione aggiunge solo i file cambiati, se chi chiama li conserva per
   impronta; il tetto di un pacchetto è quello dell'involucro (§5.1).
 

@@ -275,12 +275,15 @@ def _check_manifest_optional(manifest: dict[str, object], report: Collector) -> 
                         file,
                     )
     generator = manifest.get("generator")
-    if generator is not None:
-        if not isinstance(generator, dict) or set(generator) - {"engine", "version"}:
+    # Le stesse regole di «generator» nel rapporto (contratto, §4.2).
+    if generator is not None and well_formed_generator(generator) is None:
+        if not isinstance(generator, dict) or set(generator) != {"engine", "version"}:
             report.error(
-                "regodoc.manifest.value", "«generator» ammette solo «engine» e «version»", file
+                "regodoc.manifest.value",
+                "«generator» vuole esattamente «engine» e «version»",
+                file,
             )
-        elif any(not isinstance(v, str) or not 0 < len(v) <= 64 for v in generator.values()):
+        else:
             report.error("regodoc.manifest.value", "«generator»: testi da 1 a 64 caratteri", file)
 
 

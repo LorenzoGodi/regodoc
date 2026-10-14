@@ -183,6 +183,21 @@ class DeclarationContractTest(unittest.TestCase):
         self.assertIn("**non quelle di `validate`**", flat(section("11")))
         self.assertIn("descrive **l'archivio d'uscita**", flat(section("4.2")))
 
+    def test_generator_of_stored_pdfs(self) -> None:
+        text = flat(section("11"))
+        self.assertIn("`theme.sha256` o `tex.version_line` (§4.3)", text)
+
+    def test_canon_keeps_the_manifest_values(self) -> None:
+        self.assertIn("senza di loro restano i valori del manifesto d'ingresso", section("2"))
+        text = flat(section("4.2"))
+        self.assertIn("La chiave `files` del manifesto è sempre riscritta", text)
+        self.assertIn("altrimenti quelli del manifesto d'ingresso", text)
+
+    def test_report_edges(self) -> None:
+        self.assertIn('vale `""` per un problema che non riguarda un file', flat(section("4.4")))
+        self.assertIn("`regodoc.limit.time` o `regodoc.limit.memory`", flat(section("2")))
+        self.assertIn("senza un rapporto JSON valido", flat(section("4.1")))
+
     def test_enforcement_is_not_a_capability(self) -> None:
         self.assertNotIn("limits.enforced", CONTRACT)
 

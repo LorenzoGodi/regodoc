@@ -39,6 +39,9 @@ _STORED = 0
 _DEFLATED = 8
 # Il flusso «deflate» di zero byte: l'unico contenuto ammesso per una voce di cartella compressa.
 _EMPTY_DEFLATE = b"\x03\x00"
+# Codice di zlib per la memoria finita (Z_MEM_ERROR): il modulo zlib non lo esporta, e lo
+# riporta solo nel testo dell'errore, «Error -4 …».
+_Z_MEM_ERROR = -4
 _FLAG_ENCRYPTED = 0x0001
 _FLAG_DESCRIPTOR = 0x0008
 _FLAG_STRONG_ENCRYPTION = 0x0040
@@ -571,7 +574,10 @@ def _decompress(entry: _Entry, raw: bytes, budget: int, report: Collector) -> tu
             if produced > budget:
                 _fail(report, *too_large)
             chunks.append(chunk)
-    except zlib.error:
+    except zlib.error as error:
+        if str(error).startswith(f"Error {_Z_MEM_ERROR} "):
+            # Memoria finita dentro zlib: è l'ambiente, non l'archivio (contratto, §2.3).
+            raise MemoryError from error
         _fail(report, "regodoc.archive.corrupt", f"la voce «{entry.name}» è danneggiata")
     if not decompressor.eof:
         _fail(report, "regodoc.archive.corrupt", f"la voce «{entry.name}» è troncata")

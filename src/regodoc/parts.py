@@ -60,20 +60,31 @@ _EMAIL_LOCAL = re.compile(r"(?!\.)(?!.*\.\.)[A-Za-z0-9._-]{1,64}(?<!\.)")
 _ADDRESS_CHARS = re.compile(r"[A-Za-z0-9.@_-]+")
 _PORT = re.compile(r"\d{1,5}")
 
+# Messaggi per codice numerico di expat: ExpatError.code è un intero, non il testo.
+_EXPAT = xml.parsers.expat.errors
+_EXPAT_CODES = _EXPAT.codes
 _EXPAT_MESSAGES = {
-    xml.parsers.expat.errors.XML_ERROR_UNDEFINED_ENTITY: (
+    _EXPAT_CODES[_EXPAT.XML_ERROR_UNDEFINED_ENTITY]: (
         "entità non definita: sono ammessi solo &lt; &gt; &amp; &quot; &apos; "
         "e i riferimenti numerici"
     ),
-    xml.parsers.expat.errors.XML_ERROR_TAG_MISMATCH: "il tag di chiusura non corrisponde",
-    xml.parsers.expat.errors.XML_ERROR_INVALID_TOKEN: "XML non ben formato",
-    xml.parsers.expat.errors.XML_ERROR_UNCLOSED_TOKEN: "il file finisce in mezzo a un tag",
-    xml.parsers.expat.errors.XML_ERROR_NO_ELEMENTS: "il file non contiene elementi",
-    xml.parsers.expat.errors.XML_ERROR_JUNK_AFTER_DOC_ELEMENT: "contenuto dopo la radice",
-    xml.parsers.expat.errors.XML_ERROR_DUPLICATE_ATTRIBUTE: "attributo ripetuto",
-    xml.parsers.expat.errors.XML_ERROR_BAD_CHAR_REF: "riferimento a un carattere non valido",
-    xml.parsers.expat.errors.XML_ERROR_SYNTAX: "errore di sintassi XML",
-    xml.parsers.expat.errors.XML_ERROR_MISPLACED_XML_PI: (
+    _EXPAT_CODES[
+        xml.parsers.expat.errors.XML_ERROR_TAG_MISMATCH
+    ]: "il tag di chiusura non corrisponde",
+    _EXPAT_CODES[_EXPAT.XML_ERROR_INVALID_TOKEN]: "XML non ben formato",
+    _EXPAT_CODES[
+        xml.parsers.expat.errors.XML_ERROR_UNCLOSED_TOKEN
+    ]: "il file finisce in mezzo a un tag",
+    _EXPAT_CODES[_EXPAT.XML_ERROR_NO_ELEMENTS]: "il file non contiene elementi",
+    _EXPAT_CODES[
+        xml.parsers.expat.errors.XML_ERROR_JUNK_AFTER_DOC_ELEMENT
+    ]: "contenuto dopo la radice",
+    _EXPAT_CODES[_EXPAT.XML_ERROR_DUPLICATE_ATTRIBUTE]: "attributo ripetuto",
+    _EXPAT_CODES[
+        xml.parsers.expat.errors.XML_ERROR_BAD_CHAR_REF
+    ]: "riferimento a un carattere non valido",
+    _EXPAT_CODES[_EXPAT.XML_ERROR_SYNTAX]: "errore di sintassi XML",
+    _EXPAT_CODES[_EXPAT.XML_ERROR_MISPLACED_XML_PI]: (
         "la dichiarazione XML è ammessa solo in testa al file"
     ),
 }
@@ -181,6 +192,9 @@ def parse_part(data: bytes, file: str, report: Collector) -> Node | None:
         report.error(abort.code, abort.message, file, abort.line, abort.column)
         return None
     except xml.parsers.expat.ExpatError as error:
+        if error.code == _EXPAT_CODES[_EXPAT.XML_ERROR_NO_MEMORY]:
+            # Memoria finita dentro expat: è l'ambiente, non il pacchetto (contratto, §2.3).
+            raise MemoryError from error
         message = _EXPAT_MESSAGES.get(error.code, "XML non ben formato")
         report.error("regodoc.xml.syntax", message, file, error.lineno, error.offset + 1)
         return None

@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.parsers.expat
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -290,7 +292,7 @@ class MemoryTest(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "linux", "RLIMIT_AS vale come limite solo su Linux")
     def test_address_space_limit(self) -> None:
-        limit = 64 * 1024 * 1024
+        limit = 40 * 1024 * 1024
 
         def limited() -> None:
             resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
@@ -310,6 +312,44 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual(result.returncode, ExitCode.ENVIRONMENT, result.stderr)
         report = json.loads(result.stdout)
         self.assertEqual([e["code"] for e in report["errors"]], ["regodoc.limit.memory"])
+
+    def test_memory_errors_inside_expat_and_zlib(self) -> None:
+        # Expat e zlib segnalano la memoria finita con un errore proprio: non deve diventare
+        # un errore del pacchetto.
+        no_memory = xml.parsers.expat.ExpatError("out of memory")
+        no_memory.code = xml.parsers.expat.errors.codes[
+            xml.parsers.expat.errors.XML_ERROR_NO_MEMORY
+        ]
+        no_memory.lineno, no_memory.offset = 1, 0
+        broken = mock.Mock()
+        broken.return_value.decompress.side_effect = zlib.error("Error -4 while decompressing data")
+        broken.return_value.eof = False
+        broken.return_value.unconsumed_tail = b""
+        cases = (
+            ("regodoc.parts._TreeBuilder.parse", {"side_effect": no_memory}, str(EXAMPLE)),
+            ("regodoc.source.zlib.decompressobj", {"new": broken}, None),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            archive = Path(folder) / "p.regodoc"
+            archive.write_bytes(build_zip(example_files()))
+            for target, options, package in cases:
+                with self.subTest(target), mock.patch(target, **options):
+                    code, out, _ = run_cli("validate", package or str(archive), "--json")
+                self.assertEqual(code, ExitCode.ENVIRONMENT)
+                self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.limit.memory")
+
+    def test_other_zlib_errors_stay_corrupt(self) -> None:
+        broken = mock.Mock()
+        broken.return_value.decompress.side_effect = zlib.error("Error -3 while decompressing")
+        broken.return_value.eof = False
+        broken.return_value.unconsumed_tail = b""
+        with tempfile.TemporaryDirectory() as folder:
+            archive = Path(folder) / "p.regodoc"
+            archive.write_bytes(build_zip(example_files()))
+            with mock.patch("regodoc.source.zlib.decompressobj", broken):
+                code, out, _ = run_cli("validate", str(archive), "--json")
+        self.assertEqual(code, ExitCode.REFUSED)
+        self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.archive.corrupt")
 
 
 # Avvia il motore da src/ anche con -I, che esclude PYTHONPATH.
