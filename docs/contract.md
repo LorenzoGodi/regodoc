@@ -454,10 +454,14 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
   vecchio rifiuta un pacchetto che usa un elemento nato dopo di lui, come un errore di
   vocabolario.
 
-Quando aggiornare lo decide chi conserva le versioni. In Rego, per decisione del 14/10/2026 da
-confermare con Lorenzo: l'aggiornamento è automatico alla prima esportazione o compilazione
-che ne ha bisogno, ed è registrato come versione «aggiornamento» con l'autore del gesto che
-l'ha causato; non c'è una rotta apposita.
+Quando aggiornare lo decide chi conserva le versioni. In Rego è deciso (14/10/2026):
+
+- l'aggiornamento è **automatico al primo bisogno**, cioè alla prima esportazione o alla prima
+  compilazione che richiede la grammatica corrente; non c'è un comando né una rotta apposita
+  per chiederlo;
+- Rego registra l'uscita di `upgrade` come versione nuova con origine «aggiornamento» e come
+  autore chi ha chiesto l'operazione che l'ha resa necessaria;
+- la versione di partenza resta com'era: l'aggiornamento non la riscrive mai.
 
 ## 9. Che cosa cambia senza cambiare il contratto
 

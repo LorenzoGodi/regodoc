@@ -113,6 +113,12 @@ class DeclarationContractTest(unittest.TestCase):
     def test_every_command_has_a_time_limit(self) -> None:
         self.assertEqual(set(declaration.RESOURCES["time_seconds"]), set(declaration.COMMANDS))
 
+    def test_upgrade_decision_is_closed(self) -> None:
+        text = section("8")
+        self.assertNotIn("da confermare", CONTRACT)
+        self.assertIn("**automatico al primo bisogno**", text)
+        self.assertIn("origine «aggiornamento»", text)
+
     def test_no_internal_codes_in_the_contract(self) -> None:
         self.assertNotRegex(CONTRACT, r"\b(?:DL|CP|CMP|MAC)-\d+|\bA\d{1,2}\b|\blotto\b|4ter")
 
