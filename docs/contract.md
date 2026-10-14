@@ -296,7 +296,7 @@ motore.
 | `envelope.files` | file | file nell'archivio; le voci di cartella non contano |
 | `content.parts` | aperture e parti | voci di `structure.toml` |
 | `content.characters` | caratteri | testo del documento, come dice il §7.2 della specifica |
-| `content.part_bytes`, `structure_bytes`, `variables_bytes`, `manifest_bytes` | byte | dimensione di ciascun file |
+| `content.part_bytes`, `structure_bytes`, `variables_bytes`, `manifest_bytes`, `readme_bytes` | byte | dimensione di ciascun file |
 | `content.images`, `image_bytes`, `images_total_bytes` | immagini, byte | numero e dimensioni delle immagini |
 | `content.image_side_pixels` | pixel | lato più lungo di un'immagine |
 | `content.table_rows`, `table_columns`, `table_columns_normal_size` | righe, colonne | per tabella; oltre `table_columns_normal_size` il carattere si riduce in verticale |

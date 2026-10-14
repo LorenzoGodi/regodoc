@@ -14,6 +14,7 @@ from unittest import mock
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
+from tests.support import EXAMPLE
 
 
 def run_cli(*argv: str) -> tuple[int, str, str]:
@@ -167,6 +168,13 @@ class UsageErrorTest(unittest.TestCase):
         code, _, err = run_cli("info", "--colore")
         self.assertEqual(code, ExitCode.USAGE)
         self.assertIn("argomenti non riconosciuti: --colore", err)
+
+    def test_abbreviations_are_refused(self) -> None:
+        for argv in (("validate", str(EXAMPLE), "--stri"), ("validate", str(EXAMPLE), "--js")):
+            with self.subTest(argv):
+                code, out, _ = run_cli(*argv)
+                self.assertEqual(code, ExitCode.USAGE)
+                self.assertEqual(out, "")
 
     def test_no_english_in_errors(self) -> None:
         for argv in [(), ("stampa",), ("canon", "p"), ("info", "--x"), ("build", "p", "-o")]:

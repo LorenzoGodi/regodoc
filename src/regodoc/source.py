@@ -37,6 +37,8 @@ _ZIP64_EXTRA_ID = 0x0001
 _ZIP64_MARKERS = (0xFFFF, 0xFFFFFFFF)
 _STORED = 0
 _DEFLATED = 8
+# Il flusso «deflate» di zero byte: l'unico contenuto ammesso per una voce di cartella compressa.
+_EMPTY_DEFLATE = b"\x03\x00"
 _FLAG_ENCRYPTED = 0x0001
 _FLAG_DESCRIPTOR = 0x0008
 _FLAG_STRONG_ENCRYPTION = 0x0040
@@ -335,7 +337,9 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
     ends: list[tuple[int, int, str]] = []
     for entry in entries:
         name = entry.name
-        key = name.rstrip("/")
+        # Una sola barra finale distingue una cartella: «parts//» resta un nome con un
+        # componente vuoto, e il controllo del percorso lo rifiuta.
+        key = name[:-1] if name.endswith("/") else name
         if key in seen:
             report.error("regodoc.archive.duplicate", f"la voce «{key}» compare più di una volta")
             continue
@@ -349,6 +353,7 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
             continue
         if entry.comment:
             report.error("regodoc.archive.comment", f"la voce «{name}» ha un commento")
+            continue
         if entry.flags & (_FLAG_ENCRYPTED | _FLAG_STRONG_ENCRYPTION):
             report.error("regodoc.archive.encrypted", f"la voce «{name}» è cifrata")
             continue
@@ -359,7 +364,10 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
                 "sono ammessi solo «stored» e «deflate»",
             )
             continue
-        if _has_zip64_extra(entry.extra) or entry.disk:
+        if entry.disk:
+            report.error("regodoc.archive.multi_disk", f"la voce «{name}» sta su un altro disco")
+            continue
+        if _has_zip64_extra(entry.extra):
             report.error("regodoc.archive.zip64", f"la voce «{name}» usa estensioni ZIP64")
             continue
         mode = entry.external >> 16
@@ -372,15 +380,32 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
             report.error("regodoc.archive.special_file", f"la voce «{name}» è {kind}")
             continue
         if entry.is_dir:
-            if key not in FOLDERS or entry.size or entry.compressed > 2:
-                report.error("regodoc.archive.layout", _layout_message(name))
+            empty = (entry.method == _STORED and entry.compressed == 0) or (
+                entry.method == _DEFLATED and entry.compressed == len(_EMPTY_DEFLATE)
+            )
+            if key not in FOLDERS or entry.size or not empty:
+                report.error(
+                    "regodoc.archive.layout",
+                    f"la voce di cartella «{name}» deve essere «parts/» o «images/», vuota: "
+                    "«stored» senza dati, oppure «deflate» con il solo flusso vuoto",
+                )
                 continue
         elif not is_allowed_path(name):
             report.error("regodoc.archive.layout", _layout_message(name))
             continue
         end = _local_end(data, entry, report)
-        if end is not None:
-            ends.append((entry.offset, end, name))
+        if end is None:
+            continue
+        if entry.is_dir and entry.method == _DEFLATED:
+            name_len, extra_len = struct.unpack_from("<HH", data, entry.offset + 26)
+            start = entry.offset + _LOCAL_SIZE + name_len + extra_len
+            if data[start : start + entry.compressed] != _EMPTY_DEFLATE:
+                report.error(
+                    "regodoc.archive.layout",
+                    f"la voce di cartella «{name}» contiene dati: deve essere vuota",
+                )
+                continue
+        ends.append((entry.offset, end, name))
     if len(report.errors) == before:
         _check_contiguity(data, entries, ends, report)
     if len(report.errors) > before:

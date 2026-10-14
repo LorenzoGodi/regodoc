@@ -322,6 +322,7 @@ class Context:
     entries: dict[str, PartEntry]
     targets: dict[str, Target] = field(default_factory=dict)
     uses: list[Use] = field(default_factory=list)
+    declared_variables: set[str] | None = field(default_factory=set)
     sources_blocks: int = 0
     sources: int = 0
     characters: int = 0
@@ -986,7 +987,12 @@ class PartChecker:
         elif tag == "address":
             self.check_attributes(node)
             self.check_text_only(node)
-            if problem := check_address(self.text_of(node)):
+            value = self.text_of(node)
+            # La tabulazione l'ha già segnalata check_text_only; l'a capo, ammesso negli altri
+            # testi senza elementi, qui è un errore (§5.1).
+            if "\n" in value:
+                self.at(node, "regodoc.text.char", "a capo dentro <address>")
+            elif "\t" not in value and (problem := check_address(value)):
                 self.at(node, "regodoc.xml.address", f"<address>: {problem}")
         elif tag == "var":
             self.check_empty(node)

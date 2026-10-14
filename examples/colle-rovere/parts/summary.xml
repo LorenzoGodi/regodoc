@@ -2,7 +2,7 @@
 <opening>
   <section id="in-brief">
     <title>In breve</title>
-    <p>Il sopralluogo del <var name="inspectionDate"/> ha riguardato la rete e gli archivi di <var name="siteName"/>; i lavori proposti richiedono al massimo <var name="installDays" form="max"/>.</p>
+    <p>Il rapporto riguarda la rete e gli archivi della cantina; i lavori proposti partono il <var name="worksStart"/> e richiedono al massimo <var name="installDays" form="max"/>. Domande e osservazioni vanno all'<var name="contactOffice"/>.</p>
     <list type="numbered">
       <item>Rifare la copertura senza fili della barricaia.</item>
       <item>Affidare la manutenzione a un installatore, per <var name="maintenanceFee"/> l'anno.</item>

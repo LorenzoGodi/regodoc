@@ -79,9 +79,10 @@ def triple_hyphen(text: str) -> int | None:
 
 
 def plain_text_problems(value: str, *, max_length: int, min_length: int = 1) -> list[str]:
-    """Problemi di un valore di testo puro: lunghezza, caratteri, virgolette, trattini.
+    """Problemi di un valore di testo puro: lunghezza, virgolette, trattini (§5.3).
 
-    Restituisce messaggi in italiano, vuoto se il valore è corretto.
+    Restituisce messaggi in italiano, vuoto se il valore è corretto. I caratteri fuori elenco
+    non sono fra questi problemi: chi chiama li segnala a parte con ``regodoc.text.char``.
     """
     problems = []
     length = len(value)
@@ -89,9 +90,6 @@ def plain_text_problems(value: str, *, max_length: int, min_length: int = 1) -> 
         problems.append("il testo è vuoto")
     elif length > max_length:
         problems.append(f"il testo è lungo {length} caratteri, il massimo è {max_length}")
-    for index in find_bad_chars(value):
-        problems.append(f"{bad_char_message(value[index])} alla posizione {index + 1}")
-        break
     if value.count('"') % 2:
         problems.append("virgolette dritte in numero dispari")
     if triple_hyphen(value) is not None:

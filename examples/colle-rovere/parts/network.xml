@@ -9,7 +9,7 @@
       <title>Copertura senza fili</title>
       <p>La barricaia è coperta al <var name="wifiCoverage"/>: oltre la seconda fila di botti il segnale è <tone type="warning">debole</tone>, una "zona d'ombra" per i lettori delle etichette.</p>
       <figure file="images/coverage.png" width="0.6">
-        <caption>Copertura misurata il <var name="inspectionDate"/>.</caption>
+        <caption>Copertura misurata prima dei lavori.</caption>
       </figure>
     </section>
   </section>

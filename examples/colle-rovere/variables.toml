@@ -1,8 +1,8 @@
-siteName = { text = "Cantina Colle Rovere" }
+contactOffice = { text = "Ufficio tecnico della cantina" }
 restoreHours = { hours = 6 }
-archiveSize = { tb = "1,8" }
+backupCapacity = { tb = "4" }
 workstations = { count = 14 }
 installDays = { days = [10, 14] }
 wifiCoverage = { percent = "72,5" }
-maintenanceFee = { eur = ["320", "410"], note = "due offerte di manutenzione annuale, settembre 2026" }
-inspectionDate = { date = 2026-09-30 }
+maintenanceFee = { eur = ["320", "410"], note = "stima interna da confermare con l'installatore" }
+worksStart = { date = 2026-11-16 }

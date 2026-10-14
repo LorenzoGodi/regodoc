@@ -3,7 +3,7 @@
   <summary>Dove stanno gli archivi della cantina e come renderli più sicuri.</summary>
   <section id="current-backup">
     <title>Archivi e copie</title>
-    <p><label type="observed"/> Il disco di rete in ufficio conserva <var name="archiveSize"/> di archivi; dopo un guasto il recupero completo richiede circa <var name="restoreHours"/>.</p>
+    <p><label type="observed"/> Il disco di rete in ufficio è quasi pieno; il nuovo disco di copia avrà <var name="backupCapacity"/>, e dopo un guasto il recupero completo richiederà circa <var name="restoreHours"/>.</p>
     <p>Per le copie fuori dalla cantina vedi <reference to="offsite"/>.</p>
     <box type="status">
       <p>Funziona già bene:</p>
@@ -37,8 +37,8 @@
       </row>
       <separator/>
       <row type="total">
-        <cell span="2">Spazio occupato</cell>
-        <cell><var name="archiveSize" form="number"/> TB</cell>
+        <cell span="2">Capacità del nuovo disco</cell>
+        <cell><var name="backupCapacity" form="number"/> TB</cell>
       </row>
     </table>
     <section id="offsite">

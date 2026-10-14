@@ -94,6 +94,7 @@ class ItalianArgumentParser(argparse.ArgumentParser):
         """Crea il parser con i titoli italiani e l'opzione d'aiuto tradotta."""
         kwargs.setdefault("formatter_class", _ItalianHelpFormatter)
         kwargs["add_help"] = False
+        kwargs["allow_abbrev"] = False  # un'opzione abbreviata non deve indovinare quella vera
         super().__init__(*args, **kwargs)
         self._positionals.title = "argomenti"
         self._optionals.title = "opzioni"

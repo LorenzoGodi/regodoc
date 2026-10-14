@@ -21,8 +21,8 @@ ENGINE_NAME: Final = "regodoc"
 PACKAGE_MIMETYPE: Final = "application/vnd.regodoc.document"
 PACKAGE_EXTENSION: Final = ".regodoc"
 
-# Versione del contratto fra Rego e il motore (docs/contract.md). Resta 0 finché Lorenzo non
-# approva il contratto: con la versione 0 il contratto può ancora cambiare senza preavviso.
+# Versione del contratto fra Rego e il motore (docs/contract.md). Resta 0 finché il contratto
+# non è approvato: con la versione 0 può ancora cambiare senza preavviso.
 CONTRACT_VERSION: Final = 0
 # Versioni del contratto che il motore sa servire con --contract.
 CONTRACTS: Final = (0,)
@@ -64,6 +64,7 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "structure_bytes": 64 * _KIB,
         "variables_bytes": 384 * _KIB,
         "manifest_bytes": 64 * _KIB,
+        "readme_bytes": 64 * _KIB,
         "image_side_pixels": 6000,
         "section_depth": 3,
         "list_depth": 3,
@@ -138,8 +139,8 @@ LANGUAGES: Final = ("it", "en")
 # citazioni, una di riserva per i riferimenti che si spostano.
 PASSES: Final = MappingProxyType({"min": 2, "max": 4})
 
-# Pacchetti LaTeX che il motore e il tema neutro caricano. Provvisorio fino al lotto L5: tutti
-# sono nell'immagine TeX di Rego.
+# Pacchetti LaTeX che il motore e il tema neutro caricano. Provvisorio finché la resa in PDF non
+# è scritta: tutti sono nell'immagine TeX di Rego.
 TEX_PACKAGES: Final = (
     "babel",
     "booktabs",

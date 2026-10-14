@@ -135,6 +135,14 @@ def _validate(path: Path, result: Validation) -> None:
     if package is None:
         return
     result.package = package
+    readme = package.get("README.md")
+    if readme is not None and len(readme) > CONTENT_LIMITS["readme_bytes"]:
+        # README.md non si legge, ma non può gonfiare l'involucro senza limite.
+        report.error(
+            "regodoc.limit.file_size",
+            f"README.md è di {len(readme)} byte, il massimo è {CONTENT_LIMITS['readme_bytes']}",
+            "README.md",
+        )
     result.grammar = _check_manifest(package, report, result.manifest)
     if result.grammar is None:
         return
@@ -147,9 +155,10 @@ def _validate(path: Path, result: Validation) -> None:
         return
     result.structure = structure
     variables_data = package.get("variables.toml")
-    variables = read_variables(variables_data, report) if variables_data is not None else {}
-    result.variables = variables
-    _check_parts(package, structure, variables, report)
+    variables = read_variables(variables_data, report) if variables_data is not None else None
+    result.variables = variables.valid if variables is not None else {}
+    declared = variables.declared if variables is not None else set()
+    _check_parts(package, structure, result.variables, declared, report)
 
 
 def _check_manifest(
@@ -270,10 +279,12 @@ def _check_parts(
     package: PackageFiles,
     structure: Structure,
     variables: dict[str, Variable],
+    declared: set[str] | None,
     report: Collector,
 ) -> None:
     entries = {entry.id: entry for entry in structure.entries}
     context = Context(report, variables, entries)
+    context.declared_variables = declared
     for entry in structure.entries:
         context.define(entry.id, Target(entry.kind, "structure.toml", 0, 0, entry.id))
     declared = {f"parts/{entry.id}.xml" for entry in structure.entries}
@@ -322,6 +333,12 @@ def _check_uses(context: Context, images: set[str], *, complete: bool) -> None:
         where = (use.file, use.line, use.column)
         if use.kind == "var":
             variable = context.variables.get(use.name)
+            declared = context.declared_variables
+            if variable is None and (declared is None or use.name in declared):
+                # Il file è illeggibile, o la variabile c'è ma non è valida: l'errore è già
+                # nel rapporto, e dire «non esiste» sarebbe falso.
+                used_variables.add(use.name)
+                continue
             if variable is None:
                 report.error(
                     "regodoc.xml.unknown_variable",

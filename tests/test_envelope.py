@@ -11,6 +11,7 @@ import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
+from regodoc.declaration import CONTENT_LIMITS
 from regodoc.validate import validate_package
 from tests.support import build_zip, codes, example_files, png, validate_bytes, validate_files
 
@@ -162,9 +163,9 @@ class RatioTest(unittest.TestCase):
         padding = random.Random(1).randbytes(2 * MIB + MIB // 10)  # noqa: S311 - prova
         entries = example_raw()
         entries.append(Raw("parts/bomb.xml", bomb, data=deflate(bomb) + padding))
-        found = errors_of(handmade_zip(entries))
-        self.assertEqual(len(found), 1)
-        self.assertIn(found[0], ("regodoc.archive.size_mismatch", "regodoc.archive.ratio"))
+        # Il riempimento non è consumato dal decompressore: la dimensione compressa dichiarata
+        # non coincide con i byte consumati, e la voce si ferma lì, prima del rapporto.
+        self.assertEqual(errors_of(handmade_zip(entries)), ["regodoc.archive.size_mismatch"])
 
     def test_bomb_without_padding_is_refused(self) -> None:
         entries = example_raw()
@@ -253,6 +254,46 @@ class FileCountTest(unittest.TestCase):
         self.assertEqual([c for c in found if c.startswith("regodoc.archive")], [])
 
 
+def with_folder(entry: Raw) -> list[Raw]:
+    """L'esempio scritto a mano, con una voce di cartella subito dopo ``mimetype``."""
+    entries = example_raw()
+    entries.insert(1, entry)
+    return entries
+
+
+class FolderEntryTest(unittest.TestCase):
+    def test_empty_folders_pass(self) -> None:
+        for entry in (
+            Raw("parts/", b"", method=0),
+            Raw("images/", b"", method=8, data=b"\x03\x00"),
+        ):
+            with self.subTest(entry.name, method=entry.method):
+                self.assertEqual(errors_of(handmade_zip(with_folder(entry))), [])
+
+    def test_only_one_trailing_slash(self) -> None:
+        # Prima la barra finale si toglieva con rstrip: «parts//» e «images///» passavano.
+        for name in ("parts//", "images///"):
+            with self.subTest(name):
+                found = errors_of(handmade_zip(with_folder(Raw(name, b"", method=0))))
+                self.assertEqual(found, ["regodoc.archive.path"])
+
+    def test_folder_with_data_is_refused(self) -> None:
+        cases = {
+            # «stored» con due byte di dati, dichiarati anche come dimensione.
+            "stored, due byte": Raw("parts/", b"ab", method=0),
+            # «stored» con due byte di dati e dimensione dichiarata zero.
+            "stored, dimensione zero": Raw("parts/", b"", method=0, data=b"ab"),
+            # «deflate» di due byte, ma non il flusso vuoto.
+            "deflate, due byte": Raw("parts/", b"", method=8, data=b"\x01\x00"),
+            # «deflate» di un contenuto vero.
+            "deflate, contenuto": Raw("parts/", b"x" * 100, method=8),
+        }
+        for label, entry in cases.items():
+            with self.subTest(label):
+                found = errors_of(handmade_zip(with_folder(entry)))
+                self.assertEqual(found, ["regodoc.archive.layout"])
+
+
 class SystemFilesTest(unittest.TestCase):
     NAMES = (
         "__MACOSX/._structure.toml",
@@ -288,7 +329,7 @@ class SystemFilesTest(unittest.TestCase):
 
 
 class ReadmeTest(unittest.TestCase):
-    def test_round_trip_with_readme(self) -> None:
+    def test_readme_is_valid_in_folder_and_archive(self) -> None:
         files = example_files()
         self.assertIn("README.md", files)
         validation = validate_files(files)
@@ -299,6 +340,18 @@ class ReadmeTest(unittest.TestCase):
     def test_readme_content_is_ignored(self) -> None:
         files = {**example_files(), "README.md": "Qualunque «cosa» \U0001f600\n".encode()}
         self.assertEqual(codes(validate_files(files)), [])
+
+    def test_readme_size_limit(self) -> None:
+        limit = int(CONTENT_LIMITS["readme_bytes"])
+        self.assertEqual(limit, 64 * 1024)
+        line = b"Istruzioni per chi modifica il pacchetto.\n"
+        at_limit = (line * (limit // len(line) + 1))[:limit]
+        self.assertEqual(codes(validate_files({**example_files(), "README.md": at_limit})), [])
+        over = validate_files({**example_files(), "README.md": at_limit + b"x"})
+        self.assertEqual(
+            [(d.code, d.file) for d in over.report.errors],
+            [("regodoc.limit.file_size", "README.md")],
+        )
 
     def test_other_uppercase_names_are_refused(self) -> None:
         files = {**example_files(), "README.txt": b"x"}

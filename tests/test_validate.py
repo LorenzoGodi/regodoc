@@ -365,10 +365,16 @@ class StructureTest(unittest.TestCase):
         self.assertIn("regodoc.xml.duplicate_id", self.structure(text))
 
     def test_plain_text_rules(self) -> None:
-        for title in ("'a \"b'", '"a---b"', '"' + "x" * 201 + '"', '"a\\u202eb"', '"   "'):
+        for title in ("'a \"b'", '"a---b"', '"' + "x" * 201 + '"', '"   "'):
             with self.subTest(title):
                 text = STRUCTURE.replace('title = "Titolo"', f"title = {title}")
                 self.assertIn("regodoc.text.plain", self.structure(text))
+        # Un carattere fuori elenco scritto con una sequenza di escape resta un problema di
+        # carattere, come se fosse scritto direttamente.
+        text = STRUCTURE.replace('title = "Titolo"', 'title = "a\\u202eb"')
+        self.assertEqual(
+            [c for c in self.structure(text) if c.startswith("regodoc.text")], ["regodoc.text.char"]
+        )
 
     def test_no_parts(self) -> None:
         text = STRUCTURE.split("[[part]]", maxsplit=1)[0]
@@ -459,6 +465,40 @@ class VariablesTest(unittest.TestCase):
         validation = validate_files(with_file("variables.toml", text))
         self.assertEqual(codes(validation), ["regodoc.toml.unused_variable"])
         self.assertEqual(validation.report.warnings[0].line, 9)
+
+
+class CollectAndContinueTest(unittest.TestCase):
+    """Dal passo 7 in poi il motore raccoglie e prosegue, senza errori falsi (§6)."""
+
+    def test_invalid_variable_is_not_also_unknown(self) -> None:
+        text = example_files()["variables.toml"].decode()
+        text = text.replace('backupCapacity = { tb = "4" }', 'backupCapacity = { tb = "4.0" }')
+        found = errors(with_file("variables.toml", text))
+        self.assertEqual(found, ["regodoc.toml.value"])
+
+    def test_unreadable_variables_give_no_unknown_variable(self) -> None:
+        for data in (b"a = {", b"\xef\xbb\xbfa = 1\n", b"x" * (384 * 1024 + 1)):
+            with self.subTest(data[:8]):
+                found = errors(with_file("variables.toml", data))
+                self.assertEqual(len(found), 1, found)
+                self.assertNotIn("regodoc.xml.unknown_variable", found)
+
+    def test_undeclared_variable_is_still_unknown(self) -> None:
+        found = errors(with_part(section('<p><var name="nowhere"/></p>')))
+        self.assertIn("regodoc.xml.unknown_variable", found)
+
+    def test_manifest_errors_do_not_stop_the_reading(self) -> None:
+        manifest = '{"format": "regodoc", "grammar": "rego/1", "extra": 1}'
+        files = with_part(section('<p><var name="nowhere"/></p>'))
+        files["manifest.json"] = manifest.encode()
+        found = errors(files)
+        self.assertIn("regodoc.manifest.unknown_key", found)
+        self.assertIn("regodoc.xml.unknown_variable", found)
+
+    def test_missing_structure_stops_the_reading(self) -> None:
+        files = with_part(section('<p><var name="nowhere"/></p>'))
+        del files["structure.toml"]
+        self.assertEqual(errors(files), ["regodoc.package.missing"])
 
 
 # --- XML -------------------------------------------------------------------------------------
@@ -611,6 +651,33 @@ class XmlVocabularyTest(unittest.TestCase):
                 self.assert_error(f"<p><address>{value}</address></p>", "regodoc.xml.address")
         self.assertEqual(self.body("<p><address>a.b_c@x-y.example</address></p>"), [])
 
+    def test_address_has_no_newline_or_tab(self) -> None:
+        for value in ("a@b.\nexample", "a@b.\texample", "\na@b.example"):
+            with self.subTest(repr(value)):
+                self.assertEqual(
+                    self.body(f"<p><address>{value}</address></p>"), ["regodoc.text.char"]
+                )
+        # Nello stesso contesto <code> e <source> ammettono l'a capo.
+        self.assertEqual(self.body("<p><code>a\nb</code></p>"), [])
+
+    def test_plain_text_has_its_own_code(self) -> None:
+        source = '<sources><source href="https://a.example" publisher="{}">{}</source></sources>'
+        for publisher, title in (('a "b', "T"), ("a --- b", "T"), ("P", 'T "x'), ("P", "a---b")):
+            with self.subTest(publisher=publisher, title=title):
+                xml = source.format(publisher.replace('"', "&quot;"), title)
+                found = [c for c in self.body(xml) if c.startswith("regodoc.text")]
+                self.assertEqual(found, ["regodoc.text.plain"])
+        mixed = (('<p>"a</p>', "regodoc.text.quotes"), ("<p>a---b</p>", "regodoc.text.dashes"))
+        for xml, code in mixed:
+            with self.subTest(xml):
+                self.assertEqual(self.body(xml), [code])
+
+    def test_greater_than_after_brackets(self) -> None:
+        self.assertEqual(self.body("<listing>\na[b[0]]&gt;1\n</listing>"), [])
+        self.assertEqual(self.body("<p><code>a[b[0]]&gt;1</code></p>"), [])
+        self.assertEqual(self.body("<listing>\na[b[0]]>1\n</listing>"), ["regodoc.xml.syntax"])
+        self.assertEqual(self.body("<p>a > b</p>"), [])
+
 
 class XmlTableFigureTest(unittest.TestCase):
     def body(self, xml: str) -> list[str]:
@@ -686,7 +753,7 @@ class CrossReferenceTest(unittest.TestCase):
             '<p><cite to="lan"/></p>': "regodoc.xml.cite_target",
             '<p><cite to="nowhere"/></p>': "regodoc.xml.unknown_id",
             '<p><var name="nowhere"/></p>': "regodoc.xml.unknown_variable",
-            '<p><var name="siteName" form="number"/></p>': "regodoc.xml.var_form",
+            '<p><var name="contactOffice" form="number"/></p>': "regodoc.xml.var_form",
             '<p><var name="restoreHours" form="max"/></p>': "regodoc.xml.var_form",
         }
         for xml, code in cases.items():
@@ -697,7 +764,7 @@ class CrossReferenceTest(unittest.TestCase):
         xml = (
             '<p><reference to="network" through="backup"/> <reference to="wifi"/> '
             '<cite to="ap-guide"/> <var name="maintenanceFee" form="min"/> '
-            '<var name="archiveSize" form="number"/></p>'
+            '<var name="backupCapacity" form="number"/></p>'
         )
         self.assertEqual(self.body(xml), [])
 

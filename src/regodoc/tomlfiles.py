@@ -198,6 +198,11 @@ def _check_plain(
             line,
         )
         return False
+    # Un carattere scritto con una sequenza di escape sfugge al controllo sul testo del file.
+    for index in find_bad_chars(value):
+        message = f"{where}: {bad_char_message(value[index])} alla posizione {index + 1}"
+        report.error("regodoc.text.char", message, file, line)
+        return False
     for problem in plain_text_problems(value, max_length=max_length):
         report.error("regodoc.text.plain", f"{where}: {problem}", file, line)
         return False
@@ -353,12 +358,25 @@ def parse_italian_number(text: str) -> Decimal | None:
     return Decimal(text.replace(".", "").replace(",", "."))
 
 
-def read_variables(data: bytes, report: Collector) -> dict[str, Variable]:
-    """Legge e valida ``variables.toml``; le variabili sbagliate sono escluse dal risultato."""
+@dataclass
+class Variables:
+    """Le variabili lette: quelle valide, e i nomi di tutte quelle dichiarate, valide o no.
+
+    ``declared`` vale None quando il file non si è potuto leggere: allora nessun richiamo a
+    una variabile si può dire «inesistente».
+    """
+
+    valid: dict[str, Variable] = field(default_factory=dict)
+    declared: set[str] | None = field(default_factory=set)
+
+
+def read_variables(data: bytes, report: Collector) -> Variables:
+    """Legge e valida ``variables.toml``; le variabili sbagliate sono escluse da ``valid``."""
     file = "variables.toml"
-    result: dict[str, Variable] = {}
+    result = Variables()
     text = decode_toml(data, file, report, CONTENT_LIMITS["variables_bytes"])
     if text is None:
+        result.declared = None
         return result
     for line in comment_lines(text):
         report.warning(
@@ -369,6 +387,7 @@ def read_variables(data: bytes, report: Collector) -> dict[str, Variable]:
         )
     document = parse_toml(text, file, report)
     if document is None:
+        result.declared = None
         return result
     if len(document) > CONTENT_LIMITS["variables"]:
         report.error(
@@ -376,12 +395,14 @@ def read_variables(data: bytes, report: Collector) -> dict[str, Variable]:
             f"{len(document)} variabili, il massimo è {CONTENT_LIMITS['variables']}",
             file,
         )
+        result.declared = None
         return result
+    result.declared = set(document)
     for name, spec in document.items():
         line = _line_of_key(text, name)
         variable = _read_variable(name, spec, file, line, report)
         if variable is not None:
-            result[name] = variable
+            result.valid[name] = variable
     return result
 
 
