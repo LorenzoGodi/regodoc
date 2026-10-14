@@ -100,7 +100,7 @@ Un oggetto JSON in UTF-8, al massimo 64 KiB, con queste chiavi e nessun'altra:
 | `format` | sì | esattamente `"regodoc"` |
 | `grammar` | sì | una grammatica che il motore sa leggere (§10) |
 | `document` | no | identificatore del documento presso chi ha esportato il pacchetto, `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` |
-| `base_version` | no | la versione da cui il pacchetto è stato esportato: `sha256:` seguito da 64 cifre esadecimali minuscole. Per il motore è un'impronta opaca, scelta da chi esporta (in Rego, lo sha256 del blob della versione), e verificata solo nella forma |
+| `base_version` | no | la versione da cui il pacchetto è stato esportato: `sha256:` seguito da 64 cifre esadecimali minuscole. Per il motore è un'impronta opaca, scelta da chi esporta, e verificata solo nella forma. Chi conserva le versioni ci scrive `files_sha256` della versione esportata (contratto, §4.2) |
 | `files` | no | per ogni file del pacchetto tranne `mimetype` e `manifest.json`, l'impronta al momento dell'esportazione, nella stessa forma |
 | `generator` | no | `engine` e `version` del motore che ha scritto il pacchetto, testo puro di al massimo 64 caratteri |
 
@@ -711,10 +711,10 @@ intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
 
 ### 6.5 Risorse ed esecuzione
 
-- Ogni fase ha un tempo massimo e, dove il sistema lo permette, un limite di memoria; oggi il
-  limite di memoria è applicato solo su Linux. I valori, e i sistemi dove la memoria è
-  limitata, li dichiara il motore (`regodoc info`, `resources`). Superarli è un errore
-  d'ambiente (§8).
+- Ogni comando ha un tempo massimo e un limite di memoria, che il motore dichiara
+  (`regodoc info`, `resources`). In questa versione li applica chi chiama (contratto, §2.3).
+  Superarli è un errore d'ambiente, codice 3: se la memoria finisce mentre il motore lavora,
+  il motore esce da sé con `regodoc.limit.memory`.
 - Il motore non scrive mai fuori dalla propria cartella di lavoro temporanea e dal file
   d'uscita indicato da chi lo chiama.
 - Il contenuto del pacchetto non diventa mai un comando: pdflatex gira con `shell escape`
@@ -730,7 +730,8 @@ chi lo usa li legge senza ricopiarli.
 
 ### 7.1 Involucro
 
-Li applica chi riceve il pacchetto, per esempio Rego all'ingresso, e li ripete il motore.
+Li applica il motore. Chi riceve il pacchetto controlla all'ingresso solo la dimensione e la
+firma della prima voce (contratto, §3.1), e lascia il resto al motore.
 
 | Voce | Limite | Chiave in `info` |
 |---|---|---|
@@ -786,12 +787,11 @@ Gli **errori** bloccano il pacchetto. Gli **avvisi** no: commenti TOML persi, va
 usate, immagini mai usate, metadati delle immagini ignorati. Con `--strict` gli avvisi
 contano come errori.
 
-I codici sono raggruppati per famiglia: `regodoc.archive.*`, `regodoc.package.*`,
-`regodoc.manifest.*`, `regodoc.toml.*`, `regodoc.xml.*`, `regodoc.text.*`,
-`regodoc.image.*`, `regodoc.limit.*`. Fuori dalle famiglie: `regodoc.usage` (errore d'uso),
-`regodoc.environment` (errore d'ambiente), `regodoc.not_implemented` (comando non ancora
-disponibile), `regodoc.interrupted`, `regodoc.internal`. Un codice, una volta pubblicato, non
-cambia significato.
+I codici sono raggruppati per famiglia. Le famiglie e i codici fuori famiglia sono elencati
+in un solo posto, il §4.4 del contratto del motore (`docs/contract.md`), che comprende anche
+quelli di `build` e degli aggiornamenti (`regodoc.grammar.*`, `regodoc.header.*`,
+`regodoc.theme.*`, `regodoc.tex.*`). Un codice, una volta pubblicato, non cambia
+significato.
 
 ### 8.1 Indice dei codici
 
@@ -914,6 +914,7 @@ non bloccano il pacchetto.
 | `regodoc.limit.references` | §6.4 passo 11, §7.2 |
 | `regodoc.limit.sources` | §6.4 passo 11, §7.2 |
 | `regodoc.limit.problems` | §7.2 |
+| `regodoc.limit.memory` | §6.5; contratto, §2.3: codice d'uscita 3 |
 | `regodoc.usage` | contratto, §7: codice d'uscita 2 |
 | `regodoc.environment` | contratto, §7: codice d'uscita 3 |
 | `regodoc.not_implemented` | contratto, §7: codice d'uscita 3 |
@@ -942,7 +943,8 @@ byte vale per i file del pacchetto**: esportare e reimportare senza modifiche no
 byte di nessun file, quindi le impronte che Rego confronta restano uguali. I byte
 dell'archivio possono invece cambiare fra piattaforme, perché librerie di compressione
 diverse (zlib, zlib-ng) producono flussi «deflate» diversi a parità di contenuto; per questo
-chi conserva le versioni confronta i file, non gli archivi.
+chi conserva le versioni confronta i file, non gli archivi. La forma canonica di una
+grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
 
 - **Archivio**: `mimetype` per prima, poi `manifest.json`, `README.md`, `structure.toml`,
   `variables.toml`, le parti nell'ordine di `structure.toml`, le immagini in ordine
@@ -1241,7 +1243,7 @@ testo monospaziato in linea (decisione 26).
 | A9 documento di prova sintetico e inventato | §11 |
 | A10 `README.md` generato dal motore e ignorato in lettura | §1.1, §1.4, §6.1 passo 5 |
 | 12/10/2026, dopo la verifica: unità binarie e codici d'uscita | §0, §7, §8 |
-| 12/10/2026, dopo la rilettura avversaria: rapporto 100 sull'archivio e 20 sulle immagini, sui byte consumati; voci contigue; dimensione dichiarata uguale ai byte consumati; il valore di `mimetype` all'offset 38, senza campo extra né descrittore di dati; limite di memoria applicato solo su Linux | §1.2, §6.1, §6.5, §7.1 |
+| 12/10/2026, dopo la rilettura avversaria: rapporto 100 sull'archivio e 20 sulle immagini, sui byte consumati; voci contigue; dimensione dichiarata uguale ai byte consumati; il valore di `mimetype` all'offset 38, senza campo extra né descrittore di dati; limite di memoria (dal 14/10/2026 lo applica chi chiama: contratto, §2.3) | §1.2, §6.1, §6.5, §7.1 |
 | 12/10/2026, dopo la rilettura avversaria: scelte di questa specifica ratificate (lingue, intestazione, cartella, nomi, regole di struttura, caratteri, limiti, forma canonica) | in tutta la specifica |
 
 Le decisioni 12, 16, 18, 19 e 21 riguardano Rego e non il formato.

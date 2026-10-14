@@ -34,6 +34,11 @@ def section(number: str) -> str:
     return CONTRACT[start : min(ends) if ends else len(CONTRACT)]
 
 
+def flat(text: str) -> str:
+    """Il testo con gli a capo e i rientri ridotti a uno spazio."""
+    return " ".join(text.split())
+
+
 def table_keys(text: str) -> list[str]:
     """Le chiavi nella prima colonna delle tabelle di un testo."""
     return re.findall(r"^\| `([a-z_]+)`", text, re.M)
@@ -114,10 +119,72 @@ class DeclarationContractTest(unittest.TestCase):
         self.assertEqual(set(declaration.RESOURCES["time_seconds"]), set(declaration.COMMANDS))
 
     def test_upgrade_decision_is_closed(self) -> None:
-        text = section("8")
+        text = flat(section("8"))
         self.assertNotIn("da confermare", CONTRACT)
         self.assertIn("**automatico al primo bisogno**", text)
         self.assertIn("origine «aggiornamento»", text)
+        # Il bisogno si riconosce da ciò che il motore restituisce.
+        self.assertIn("il cui `grammar`, nel rapporto (§4.2), è diverso da", text)
+        self.assertIn("`info.grammars.current`", text)
+        self.assertIn("dà gli stessi byte di `canon` senza opzioni", text)
+        self.assertIn("conserva `document` e `base_version`", text)
+
+    def test_action_table(self) -> None:
+        text = section("4.4")
+        actions = re.findall(
+            r"^\| `(regodoc\.[a-z0-9_.]+)`(?:, `(regodoc\.[a-z0-9_.]+)`)? \|", text, re.M
+        )
+        codes = {code for pair in actions for code in pair if code}
+        self.assertEqual(
+            codes,
+            {
+                "regodoc.manifest.grammar_newer",
+                "regodoc.manifest.grammar_old",
+                "regodoc.grammar.upgraded",
+                "regodoc.limit.time",
+                "regodoc.limit.memory",
+                "regodoc.not_implemented",
+            },
+        )
+        self.assertNotIn("decide solo in base al codice d'uscita", CONTRACT)
+        for family in ("grammar", "header", "theme", "tex"):
+            self.assertIn(f"`regodoc.{family}.*`", text)
+
+    def test_memory_is_not_enforced_by_the_engine(self) -> None:
+        resources = declaration.describe()["resources"]
+        self.assertIs(resources["enforced"], False)
+        self.assertEqual(resources["memory_enforced_on"], [])
+        text = flat(section("2"))
+        self.assertIn("`RLIMIT_AS`", text)
+        self.assertIn("codice 3 con `regodoc.limit.memory`", text)
+
+    def test_theme_limits_are_declared(self) -> None:
+        self.assertEqual(
+            declaration.describe()["theme"]["limits"], {"files": 200, "bytes": 8 * 1024 * 1024}
+        )
+        self.assertIn("`info.theme.limits`", section("3"))
+
+    def test_theme_package_check(self) -> None:
+        text = flat(section("6.1"))
+        self.assertIn("**chiede direttamente**", text)
+        self.assertIn("non contano", text)
+        self.assertIn("Conta solo l'estensione `.sty`", text)
+
+    def test_build_identifies_the_tex_image(self) -> None:
+        self.assertIn("`version_line`", section("4.3"))
+        self.assertIn("`tex.version_line`", section("10"))
+
+    def test_exit_codes_for_failed_compilation_and_missing_tex(self) -> None:
+        text = section("7")
+        for code in ("regodoc.theme.compile", "regodoc.tex.missing", "regodoc.limit.memory"):
+            self.assertIn(f"`{code}`", text)
+
+    def test_callers_compare_canonical_files(self) -> None:
+        self.assertIn("**non quelle di `validate`**", flat(section("11")))
+        self.assertIn("descrive **l'archivio d'uscita**", flat(section("4.2")))
+
+    def test_enforcement_is_not_a_capability(self) -> None:
+        self.assertNotIn("limits.enforced", CONTRACT)
 
     def test_no_internal_codes_in_the_contract(self) -> None:
         self.assertNotRegex(CONTRACT, r"\b(?:DL|CP|CMP|MAC)-\d+|\bA\d{1,2}\b|\blotto\b|4ter")
@@ -167,9 +234,11 @@ class ReportContractTest(unittest.TestCase):
             data = (EXAMPLE / item["path"]).read_bytes()
             self.assertEqual(item["sha256"], hashlib.sha256(data).hexdigest())
             self.assertEqual(item["bytes"], len(data))
-        self.assertEqual(report["header"]["title"], "Rinnovo della rete della Cantina Colle Rovere")
-        self.assertEqual(report["header"]["date"], "2026-10-05")
-        self.assertEqual(report["header"]["language"], "it")
+        header = report["package_header"]
+        self.assertEqual(header["title"], "Rinnovo della rete della Cantina Colle Rovere")
+        self.assertEqual(header["date"], "2026-10-05")
+        self.assertEqual(header["language"], "it")
+        self.assertNotIn("header", report)
 
     def test_files_sha256_definition(self) -> None:
         _, report = json_run("validate", str(EXAMPLE), "--json")
@@ -198,6 +267,34 @@ class ReportContractTest(unittest.TestCase):
                 archive.write_bytes(build_zip(files))
                 _, report = json_run("validate", str(archive), "--json")
                 self.assertEqual(report["document"], document)
+
+    def test_generator_is_returned_only_when_well_formed(self) -> None:
+        good = {"engine": "regodoc", "version": "0.1.0"}
+        cases = (
+            (good, good),
+            ({"engine": "regodoc"}, None),
+            ({**good, "extra": "x"}, None),
+            ({"engine": ["a"], "version": "1"}, None),
+            ({"engine": "x" * 60000, "version": "1"}, None),
+            ("regodoc 0.1.0", None),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for generator, expected in cases:
+                with self.subTest(generator=str(generator)[:40]):
+                    manifest = {"format": "regodoc", "grammar": "rego/1", "generator": generator}
+                    files = {**example_files(), "manifest.json": json.dumps(manifest).encode()}
+                    archive = Path(tmp) / "p.regodoc"
+                    archive.write_bytes(build_zip(files))
+                    _, report = json_run("validate", str(archive), "--json")
+                    self.assertEqual(report["generator"], expected)
+
+    def test_archive_errors_do_not_name_the_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "tmp-8f3a1c.regodoc"
+            archive.write_bytes(b"non un archivio")
+            _, report = json_run("validate", str(archive), "--json")
+        self.assertEqual(report["errors"][0]["code"], "regodoc.archive.invalid")
+        self.assertEqual(report["errors"][0]["file"], "")
 
     def test_fifo_is_a_usage_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

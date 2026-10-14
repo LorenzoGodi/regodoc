@@ -4,6 +4,8 @@ import contextlib
 import io
 import json
 import os
+import random
+import resource
 import shutil
 import subprocess
 import sys
@@ -14,7 +16,7 @@ from unittest import mock
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
-from tests.support import EXAMPLE
+from tests.support import EXAMPLE, build_zip, example_files
 
 
 def run_cli(*argv: str) -> tuple[int, str, str]:
@@ -253,6 +255,78 @@ class ModuleEntryPointTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["engine"], "regodoc")
+
+
+def heavy_package() -> bytes:
+    """Un pacchetto lecito nell'involucro ma che chiede molta memoria per essere letto."""
+    files = example_files()
+    structure = files["structure.toml"].decode()
+    generator = random.Random(1)  # noqa: S311 - prova ripetibile
+    words = "abcdefghilmnoprstuv"
+
+    def paragraph() -> str:
+        return " ".join("".join(generator.choice(words) for _ in range(7)) for _ in range(12))
+
+    body = "".join(f"<p>{paragraph()}</p>\n" for _ in range(3800))
+    for number in range(40):
+        structure += f'\n[[part]]\nid = "p{number}"\ntitle = "P{number}"\naccent = "gray"\n'
+        files[f"parts/p{number}.xml"] = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n<part>\n'
+            f'<section id="s{number}"><title>T</title>\n{body}</section>\n</part>\n'
+        ).encode()
+    files["structure.toml"] = structure.encode()
+    return build_zip(files)
+
+
+class MemoryTest(unittest.TestCase):
+    def test_memory_error_is_an_environment_error(self) -> None:
+        with mock.patch("regodoc.cli.validate_package", side_effect=MemoryError):
+            code, out, err = run_cli("validate", str(EXAMPLE), "--json")
+        self.assertEqual(code, ExitCode.ENVIRONMENT)
+        report = json.loads(out)
+        self.assertEqual(report["errors"][0]["code"], "regodoc.limit.memory")
+        self.assertIn("non ritentare", report["errors"][0]["message"])
+        self.assertNotIn("Traceback", err)
+
+    @unittest.skipUnless(sys.platform == "linux", "RLIMIT_AS vale come limite solo su Linux")
+    def test_address_space_limit(self) -> None:
+        limit = 64 * 1024 * 1024
+
+        def limited() -> None:
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
+        root = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / "p.regodoc"
+            package.write_bytes(heavy_package())
+            result = subprocess.run(
+                [sys.executable, "-I", "-B", "-c", _ENTRY, str(root / "src"), str(package)],
+                capture_output=True,
+                check=False,
+                timeout=120,
+                preexec_fn=limited,
+                cwd=folder,
+            )
+        self.assertEqual(result.returncode, ExitCode.ENVIRONMENT, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual([e["code"] for e in report["errors"]], ["regodoc.limit.memory"])
+
+
+# Avvia il motore da src/ anche con -I, che esclude PYTHONPATH.
+_ENTRY = (
+    "import sys; sys.path.insert(0, sys.argv[1]); from regodoc.cli import main; "
+    "sys.exit(main(['validate', sys.argv[2], '--json']))"
+)
+
+
+class NoCommandTest(unittest.TestCase):
+    def test_json_without_command(self) -> None:
+        code, out, _ = run_cli("--json")
+        self.assertEqual(code, ExitCode.USAGE)
+        report = json.loads(out)
+        self.assertIsNone(report["command"])
+        self.assertEqual(report["exit_code"], ExitCode.USAGE)
+        self.assertEqual(report["errors"][0]["code"], "regodoc.usage")
 
 
 if __name__ == "__main__":

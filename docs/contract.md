@@ -34,8 +34,14 @@ motore non cambia.** Tutto ciò che il motore può aggiungere senza cambiarlo è
 ### 2.1 Comandi e opzioni
 
 ```
-python -I -B -m regodoc [--contract N] COMANDO [ARGOMENTI] [--json] [--strict]
+python -I -B -m regodoc [--contract N] info [--json]
+python -I -B -m regodoc [--contract N] COMANDO ARGOMENTI [--json] [--strict]
+python -I -B -m regodoc --version
+python -I -B -m regodoc -h
 ```
+
+`--version` e `-h` scrivono testo per le persone e restano fuori dalla promessa del rapporto
+JSON (§4.1): chi chiama da un programma usa `info`.
 
 | Comando | Argomenti | Uscita | Note |
 |---|---|---|---|
@@ -50,7 +56,8 @@ Opzioni comuni:
 - `--json`: il rapporto (§4) va su stdout. Senza, i messaggi vanno su stderr in forma
   leggibile e stdout resta vuoto. Chi chiama da un programma usa sempre `--json`, anche con
   `info`.
-- `--strict`: gli avvisi contano come errori, salvo gli avvisi informativi (§4.4). Rego non lo
+- `--strict` (non per `info`): gli avvisi contano come errori, salvo gli avvisi informativi
+  (§4.4). Rego non lo
   usa al caricamento dei pacchetti: gli avvisi li mostra a chi ha caricato il pacchetto.
 - `--contract N`: chi chiama dichiara la versione del contratto che si aspetta. Se il motore
   non la supporta, esce con il codice 2 e il rapporto minimo (§4.1), nella forma stabile fra
@@ -59,8 +66,12 @@ Opzioni comuni:
 **L'uscita `-o`.** È il percorso di un file (per `--format latex`, di una cartella) che il
 motore crea in modo atomico: scrive accanto a un nome temporaneo e lo rinomina solo se il
 comando è riuscito, quindi l'uscita esiste solo con il codice 0. Se il percorso esiste già
-viene sostituito. La cartella che lo contiene deve esistere: se manca, il codice è 2; se non
-è scrivibile, 3. L'uscita non può coincidere con il pacchetto d'ingresso (codice 2).
+viene sostituito per intero: un file, oppure, per `--format latex`, una cartella con tutto il
+suo contenuto. Se il percorso è un collegamento simbolico, il motore sostituisce il
+collegamento, non ciò a cui punta. La cartella che lo contiene deve esistere: se manca, il
+codice è 2; se non è scrivibile, 3. L'uscita non può coincidere con il pacchetto d'ingresso
+(codice 2). `--files-dir` deve indicare una cartella che esiste ed è vuota, altrimenti il
+codice è 2; il motore non la svuota e non la crea.
 
 ### 2.2 Ambiente
 
@@ -81,24 +92,38 @@ Chi chiama avvia il motore così:
 Per pdflatex il motore costruisce un ambiente da zero, senza ereditare quello del chiamante:
 `PATH` ridotto alla cartella di `pdflatex`; `HOME`, `TEXMFHOME`, `TEXMFVAR` e `TEXMFCONFIG`
 nella cartella di lavoro; `openin_any=p`, `openout_any=p`, `shell_escape=f`; `MKTEXFMT=0`,
-`MKTEXPK=0`, `MKTEXTFM=0`; `SOURCE_DATE_EPOCH` dalla data del documento e
+`MKTEXPK=0`, `MKTEXTFM=0`; `LC_ALL=C.UTF-8`; `SOURCE_DATE_EPOCH` dalla data del documento e
 `FORCE_SOURCE_DATE=1`. pdflatex gira con `-no-shell-escape -interaction=batchmode
--halt-on-error -recorder`.
+-halt-on-error -recorder`, **nello stesso gruppo di processi del motore**, così chi uccide il
+gruppo (§2.3) uccide anche pdflatex. L'uscita di pdflatex e di ogni altro processo figlio va
+in file della cartella di lavoro, mai su stdout o stderr del motore: su stdout c'è solo il
+rapporto.
 
 ### 2.3 Risorse e tempo
 
 `info` dichiara in `resources` il tempo massimo per comando e il limite di memoria, e con
-`resources.enforced` se questa versione del motore li applica da sé.
+`resources.enforced` se questa versione del motore li applica da sé; `memory_enforced_on`
+elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto finché `enforced` è
+`false`.
 
 - Con `enforced: false`, come in questa versione, il motore non li applica: li applica chi
-  chiama. Avvia il motore in un gruppo di processi suo (per esempio `start_new_session`) e,
-  scaduti `time_seconds` del comando più un margine di 10 secondi, uccide l'intero gruppo con
-  `SIGKILL`, compresi i processi di pdflatex. Tratta il caso come codice 3 con il codice
-  d'errore `regodoc.limit.time`.
+  chiama.
+  - **Tempo.** Chi chiama avvia il motore in un gruppo di processi suo (per esempio
+    `start_new_session`) e, scaduti `time_seconds` del comando più un margine di 10 secondi,
+    uccide l'intero gruppo con `SIGKILL`, compresi i processi di pdflatex. Tratta il caso
+    come codice 3 con il codice d'errore `regodoc.limit.time`.
+  - **Memoria.** Chi chiama limita la memoria del processo prima di avviare il motore: su
+    Linux con il limite dello spazio d'indirizzi (`RLIMIT_AS`, per esempio con `setrlimit`
+    nel processo figlio prima dell'avvio, o con `prlimit`) a `memory_bytes`, oppure con il
+    limite di memoria di un cgroup. Il limite vale anche per pdflatex, che lo eredita. Se la
+    memoria finisce mentre il motore lavora, il motore esce da sé con il codice 3 e
+    `regodoc.limit.memory`. Se invece il sistema uccide il processo (per esempio il cgroup
+    con `SIGKILL`), chi chiama tratta il caso come codice 3 con `regodoc.limit.memory`.
 - Con `enforced: true` il motore applica i limiti da sé ed esce con il codice 3 e
   `regodoc.limit.time`. Da quella versione accetta `--max-seconds S`, che abbassa il tempo
   dichiarato; un valore più alto è ignorato.
-- Un tempo superato non si ritenta alla cieca: con lo stesso pacchetto si ripete.
+- Un tempo superato o la memoria esaurita non si ritentano alla cieca: con lo stesso pacchetto
+  si ripetono.
 
 ## 3. Ingresso
 
@@ -118,7 +143,8 @@ regolare o una cartella: una FIFO o un dispositivo danno il codice 2.
 
 Un file JSON con i dati che il pacchetto non contiene e che servono alla cornice del tema. Si
 legge con le regole del manifesto (specifica, §1.3): al massimo 64 KiB, UTF-8, nessuna chiave
-ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e nessun'altra:
+ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e nessun'altra. L'esempio è scritto per
+la versione 1 del contratto; finché il contratto è in bozza `contract` vale 0:
 
 ```json
 {
@@ -155,7 +181,7 @@ Un'intestazione mancante, illeggibile o sbagliata ferma `build` con il codice 2 
 
 Una cartella conforme al contratto del tema (§6). Senza `--theme` il motore usa il proprio
 tema neutro. Regole della cartella: niente collegamenti simbolici né file speciali; al massimo
-200 file e 8 MiB in tutto; nomi con caratteri in `[a-z0-9._/-]`. Il motore la copia nella
+200 file e 8 MiB in tutto (`info.theme.limits`); nomi con caratteri in `[a-z0-9._/-]`. Il motore la copia nella
 propria cartella di lavoro senza seguire collegamenti. Un tema mancante, illeggibile o
 sbagliato ferma `build` con il codice 2 e un errore `regodoc.theme.*`.
 
@@ -169,8 +195,15 @@ stesso rapporto.
 
 Con `--json` **ogni** uscita di ogni comando porta almeno queste chiavi, nella stessa forma in
 tutte le versioni del contratto: anche gli errori della riga di comando, il contratto non
-supportato e i codici 3, 4 e 130. L'unica eccezione è stdout chiuso da chi legge: il rapporto
-non ha più dove andare, e il codice 3 basta.
+supportato e i codici 3, 4 e 130. Vale anche quando la riga di comando non nomina un comando:
+`regodoc --json` esce con il codice 2 e il rapporto con `command` a `null`. Le eccezioni sono
+due, ed è l'elenco completo:
+
+- stdout chiuso da chi legge: il rapporto non ha più dove andare, e il codice 3 basta;
+- processo ucciso da un segnale, per esempio da chi chiama allo scadere del tempo (§2.3):
+  non c'è né rapporto né codice d'uscita del motore, e chi chiama tratta il caso come
+  codice 3 con `regodoc.limit.time`, oppure con `regodoc.limit.memory` se l'ha ucciso il
+  limite di memoria.
 
 | Chiave | Contenuto |
 |---|---|
@@ -194,16 +227,20 @@ pacchetto che la contiene.
 
 | Chiave | Contenuto |
 |---|---|
-| `input` | `sha256` e `bytes` del file ricevuto; `null` per una cartella |
+| `input` | `sha256` e `bytes` del file ricevuto; `null` per una cartella e per un file oltre `limits.envelope.compressed_bytes`, che il motore non legge per intero |
 | `grammar` | la grammatica dichiarata nel manifesto |
-| `generator` | `engine` e `version` del motore che ha scritto il pacchetto, dal manifesto |
+| `generator` | `engine` e `version` del motore che ha scritto il pacchetto, dal manifesto; `null` se `generator` non ha esattamente queste due chiavi, testi da 1 a 64 caratteri |
 | `document`, `base_version` | i valori del manifesto, verificati solo nella forma (specifica, §1.3): il motore non sa che cosa identificano |
 | `files` | i file di contenuto, cioè tutti tranne `mimetype`, `manifest.json` e `README.md`, nell'ordine canonico (specifica, §9), ciascuno con `path`, `sha256` e `bytes` |
 | `files_sha256` | l'impronta dell'insieme dei file, sotto |
-| `header` | `title`, `subject`, `reference`, `date` (`AAAA-MM-GG`) e `language` del pacchetto; `null` per una chiave assente |
+| `package_header` | `title`, `subject`, `reference`, `date` (`AAAA-MM-GG`) e `language` dal `structure.toml` del pacchetto; `null` per una chiave assente. Il nome dice che viene dal pacchetto, per non confonderlo con l'intestazione di `--header` (§3.2) |
 
-Per `validate` i file sono quelli ricevuti, così come sono. Per `canon` e `upgrade` sono
-quelli scritti nell'archivio d'uscita, in forma canonica.
+**Che cosa descrivono i campi.** Per `validate` descrivono il pacchetto ricevuto: i file così
+come sono arrivati, anche fuori dalla forma canonica. Per `canon` e `upgrade` ogni campo,
+salvo `input`, descrive **l'archivio d'uscita**: `grammar` è la grammatica d'uscita,
+`generator` è questo motore, `document` e `base_version` sono quelli scritti nel manifesto
+d'uscita, `files` e `files_sha256` sono i file canonici, `package_header` è quello d'uscita.
+`input` resta il file ricevuto.
 
 **`files_sha256`.** È lo sha256 di un testo UTF-8 con una riga per file di `files`,
 nell'ordine di `files`: l'impronta esadecimale minuscola, uno spazio, la dimensione in byte
@@ -216,15 +253,17 @@ le versioni la usa come impronta della versione e la scrive in `base_version` co
 
 | Chiave | Contenuto |
 |---|---|
-| `input`, `grammar`, `header` | come al §4.2 |
-| `outputs` | i file scritti, con `path`, `sha256` e `bytes` |
+| `input`, `grammar`, `package_header` | come al §4.2 |
+| `outputs` | i file scritti, con `path`, `sha256` e `bytes`. `path` è il percorso di `-o` così come chi chiama l'ha scritto; per `--format latex`, un elemento per ogni file della cartella, con il percorso di `-o`, una `/` e il percorso relativo, in ordine dei byte UTF-8 del percorso |
 | `passes` | le passate di pdflatex eseguite |
 | `theme` | `name` e `version` dal `theme.toml` del tema usato, e `sha256`, l'impronta dell'albero del tema |
+| `tex` | `version_line`, la prima riga di `pdflatex --version` (per esempio `pdfTeX 3.141592653-2.6-1.40.26 (TeX Live 2024)`), che identifica l'immagine TeX usata; `null` con `--format latex` |
 
-**`theme.sha256`.** È calcolata come `files_sha256`, sui file della cartella del tema in
-ordine alfabetico di percorso, con i percorsi relativi alla cartella. Per chi conserva i PDF
-generati, il **generatore** di un PDF è la coppia versione del motore e `theme.sha256`: un
-cambiamento dell'uno o dell'altro invalida i PDF già prodotti.
+**`theme.sha256`.** È calcolata come `files_sha256`, sui file della cartella del tema
+ordinati per i byte UTF-8 del percorso, con i percorsi relativi alla cartella. Per chi
+conserva i PDF generati, il **generatore** di un PDF è la terna versione del motore,
+`theme.sha256` e `tex.version_line`: un cambiamento di uno dei tre invalida i PDF già
+prodotti.
 
 ### 4.4 Errori e avvisi
 
@@ -238,25 +277,28 @@ Ogni problema ha `severity`, `code`, `message`, `file`, `line` e `column` (speci
   tema non definisce (§6.2); `--strict` non lo conta.
 
 **Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del pacchetto
-accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi, poi la lettura si
-ferma con `regodoc.limit.problems`. Con i campi del §4.2 per 200 file, un rapporto resta sotto
+accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi più l'errore
+`regodoc.limit.problems`, con cui la lettura si ferma. Con i campi del §4.2 per 200 file, un rapporto resta sotto
 1 MiB.
 
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
 `regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`,
-`regodoc.header.*`, `regodoc.theme.*`; fuori dalle famiglie: `regodoc.usage`,
+`regodoc.header.*`, `regodoc.theme.*`, `regodoc.tex.*`; fuori dalle famiglie: `regodoc.usage`,
 `regodoc.environment`, `regodoc.not_implemented`, `regodoc.interrupted`,
 `regodoc.internal`.
 
-Chi chiama **decide solo in base al codice d'uscita** (§7). I codici d'errore servono a
-mostrare il problema; tre cambiano l'azione di chi chiama:
+Chi chiama sceglie l'azione **prima dal codice d'uscita** (§7). I codici d'errore e d'avviso
+servono a mostrare il problema; questi, e solo questi, precisano l'azione dentro lo stesso
+codice d'uscita:
 
-| Codice | Azione |
-|---|---|
-| `regodoc.manifest.grammar_newer` | il pacchetto viene da un motore più recente: serve aggiornare la copia fissata del motore |
-| `regodoc.limit.time` | non ritentare con lo stesso pacchetto |
-| `regodoc.not_implemented` | la funzione non c'è in questa versione: nasconderla nell'interfaccia |
+| Codice | Uscita | Azione |
+|---|---|---|
+| `regodoc.manifest.grammar_newer` | 1 | il pacchetto viene da un motore più recente: serve aggiornare la copia fissata del motore |
+| `regodoc.manifest.grammar_old` | 1 | `canon` non scrive più quella grammatica: passare il pacchetto per `upgrade` (§8) |
+| `regodoc.grammar.upgraded` | 0 | avviso informativo: il pacchetto è in una grammatica precedente e il motore l'ha aggiornato in memoria; per chi conserva le versioni è il segnale del «primo bisogno» (§8) |
+| `regodoc.limit.time`, `regodoc.limit.memory` | 3 | non ritentare con lo stesso pacchetto |
+| `regodoc.not_implemented` | 3 | la funzione non c'è in questa versione: nasconderla nell'interfaccia |
 
 ## 5. La dichiarazione (`regodoc info`)
 
@@ -271,13 +313,13 @@ mostrare il problema; tre cambiano l'azione di chi chiama:
 | `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`), per la firma del §3.1 |
 | `grammars` | `current`, la grammatica che il motore scrive, e `read`, quelle che sa leggere, dalla più vecchia |
 | `limits` | `envelope` e `content`, tabella del §5.1 |
-| `resources` | `time_seconds` per comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il limite di memoria è applicato) ed `enforced` (§2.3) |
+| `resources` | `time_seconds` per comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il motore applica da sé il limite di memoria: vuoto finché `enforced` è `false`) ed `enforced` (§2.3) |
 | `commands` | per ciascun comando, `ready` oppure `draft` (non ancora disponibile, codice 3) |
 | `capabilities` | le capacità di questa versione (§5.2) |
 | `languages` | le lingue del documento supportate |
 | `passes` | `min` e `max` delle passate di pdflatex che `build` può eseguire |
 | `tex` | `packages`: i pacchetti LaTeX che il motore e il tema neutro caricano |
-| `theme` | `contracts`, le versioni del contratto del tema supportate; `roles`, i ruoli della tavolozza; `hooks`, gli agganci (§6) |
+| `theme` | `contracts`, le versioni del contratto del tema supportate; `roles`, i ruoli della tavolozza; `hooks`, gli agganci (§6); `limits`, `files` e `bytes` della cartella del tema (§3.3) |
 
 Chi chiama legge la dichiarazione quando cambia la versione fissata del motore e la conserva.
 Per esempio Rego applica `limits.envelope.compressed_bytes` all'ingresso, concede a ogni
@@ -322,7 +364,9 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `build.pdf`, `build.latex` | `build` nei due formati |
 | `build.theme` | `build` con `--theme` |
 | `upgrade` | `upgrade` |
-| `limits.enforced` | il motore applica da sé i limiti di risorse (§2.3) |
+
+Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
+`resources.enforced` (§2.3).
 
 ## 6. Il contratto del tema
 
@@ -370,11 +414,18 @@ I colori dell'esempio sono inventati per questo documento e non sono quelli di n
 | `tex_packages` | i pacchetti LaTeX che `theme.sty` carica oltre a quelli di `info.tex.packages` |
 | `palette` | i colori, in esadecimale `RRGGBB`, per i ruoli di `info.theme.roles` |
 
-**Pacchetti LaTeX.** L'elenco del tema è suo: non allarga quello del motore. Il motore compila
-con `-recorder` e confronta i file aperti, dal file `.fls`, con l'unione di
-`info.tex.packages` e `tex_packages`: un pacchetto caricato fuori da quell'unione ferma
-`build` con il codice 2 e `regodoc.theme.package`. Chi gestisce l'immagine TeX confronta lo
-stesso elenco con i pacchetti installati.
+**Pacchetti LaTeX.** L'elenco del tema è suo: non allarga quello del motore. Il motore controlla
+solo i pacchetti che `theme.sty` **chiede direttamente**, con `\usepackage`,
+`\RequirePackage` o `\RequirePackageWithOptions`: `regodoc.sty` li registra con l'aggancio
+`package/before` di LaTeX mentre si carica `theme.sty`. Ognuno deve stare in `tex_packages`
+o in `info.tex.packages`, altrimenti `build` si ferma con il codice 2 e
+`regodoc.theme.package`. Le dipendenze che quei pacchetti caricano a loro volta (per esempio
+`pgf` sotto `tikz`, `kvoptions` sotto `hyperref`) non contano: arrivano con il pacchetto
+nell'immagine TeX. Conta solo l'estensione `.sty`; `theme.sty` non può caricare classi
+(`.cls`), e i file `.tex`, `.def`, `.cfg`, `.fd` e i caratteri non si controllano per nome:
+la lettura dei file resta limitata dall'ambiente del §2.2. Il file `.fls` di `-recorder`
+resta per chi gestisce l'immagine TeX, che confronta lo stesso elenco con i pacchetti
+installati.
 
 ### 6.2 Ruoli, non vocabolario
 
@@ -384,6 +435,10 @@ riquadro `warning` diventa il ruolo `warning`, un riquadro `status` il ruolo del
 della parte, un'etichetta `to-verify` il ruolo `warning` con la dicitura «da verificare». Un
 valore aggiunto alla grammatica viene tradotto in un ruolo esistente, quindi un'aggiunta
 compatibile alla grammatica non rompe un tema.
+
+Gli otto accenti delle parti in `structure.toml` (`azure`, `slate`, `sage`, `bronze`, `plum`,
+`brick`, `olive`, `gray`) sono ruoli con lo stesso nome; `ok`, `warning`, `critical` e
+`muted` servono a riquadri, etichette e toni.
 
 Un ruolo che il tema non definisce prende il valore del tema neutro, con l'avviso informativo
 `regodoc.theme.role_default`.
@@ -424,9 +479,9 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
 |---|---|---|
 | 0 | esito positivo, anche con avvisi (senza `--strict`) | usa l'uscita |
 | 1 | pacchetto rifiutato per errori, o per avvisi con `--strict`; l'elenco è nel rapporto | mostra gli errori a chi ha caricato il pacchetto |
-| 2 | errore d'uso: argomenti, file mancante o non regolare, opzione sconosciuta, contratto non supportato, intestazione o tema sbagliati, data mancante, uscita non valida | corregge la chiamata: è un difetto di chi chiama |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, stdout chiuso da chi legge, comando non ancora disponibile | segnala l'ambiente; non ritenta alla cieca |
-| 4 | errore interno: un'eccezione non prevista | segnala un difetto del motore; non ritenta |
+| 2 | errore d'uso: argomenti, file mancante o non regolare, opzione sconosciuta, contratto non supportato, intestazione o tema sbagliati, data mancante, uscita non valida; anche un pacchetto valido che non compila con un tema esterno (`regodoc.theme.compile`), perché il difetto è del tema | corregge la chiamata o il tema: è un difetto di chi chiama |
+| 3 | errore d'ambiente: TeX assente (`regodoc.tex.missing`), memoria esaurita (`regodoc.limit.memory`), cartella non scrivibile, tempo massimo superato, stdout chiuso da chi legge, comando non ancora disponibile | segnala l'ambiente; non ritenta alla cieca |
+| 4 | errore interno: un'eccezione non prevista; anche un pacchetto valido che non compila con il tema neutro (`regodoc.internal`), perché il difetto è del motore | segnala un difetto del motore; non ritenta |
 | 130 | interrotto | — |
 
 ## 8. Grammatiche e aggiornamento
@@ -438,8 +493,10 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
   motore scrivono gli stessi byte per gli stessi file di quella grammatica. Altrimenti chi
   confronta le impronte vedrebbe modifiche che nessuno ha fatto.
 - `upgrade` è una funzione pura e idempotente: lo stesso ingresso dà sempre la stessa uscita,
-  e aggiornare un pacchetto già nella grammatica corrente lo lascia com'è. Il rapporto dice
-  `grammar_in` e `grammar_out`. Chi conserva le versioni registra l'uscita come **versione
+  e aggiornare un pacchetto già nella grammatica corrente dà gli stessi byte di `canon` senza
+  opzioni. `upgrade` conserva `document` e `base_version` del manifesto d'ingresso così come
+  sono; chi vuole valori diversi li riscrive con `canon`. Il rapporto dice `grammar_in` e
+  `grammar_out`; i campi del §4.2 descrivono l'uscita. Chi conserva le versioni registra l'uscita come **versione
   nuova**, tracciata, mai come riscrittura della precedente.
 - `canon` non aggiorna mai la grammatica: su una grammatica precedente scrive la forma
   canonica di quella grammatica, se il motore la sa ancora scrivere, altrimenti rifiuta con il
@@ -448,17 +505,21 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
   segnalano con l'avviso informativo `regodoc.grammar.upgraded`.
 - Una grammatica più nuova di `grammars.current` è rifiutata con il codice 1 e l'errore
   `regodoc.manifest.grammar_newer`. Il messaggio nomina la grammatica del pacchetto, quelle
-  che il motore legge e, se il manifesto lo dice ed è più recente, il motore che ha scritto il
-  pacchetto.
+  che il motore legge, la versione del motore e, se il manifesto ha un `generator` valido
+  (§4.2), il motore che ha scritto il pacchetto.
 - Le aggiunte dentro una grammatica si leggono solo dai motori che le conoscono: un motore più
   vecchio rifiuta un pacchetto che usa un elemento nato dopo di lui, come un errore di
   vocabolario.
 
 Quando aggiornare lo decide chi conserva le versioni. In Rego è deciso (14/10/2026):
 
-- l'aggiornamento è **automatico al primo bisogno**, cioè alla prima esportazione o alla prima
-  compilazione che richiede la grammatica corrente; non c'è un comando né una rotta apposita
-  per chiederlo;
+- l'aggiornamento è **automatico al primo bisogno**. Il bisogno si riconosce da ciò che il
+  motore restituisce, non dal pacchetto: è la prima esportazione o la prima compilazione di
+  una versione il cui `grammar`, nel rapporto (§4.2), è diverso da `info.grammars.current`.
+  `build` legge anche le grammatiche precedenti, quindi senza questa regola un PDF si
+  compilerebbe senza aggiornare; l'avviso `regodoc.grammar.upgraded` dice la stessa cosa a
+  chi guarda solo il rapporto di `validate` o di `build`. Non c'è un comando né una rotta
+  apposita per chiedere l'aggiornamento;
 - Rego registra l'uscita di `upgrade` come versione nuova con origine «aggiornamento» e come
   autore chi ha chiesto l'operazione che l'ha resa necessaria;
 - la versione di partenza resta com'era: l'aggiornamento non la riscrive mai.
@@ -493,7 +554,8 @@ Due compilazioni dello stesso pacchetto danno lo stesso PDF, byte per byte, quan
 
 - la versione del motore;
 - `theme.sha256`;
-- l'immagine TeX, cioè le versioni dei pacchetti TeX installati;
+- l'immagine TeX, cioè le versioni dei pacchetti TeX installati, che il rapporto di `build`
+  identifica con `tex.version_line` (§4.3);
 - la data del documento (§3.2) e l'intestazione;
 - le opzioni di `build`.
 
@@ -538,7 +600,10 @@ tabella cambia schema per un'evoluzione del formato.
   con una `base_version` più vecchia della corrente. Chi chiama lo aggiorna con `upgrade` e
   poi confronta i file con quelli della versione aggiornata, come per ogni altra modifica
   concorrente: l'aggiornamento non conta come modifica dell'autore, perché la forma canonica
-  di una grammatica è fissa.
+  di una grammatica è fissa. Per confrontare i file chi chiama usa le impronte che restituisce
+  `canon` (o `upgrade`), cioè dei file in forma canonica, **non quelle di `validate`**, che
+  descrivono i file così come sono arrivati: un autore che ha solo cambiato i rientri
+  avrebbe impronte diverse senza aver cambiato niente.
 - **PDF già prodotti.** Cambiano generatore quando cambia la versione del motore o
   `theme.sha256` (§4.3): chi li conserva li considera da rigenerare.
 - **Spazio.** Ogni versione aggiunge solo i file cambiati, se chi chiama li conserva per

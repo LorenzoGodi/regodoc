@@ -34,7 +34,8 @@ GRAMMARS_READ: Final = ("rego/1",)
 _KIB: Final = 1024
 _MIB: Final = 1024 * _KIB
 
-# Limiti dell'involucro: li applica Rego all'ingresso e li ripete il motore.
+# Limiti dell'involucro: li applica il motore; chi riceve il pacchetto controlla all'ingresso
+# solo la dimensione e la firma (contratto, §3.1).
 ENVELOPE_LIMITS: Final = MappingProxyType(
     {
         "compressed_bytes": 12 * _MIB,
@@ -89,17 +90,19 @@ COMMANDS: Final = MappingProxyType(
 )
 
 
-# Risorse per comando: tempo massimo in secondi e memoria, applicata solo dove il sistema lo
-# permette (contratto, §5).
+# Risorse per comando: tempo massimo in secondi e memoria (contratto, §2.3 e §5).
 RESOURCES: Final = MappingProxyType(
     {
         "time_seconds": MappingProxyType(
             {"info": 5, "validate": 30, "canon": 30, "build": 300, "upgrade": 60}
         ),
         "memory_bytes": 1024 * _MIB,
-        "memory_enforced_on": ("linux",),
+        # I sistemi dove il motore applica da sé il limite di memoria: nessuno finché
+        # «enforced» è falso.
+        "memory_enforced_on": (),
         # Questa versione non applica ancora i limiti di risorse: li deve applicare chi chiama,
-        # uccidendo il gruppo di processi del motore allo scadere (contratto, §2.3).
+        # limitando la memoria all'avvio e uccidendo il gruppo di processi del motore allo
+        # scadere del tempo (contratto, §2.3).
         "enforced": False,
     }
 )
@@ -129,6 +132,8 @@ THEME_HOOKS: Final = (
     "RegodocBox",
     "RegodocLabel",
 )
+# Limiti della cartella di un tema esterno (contratto, §3.3).
+THEME_LIMITS: Final = MappingProxyType({"files": 200, "bytes": 8 * _MIB})
 
 # Capacità stabili di questa versione (docs/contract.md, §5 e §9).
 CAPABILITIES: Final = ("validate", "validate.directory")
@@ -189,5 +194,6 @@ def describe() -> dict[str, object]:
             "contracts": list(THEME_CONTRACTS),
             "roles": list(THEME_ROLES),
             "hooks": list(THEME_HOOKS),
+            "limits": dict(THEME_LIMITS),
         },
     }

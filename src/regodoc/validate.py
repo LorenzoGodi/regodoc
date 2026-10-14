@@ -72,16 +72,25 @@ class Validation:
                 "date": date.isoformat() if date is not None else None,  # type: ignore[attr-defined]
                 "language": self.structure.language,
             }
-        generator = self.manifest.get("generator")
         return {
             "grammar": self.grammar,
-            "generator": generator if isinstance(generator, dict) else None,
+            "generator": well_formed_generator(self.manifest.get("generator")),
             "document": _valid_or_none(self.manifest.get("document"), _DOCUMENT),
             "base_version": _valid_or_none(self.manifest.get("base_version"), _DIGEST),
             "files": files if self.package is not None else None,
             "files_sha256": files_digest(files) if self.package is not None else None,
-            "header": header,
+            "package_header": header,
         }
+
+
+def well_formed_generator(value: object) -> dict[str, str] | None:
+    """``generator`` del manifesto se ha esattamente ``engine`` e ``version``, testi da 1 a
+    64 caratteri; altrimenti None, così il rapporto non ripete valori arbitrari."""
+    if not isinstance(value, dict) or set(value) != {"engine", "version"}:
+        return None
+    if any(not isinstance(v, str) or not 0 < len(v) <= 64 for v in value.values()):
+        return None
+    return {"engine": value["engine"], "version": value["version"]}
 
 
 def _valid_or_none(value: object, pattern: re.Pattern[str]) -> str | None:
@@ -221,9 +230,9 @@ def _check_manifest(
         current = _GRAMMAR.fullmatch(GRAMMAR_CURRENT)
         if current and int(match.group(1)) > int(current.group(1)):
             writer = ""
-            generator = manifest.get("generator")
-            if isinstance(generator, dict) and isinstance(generator.get("version"), str):
-                writer = f", scritto da regodoc {clip(generator['version'])}"
+            generator = well_formed_generator(manifest.get("generator"))
+            if generator is not None:
+                writer = f", scritto da {clip(generator['engine'])} {clip(generator['version'])}"
             report.error(
                 "regodoc.manifest.grammar_newer",
                 f"il pacchetto usa la grammatica «{grammar}»{writer}, più nuova di quelle che "

@@ -152,7 +152,9 @@ class _Entry:
 
 
 def _read_archive(path: Path, report: Collector) -> PackageFiles:
-    where = path.name
+    # Gli errori dell'archivio intero non nominano il file: chi chiama passa spesso un nome
+    # temporaneo, che nel rapporto non direbbe niente (contratto, §4.4).
+    where = ""
     # Passo 1: dimensione del file.
     limit = ENVELOPE_LIMITS["compressed_bytes"]
     with path.open("rb") as handle:

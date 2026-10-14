@@ -29,7 +29,7 @@ class ExitCode(enum.IntEnum):
     OK = 0  # esito positivo, anche con avvisi (senza --strict)
     REFUSED = 1  # pacchetto rifiutato per errori di validazione, o avvisi con --strict
     USAGE = 2  # errore d'uso: argomenti, file mancante, opzione sconosciuta
-    ENVIRONMENT = 3  # errore d'ambiente: TeX assente, cartella non scrivibile, tempo superato
+    ENVIRONMENT = 3  # errore d'ambiente: TeX assente, memoria esaurita, cartella non scrivibile
     INTERNAL = 4  # eccezione non prevista: non deve mai accadere, è un difetto del motore
     INTERRUPTED = 130  # interrotto dall'utente
 
@@ -383,8 +383,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         return int(args.handler(args))
     except UsageExit as exit_:
-        # Errore della riga di comando: argparse ha già scritto uso e messaggio su stderr.
-        if wants_json and command is not None:
+        # Errore della riga di comando: argparse ha già scritto uso e messaggio su stderr. Il
+        # rapporto c'è anche senza comando, con «command» a null (contratto, §4.1).
+        if wants_json:
             with contextlib.suppress(OSError, ValueError):
                 _write_json(
                     _payload(
@@ -405,6 +406,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         _silence_stdout()
         _note("regodoc: errore d'ambiente: l'uscita è stata chiusa prima della fine\n")
         return int(ExitCode.ENVIRONMENT)
+    except MemoryError:
+        # La memoria concessa al processo non basta per questo pacchetto: è un limite
+        # dell'ambiente, non un difetto del motore, e ritentare con lo stesso pacchetto non
+        # serve (contratto, §2.3).
+        return int(
+            _finish(
+                wants_json,
+                command,
+                ExitCode.ENVIRONMENT,
+                "regodoc.limit.memory",
+                "memoria esaurita: il pacchetto chiede più memoria di quella concessa al "
+                "motore; non ritentare con lo stesso pacchetto",
+            )
+        )
     except OSError as error:
         return int(
             _finish(
