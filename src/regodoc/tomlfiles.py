@@ -18,7 +18,7 @@ VARIABLE_TYPES = ("date", *NUMERIC_TYPES, "text")
 VARIABLE_NAME = re.compile(r"[a-z][A-Za-z0-9]{0,47}")
 # Primo gruppo senza zeri iniziali, salvo lo 0 da solo, che non ha gruppi dopo di sé.
 ITALIAN_NUMBER = re.compile(r"-?(?:0|[1-9]\d{0,2}(?:\.\d{3})*)(?:,\d+)?")
-_MAX_INTEGER = 10**15
+_MAX_INTEGER = int(CONTENT_LIMITS["number_abs_max"])
 # Tipi che ammettono valori negativi (§3.1).
 NEGATIVE_TYPES = frozenset({"number", "percent", "eur"})
 _TOML_ERROR_POSITION = re.compile(r"\(at line (\d+), column (\d+)\)")

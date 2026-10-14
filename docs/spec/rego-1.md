@@ -199,12 +199,12 @@ pacchetto li copia nei propri campi a ogni importazione, come proiezione (decisi
 (`docs/contract.md`, §3.2) porta solo i dati della cornice del tema e la data di ripiego; non
 può cambiare titolo, oggetto, riferimento né data del pacchetto.
 
-`date` è la data del documento. Dà la data stampata e l'istante usato per rendere il PDF
-riproducibile: `SOURCE_DATE_EPOCH` vale la mezzanotte UTC di quella data. In ordine:
+`date` è la data del documento: dà la data stampata e l'istante usato per rendere il PDF
+riproducibile. In ordine:
 
-1. `header.date` del pacchetto;
-2. altrimenti `document_created` dell'intestazione JSON, cioè l'istante di creazione del
-   documento (decisione A4);
+1. `header.date` del pacchetto; l'istante è la mezzanotte UTC di quella data;
+2. altrimenti l'**istante** `document_created` dell'intestazione JSON, così com'è: l'istante
+   di creazione del documento (decisione A4);
 3. altrimenti `SOURCE_DATE_EPOCH` dell'ambiente, se chi chiama l'ha impostata; è ignorata
    quando uno dei due valori precedenti c'è;
 4. altrimenti `build` si ferma con un errore d'uso (codice 2).
@@ -723,24 +723,16 @@ I codici sono raggruppati per famiglia: `regodoc.archive.*`, `regodoc.package.*`
 disponibile), `regodoc.interrupted`, `regodoc.internal`. Un codice, una volta pubblicato, non
 cambia significato.
 
-Il comando esce con questi codici, che fanno parte del contratto del motore (`docs/contract.md`, §7):
+I codici d'uscita del comando sono definiti in un solo posto, la tabella normativa del §7
+del contratto del motore (`docs/contract.md`): 0 esito positivo, 1 pacchetto rifiutato, 2
+errore d'uso, 3 errore d'ambiente, 4 errore interno, 130 interrotto.
 
-| Codice | Significato |
-|---|---|
-| 0 | esito positivo, anche con avvisi |
-| 1 | pacchetto rifiutato per errori di validazione, o per avvisi con `--strict`; l'elenco è nel rapporto |
-| 2 | errore d'uso: argomenti, file mancante, opzione sconosciuta |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa da chi legge. Rego non ritenta alla cieca: un tempo superato si ripete con lo stesso pacchetto |
-| 4 | errore interno: un'eccezione non prevista; non deve mai accadere, e le prove avversarie lo dimostrano |
-| 130 | interrotto |
-
-Con `--json`, i comandi che leggono un pacchetto scrivono un rapporto JSON per **ogni** codice
-d'uscita, 2, 3, 4 e 130 compresi; fa eccezione solo l'uscita chiusa, dove il rapporto non ha
-più dove andare. Il rapporto porta sempre il codice d'uscita, errori e avvisi con la
+Con `--json`, ogni comando scrive un rapporto JSON per **ogni** codice d'uscita, 2, 3, 4 e
+130 compresi; fa eccezione solo stdout chiuso da chi legge, dove il rapporto non ha più dove
+andare. Il rapporto porta sempre il codice d'uscita, errori e avvisi con la
 posizione, la versione del motore, la versione del contratto, la grammatica letta e i limiti
 di risorse attivi (`limits_active`, con `null` per un limite non applicato). La sua forma
-esatta è nel contratto (`docs/contract.md`, §4). I codici d'uscita sono quelli decisi il
-12/10/2026 dopo la verifica delle decisioni.
+esatta è nel contratto (`docs/contract.md`, §4).
 
 ---
 
@@ -770,7 +762,8 @@ chi conserva le versioni confronta i file, non gli archivi.
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
   `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; stringhe
-  fra virgolette doppie; commenti rimossi.
+  fra virgolette doppie; commenti rimossi. Un `variables.toml` senza variabili è omesso
+  dall'archivio canonico.
 - **JSON**: chiavi in ordine alfabetico, rientro di due spazi, a capo finale.
 - Testo NFC, a capo LF, UTF-8 senza BOM.
 

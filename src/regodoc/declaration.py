@@ -1,8 +1,10 @@
 """Dichiarazione del motore: versione, grammatiche, limiti e capacità.
 
 Rego legge questi valori dal comando ``regodoc info`` e li applica senza averli scritti
-nel proprio codice (terza regola dell'autonomia). Ogni valore qui è normativo: cambiarlo
-cambia il contratto e va registrato nella specifica.
+nel proprio codice (terza regola dell'autonomia). Ogni valore qui è normativo. Il §9 del
+contratto dice quali cambiamenti non cambiano il contratto (per esempio limiti del contenuto
+più alti, capacità e lingue in più) e quali lo cambiano (per esempio un limite
+dell'involucro più basso o una chiave tolta).
 
 Le unità dei limiti sono binarie: 1 KiB = 1024 byte, 1 MiB = 1024 KiB (specifica, §0 e §7),
 per coerenza con i limiti in byte di Rego, che sono potenze di due.
@@ -24,8 +26,6 @@ PACKAGE_EXTENSION: Final = ".regodoc"
 CONTRACT_VERSION: Final = 0
 # Versioni del contratto che il motore sa servire con --contract.
 CONTRACTS: Final = (0,)
-# Versione del contratto del tema (docs/contract.md, §6).
-THEME_CONTRACT_VERSION: Final = 1
 
 # Grammatica scritta dal motore e grammatiche che sa leggere, dalla più vecchia.
 GRAMMAR_CURRENT: Final = "rego/1"
@@ -59,6 +59,8 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "table_columns_normal_size": 8,
         "cell_characters": 2000,
         "variables": 1500,
+        "number_abs_max": 10**15,
+        "problems": 500,
         "structure_bytes": 64 * _KIB,
         "variables_bytes": 384 * _KIB,
         "manifest_bytes": 64 * _KIB,
@@ -95,7 +97,36 @@ RESOURCES: Final = MappingProxyType(
         ),
         "memory_bytes": 1024 * _MIB,
         "memory_enforced_on": ("linux",),
+        # Questa versione non applica ancora i limiti di risorse: li deve applicare chi chiama,
+        # uccidendo il gruppo di processi del motore allo scadere (contratto, §2.3).
+        "enforced": False,
     }
+)
+
+# Contratto del tema (contratto, §6): versioni supportate, ruoli della tavolozza, agganci.
+THEME_CONTRACTS: Final = (1,)
+THEME_ROLES: Final = (
+    "azure",
+    "slate",
+    "sage",
+    "bronze",
+    "plum",
+    "brick",
+    "olive",
+    "gray",
+    "ok",
+    "warning",
+    "critical",
+    "muted",
+)
+THEME_HOOKS: Final = (
+    "RegodocThemeSetup",
+    "RegodocTitlePage",
+    "RegodocPageStyle",
+    "RegodocPartOpening",
+    "RegodocOpeningStart",
+    "RegodocBox",
+    "RegodocLabel",
 )
 
 # Capacità stabili di questa versione (docs/contract.md, §5 e §9).
@@ -146,11 +177,16 @@ def describe() -> dict[str, object]:
             "time_seconds": dict(RESOURCES["time_seconds"]),
             "memory_bytes": RESOURCES["memory_bytes"],
             "memory_enforced_on": list(RESOURCES["memory_enforced_on"]),
+            "enforced": RESOURCES["enforced"],
         },
         "commands": dict(COMMANDS),
         "capabilities": list(CAPABILITIES),
         "languages": list(LANGUAGES),
         "passes": dict(PASSES),
         "tex": {"packages": list(TEX_PACKAGES)},
-        "theme_contract": THEME_CONTRACT_VERSION,
+        "theme": {
+            "contracts": list(THEME_CONTRACTS),
+            "roles": list(THEME_ROLES),
+            "hooks": list(THEME_HOOKS),
+        },
     }

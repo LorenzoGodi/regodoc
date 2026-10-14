@@ -12,13 +12,14 @@ import io
 import json
 import os
 import re
+import stat
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, NoReturn
 
 from regodoc import __version__, declaration
-from regodoc.diagnostics import Severity
+from regodoc.diagnostics import Severity, clip
 from regodoc.validate import Validation, validate_package
 
 
@@ -166,6 +167,9 @@ def build_parser() -> ItalianArgumentParser:
     commands.required = True
 
     info = commands.add_parser("info", help="dichiara versione, grammatiche, limiti e capacità")
+    info.add_argument(
+        "--json", action="store_true", help="accettata per uniformità: info scrive sempre JSON"
+    )
     info.set_defaults(handler=_cmd_info)
 
     validate = commands.add_parser("validate", help="controlla un pacchetto .regodoc")
@@ -176,8 +180,15 @@ def build_parser() -> ItalianArgumentParser:
     canon = commands.add_parser("canon", help="riscrive un pacchetto in forma canonica")
     _add_package(canon)
     _add_output(canon)
+    canon.add_argument("--document", metavar="ID", help="identificatore da scrivere nel manifesto")
+    canon.add_argument(
+        "--base-version", metavar="IMPRONTA", help="versione di partenza da scrivere nel manifesto"
+    )
+    canon.add_argument(
+        "--files-dir", metavar="CARTELLA", help="scrive anche i file canonici uno per uno qui"
+    )
     _add_json(canon)
-    canon.set_defaults(handler=_cmd_draft, lot="L4")
+    canon.set_defaults(handler=_cmd_draft)
 
     build = commands.add_parser("build", help="produce LaTeX o PDF da un pacchetto")
     _add_package(build)
@@ -188,13 +199,13 @@ def build_parser() -> ItalianArgumentParser:
     build.add_argument("--header", metavar="FILE", help="intestazione in JSON fornita da Rego")
     build.add_argument("--theme", metavar="CARTELLA", help="cartella di un tema esterno")
     _add_json(build)
-    build.set_defaults(handler=_cmd_draft, lot="L5")
+    build.set_defaults(handler=_cmd_draft)
 
     upgrade = commands.add_parser("upgrade", help="porta un pacchetto alla grammatica corrente")
     _add_package(upgrade)
     _add_output(upgrade)
     _add_json(upgrade)
-    upgrade.set_defaults(handler=_cmd_draft, lot="L6")
+    upgrade.set_defaults(handler=_cmd_draft)
 
     return parser
 
@@ -219,9 +230,10 @@ def _cmd_info(_args: argparse.Namespace) -> ExitCode:
     return ExitCode.OK
 
 
-# Comandi che leggono un pacchetto: con --json rispondono sempre con un rapporto (§8 della
-# specifica, §4 del contratto), qualunque sia il codice d'uscita.
+# Comandi che leggono un pacchetto. Con --json ogni comando risponde a ogni uscita con almeno
+# il rapporto minimo (contratto, §4), salvo quando stdout è chiuso.
 PACKAGE_COMMANDS = ("validate", "canon", "build", "upgrade")
+COMMANDS = ("info", *PACKAGE_COMMANDS)
 
 
 def _problem(code: str, message: str) -> dict[str, object]:
@@ -239,16 +251,14 @@ def _payload(
     command: str | None,
     exit_code: ExitCode,
     *,
-    grammar: str | None = None,
     errors: Sequence[dict[str, object]] = (),
     warnings: Sequence[dict[str, object]] = (),
 ) -> dict[str, object]:
-    """Il rapporto JSON del contratto, uguale nella forma per ogni codice d'uscita."""
+    """Il rapporto minimo del contratto (§4), stabile fra le sue versioni."""
     return {
         "contract": declaration.CONTRACT_VERSION,
         "engine": {"name": declaration.ENGINE_NAME, "version": __version__},
         "command": command,
-        "grammar": grammar,
         "exit_code": int(exit_code),
         "ok": exit_code is ExitCode.OK,
         "errors": list(errors),
@@ -262,7 +272,7 @@ def _finish(
     wants_json: bool, command: str | None, exit_code: ExitCode, code: str, message: str
 ) -> ExitCode:
     """Chiude con un solo errore: rapporto JSON se richiesto, altrimenti un messaggio."""
-    if wants_json and command in PACKAGE_COMMANDS:
+    if wants_json:
         with contextlib.suppress(OSError, ValueError):
             _write_json(_payload(command, exit_code, errors=[_problem(code, message)]))
     _note(f"regodoc: {message}\n")
@@ -272,9 +282,7 @@ def _finish(
 def _cmd_draft(args: argparse.Namespace) -> ExitCode:
     # Un comando non ancora implementato è un limite di questa versione del motore, cioè
     # dell'ambiente, non del pacchetto né della riga di comando.
-    message = (
-        f"il comando «{args.command}» non è ancora implementato: arriva con il lotto {args.lot}"
-    )
+    message = f"il comando «{args.command}» non è ancora disponibile in questa versione del motore"
     if args.json:
         _write_json(
             _payload(
@@ -291,21 +299,27 @@ def _cmd_draft(args: argparse.Namespace) -> ExitCode:
 def _report(command: str, args: argparse.Namespace, validation: Validation) -> ExitCode:
     """Scrive il rapporto e sceglie il codice d'uscita (0, oppure 1 con errori o --strict)."""
     collector = validation.report
-    failed = collector.has_errors() or (args.strict and bool(collector.warnings))
+    failed = collector.has_errors() or (args.strict and bool(collector.strict_warnings))
     code = ExitCode.REFUSED if failed else ExitCode.OK
     if args.json:
-        _write_json(
-            _payload(
-                command,
-                code,
-                grammar=validation.grammar,
-                errors=[d.to_json() for d in collector.errors],
-                warnings=[d.to_json() for d in collector.warnings],
-            )
+        payload = _payload(
+            command,
+            code,
+            errors=[d.to_json() for d in collector.errors],
+            warnings=[d.to_json() for d in collector.warnings],
         )
+        payload["input"] = (
+            {"sha256": validation.input_sha256, "bytes": validation.input_bytes}
+            if validation.input_sha256 is not None
+            else None
+        )
+        payload.update(validation.summary())
+        _write_json(payload)
     else:
         for diagnostic in collector.items:
-            prefix = "errore" if diagnostic.severity is Severity.ERROR else "avviso"
+            prefix = {Severity.ERROR: "errore", Severity.WARNING: "avviso"}.get(
+                diagnostic.severity, "nota"
+            )
             _write(sys.stderr, f"{prefix}: {diagnostic}\n")
         errors, warnings = len(collector.errors), len(collector.warnings)
         verdict = "pacchetto rifiutato" if failed else "pacchetto valido"
@@ -321,7 +335,17 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
             "validate",
             ExitCode.USAGE,
             "regodoc.usage",
-            f"il pacchetto «{args.package}» non esiste",
+            f"il pacchetto «{clip(args.package)}» non esiste",
+        )
+    mode = path.stat().st_mode
+    if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+        # Una FIFO o un dispositivo lascerebbero il motore in attesa senza fine.
+        return _finish(
+            args.json,
+            "validate",
+            ExitCode.USAGE,
+            "regodoc.usage",
+            f"«{clip(args.package)}» non è né un file regolare né una cartella",
         )
     try:
         validation = validate_package(path)
@@ -331,7 +355,7 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
             "validate",
             ExitCode.ENVIRONMENT,
             "regodoc.environment",
-            f"non posso leggere «{args.package}»: permesso negato",
+            f"non posso leggere «{clip(args.package)}»: permesso negato",
         )
     return _report("validate", args, validation)
 
@@ -340,7 +364,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Esegue il comando e restituisce il codice d'uscita."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     wants_json = "--json" in arguments
-    command = next((a for a in arguments if a in PACKAGE_COMMANDS), None)
+    command = next((a for a in arguments if a in COMMANDS), None)
     parser = build_parser()
     try:
         args = parser.parse_args(arguments)

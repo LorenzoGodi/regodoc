@@ -9,7 +9,7 @@ Rego lo usa come dipendenza con versione fissata. Chiunque può usarlo da solo, 
 e TeX Live.
 
 > **Stato:** in costruzione. Funzionano `regodoc info` e `regodoc validate`. Gli altri
-> comandi esistono, rispondono «non ancora implementato» ed escono con il codice 3, quello
+> comandi esistono, rispondono «non ancora disponibile» ed escono con il codice 3, quello
 > degli errori d'ambiente. La specifica del formato è in
 > [`docs/spec/rego-1.md`](docs/spec/rego-1.md); un pacchetto d'esempio completo, sintetico,
 > è in `examples/colle-rovere/`.
@@ -50,14 +50,9 @@ codici d'uscita. L'opzione `--contract N` dichiara la versione del contratto att
 
 ### Codici d'uscita
 
-| Codice | Significato |
-|---|---|
-| 0 | esito positivo, anche con avvisi |
-| 1 | pacchetto rifiutato per errori di validazione, o per avvisi con `--strict`; il rapporto li elenca |
-| 2 | errore d'uso: argomenti sbagliati, file mancante, opzione sconosciuta |
-| 3 | errore d'ambiente: TeX assente, cartella non scrivibile, tempo massimo superato, uscita chiusa |
-| 4 | errore interno del motore: non deve mai accadere, è un difetto da segnalare |
-| 130 | interrotto |
+0 esito positivo, 1 pacchetto rifiutato, 2 errore d'uso, 3 errore d'ambiente, 4 errore interno,
+130 interrotto. La tabella normativa, con che cosa deve fare chi chiama, è nel §7 del
+[contratto](docs/contract.md).
 
 ## Sviluppo
 

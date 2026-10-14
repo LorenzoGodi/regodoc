@@ -53,7 +53,8 @@ class DraftCommandTest(unittest.TestCase):
                 code, out, err = run_cli(*argv)
                 self.assertEqual(code, ExitCode.ENVIRONMENT)
                 self.assertEqual(out, "")
-                self.assertIn(f"il comando «{name}» non è ancora implementato", err)
+                self.assertIn(f"il comando «{name}» non è ancora disponibile", err)
+                self.assertNotIn("lotto", err)
 
     def test_strict_is_accepted(self) -> None:
         code, _, _ = run_cli("canon", "p.regodoc", "-o", "q", "--strict")

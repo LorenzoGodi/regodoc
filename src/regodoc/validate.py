@@ -5,13 +5,15 @@ diventa un ``Diagnostic`` nel ``Collector``.
 """
 
 import contextlib
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc.declaration import CONTENT_LIMITS, GRAMMAR_CURRENT, GRAMMARS_READ
-from regodoc.diagnostics import Collector, TooManyProblems
+from regodoc import __version__
+from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS, GRAMMAR_CURRENT, GRAMMARS_READ
+from regodoc.diagnostics import Collector, TooManyProblems, clip
 from regodoc.images import check_image
 from regodoc.parts import Context, PartChecker, Target, Use, parse_part
 from regodoc.source import IMAGE_PATH, PART_PATH, PackageFiles, is_allowed_path, read_package
@@ -29,19 +31,99 @@ _GRAMMAR = re.compile(r"rego/([1-9][0-9]{0,3})")
 _MANIFEST_KEYS = ("format", "grammar", "document", "base_version", "files", "generator")
 
 
+# File del pacchetto che non sono contenuto: non entrano nell'elenco dei file né nella loro
+# impronta d'insieme (contratto, §4.1).
+ENVELOPE_FILES = frozenset({"mimetype", "manifest.json", "README.md"})
+
+
 @dataclass
 class Validation:
-    """Esito della validazione: problemi, grammatica letta e, se utile, il modello letto."""
+    """Esito della validazione: problemi, grammatica letta e ciò che il motore restituisce del
+    pacchetto a chi lo chiama (contratto, §4.1)."""
 
     report: Collector = field(default_factory=Collector)
     grammar: str | None = None
     structure: Structure | None = None
     variables: dict[str, Variable] = field(default_factory=dict)
+    manifest: dict[str, object] = field(default_factory=dict)
+    package: PackageFiles | None = None
+    input_sha256: str | None = None
+    input_bytes: int | None = None
+
+    def files(self) -> list[dict[str, object]]:
+        """I file di contenuto, nell'ordine canonico, con impronta e dimensione."""
+        if self.package is None:
+            return []
+        return [
+            {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+            for path, data in canonical_files(self.package, self.structure)
+        ]
+
+    def summary(self) -> dict[str, object]:
+        """Ciò che il rapporto dice del pacchetto: grammatica, manifesto, file, intestazione."""
+        files = self.files()
+        header: dict[str, object] | None = None
+        if self.structure is not None:
+            date = self.structure.header.get("date")
+            header = {
+                "title": self.structure.header.get("title"),
+                "subject": self.structure.header.get("subject"),
+                "reference": self.structure.header.get("reference"),
+                "date": date.isoformat() if date is not None else None,  # type: ignore[attr-defined]
+                "language": self.structure.language,
+            }
+        generator = self.manifest.get("generator")
+        return {
+            "grammar": self.grammar,
+            "generator": generator if isinstance(generator, dict) else None,
+            "document": _valid_or_none(self.manifest.get("document"), _DOCUMENT),
+            "base_version": _valid_or_none(self.manifest.get("base_version"), _DIGEST),
+            "files": files if self.package is not None else None,
+            "files_sha256": files_digest(files) if self.package is not None else None,
+            "header": header,
+        }
+
+
+def _valid_or_none(value: object, pattern: re.Pattern[str]) -> str | None:
+    return value if isinstance(value, str) and pattern.fullmatch(value) else None
+
+
+def canonical_files(package: PackageFiles, structure: Structure | None) -> list[tuple[str, bytes]]:
+    """I file di contenuto nell'ordine canonico (specifica, §9): structure.toml,
+    variables.toml, le parti nell'ordine di structure.toml, le immagini in ordine alfabetico.
+    Le parti che structure.toml non nomina vengono dopo, in ordine alfabetico."""
+    order: list[str] = ["structure.toml", "variables.toml"]
+    if structure is not None:
+        order += [f"parts/{entry.id}.xml" for entry in structure.entries]
+    rest = sorted(
+        path for path in package.files if path not in order and path not in ENVELOPE_FILES
+    )
+    parts = [path for path in rest if path.startswith("parts/")]
+    images = [path for path in rest if not path.startswith("parts/")]
+    return [
+        (path, package.files[path]) for path in [*order, *parts, *images] if path in package.files
+    ]
+
+
+def files_digest(files: list[dict[str, object]]) -> str:
+    """L'impronta dell'insieme dei file (contratto, §4.1).
+
+    È lo sha256 di un testo UTF-8 con una riga per file, nell'ordine canonico:
+    ``<sha256 esadecimale> <byte> <percorso>`` seguito da un a capo.
+    """
+    text = "".join(f"{f['sha256']} {f['bytes']} {f['path']}\n" for f in files)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def validate_package(path: Path) -> Validation:
     """Valida il pacchetto in ``path``, archivio o cartella."""
     result = Validation()
+    if path.is_file():
+        with path.open("rb") as handle:
+            data = handle.read(ENVELOPE_LIMITS["compressed_bytes"] + 1)
+        if len(data) <= ENVELOPE_LIMITS["compressed_bytes"]:
+            result.input_sha256 = hashlib.sha256(data).hexdigest()
+            result.input_bytes = len(data)
     with contextlib.suppress(TooManyProblems):
         _validate(path, result)
     return result
@@ -52,7 +134,8 @@ def _validate(path: Path, result: Validation) -> None:
     package = read_package(path, report)
     if package is None:
         return
-    result.grammar = _check_manifest(package, report)
+    result.package = package
+    result.grammar = _check_manifest(package, report, result.manifest)
     if result.grammar is None:
         return
     structure_data = package.get("structure.toml")
@@ -69,7 +152,9 @@ def _validate(path: Path, result: Validation) -> None:
     _check_parts(package, structure, variables, report)
 
 
-def _check_manifest(package: PackageFiles, report: Collector) -> str | None:
+def _check_manifest(
+    package: PackageFiles, report: Collector, keep: dict[str, object]
+) -> str | None:
     """Legge il manifesto (§1.3) e restituisce la grammatica, o None se non si può proseguire."""
     file = "manifest.json"
     data = package.get(file)
@@ -126,17 +211,22 @@ def _check_manifest(package: PackageFiles, report: Collector) -> str | None:
     if grammar not in GRAMMARS_READ:
         current = _GRAMMAR.fullmatch(GRAMMAR_CURRENT)
         if current and int(match.group(1)) > int(current.group(1)):
+            writer = ""
+            generator = manifest.get("generator")
+            if isinstance(generator, dict) and isinstance(generator.get("version"), str):
+                writer = f", scritto da regodoc {clip(generator['version'])}"
             report.error(
                 "regodoc.manifest.grammar_newer",
-                f"il pacchetto usa la grammatica «{grammar}», più nuova di quelle che questo "
-                f"motore sa leggere ({', '.join(GRAMMARS_READ)}): serve una versione più "
-                "recente di regodoc",
+                f"il pacchetto usa la grammatica «{grammar}»{writer}, più nuova di quelle che "
+                f"questo motore ({__version__}) sa leggere ({', '.join(GRAMMARS_READ)}): "
+                "serve una versione più recente di regodoc",
                 file,
             )
         else:
             report.error("regodoc.manifest.grammar", f"grammatica «{grammar}» sconosciuta", file)
         return None
     _check_manifest_optional(manifest, report)
+    keep.update(manifest)
     return grammar
 
 
