@@ -46,11 +46,29 @@ def bad_char_message(char: str) -> str:
     return f"carattere non ammesso ({describe_char(char)})"
 
 
+def _bad_chars_pattern(newline: bool, tab: bool) -> re.Pattern[str]:
+    """L'espressione dei caratteri fuori dall'insieme del §5.2: la cerca il motore delle
+    espressioni regolari, molto più in fretta di un ciclo carattere per carattere."""
+    allowed = "\\x20-\\x7e\\xa0-\\xac\\xae-\\u0148\\u014a-\\u017f"
+    allowed += "".join(f"\\u{ord(char):04x}" for char in sorted(_SYMBOLS))
+    if newline:
+        allowed += "\\n"
+    if tab:
+        allowed += "\\t"
+    return re.compile(f"[^{allowed}]")
+
+
+_BAD_CHARS = {
+    (newline, tab): _bad_chars_pattern(newline, tab)
+    for newline in (False, True)
+    for tab in (False, True)
+}
+
+
 def find_bad_chars(text: str, *, newline: bool = False, tab: bool = False) -> Iterator[int]:
     """Restituisce gli indici dei caratteri fuori dall'insieme ammesso."""
-    for index, char in enumerate(text):
-        if not is_allowed_char(char, newline=newline, tab=tab):
-            yield index
+    for match in _BAD_CHARS[newline, tab].finditer(text):
+        yield match.start()
 
 
 def advance(line: int, column: int, text: str, index: int) -> tuple[int, int]:

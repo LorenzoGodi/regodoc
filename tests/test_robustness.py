@@ -8,6 +8,7 @@ import re
 import unittest
 from pathlib import Path
 
+from regodoc.text import find_bad_chars, is_allowed_char
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, validate_bytes
 
 SPEC = (Path(__file__).resolve().parent.parent / "docs" / "spec" / "rego-1.md").read_text(
@@ -113,6 +114,24 @@ class MutationTest(unittest.TestCase):
         for item in report(build_zip(files)):
             self.assertNotIn("x" * 81, str(item["message"]))
             self.assertLessEqual(len(str(item["message"])), 500)
+
+
+class CharacterSetTest(unittest.TestCase):
+    def test_fast_scan_matches_the_rule(self) -> None:
+        # La ricerca con l'espressione regolare coincide con la regola carattere per
+        # carattere del §5.2, sui primi 12.288 punti di codice e su un campione oltre.
+        points = [*range(0x3000), 0xFEFF, 0xFFFD, 0x1F600, 0x10FFFF]
+        text = "".join(chr(c) for c in points if not 0xD800 <= c <= 0xDFFF)
+        for newline in (False, True):
+            for tab in (False, True):
+                with self.subTest(newline=newline, tab=tab):
+                    expected = [
+                        i
+                        for i, char in enumerate(text)
+                        if not is_allowed_char(char, newline=newline, tab=tab)
+                    ]
+                    found = list(find_bad_chars(text, newline=newline, tab=tab))
+                    self.assertEqual(found, expected)
 
 
 if __name__ == "__main__":
