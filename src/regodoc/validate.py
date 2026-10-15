@@ -5,6 +5,7 @@ diventa un ``Diagnostic`` nel ``Collector``.
 """
 
 import contextlib
+import gc
 import hashlib
 import json
 import re
@@ -16,7 +17,14 @@ from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS, GRAMMAR_CURRENT
 from regodoc.diagnostics import Collector, TooManyProblems, clip
 from regodoc.images import check_image
 from regodoc.parts import Context, Node, PartChecker, Target, Use, parse_part
-from regodoc.source import IMAGE_PATH, PART_PATH, PackageFiles, is_allowed_path, read_package
+from regodoc.source import (
+    IMAGE_PATH,
+    PART_PATH,
+    PackageFiles,
+    is_allowed_path,
+    read_archive_bytes,
+    read_package,
+)
 from regodoc.text import find_bad_chars
 from regodoc.tomlfiles import (
     NUMERIC_TYPES,
@@ -134,21 +142,32 @@ def files_digest(files: list[dict[str, object]]) -> str:
 def validate_package(path: Path) -> Validation:
     """Valida il pacchetto in ``path``, archivio o cartella."""
     result = Validation()
+    data: bytes | None = None
     if path.is_file():
-        with path.open("rb") as handle:
-            data = handle.read(ENVELOPE_LIMITS["compressed_bytes"] + 1)
+        # Una sola lettura: l'impronta del rapporto è quella dei byte validati.
+        data = read_archive_bytes(path)
         if len(data) <= ENVELOPE_LIMITS["compressed_bytes"]:
             result.input_sha256 = hashlib.sha256(data).hexdigest()
             result.input_bytes = len(data)
-    with contextlib.suppress(TooManyProblems):
-        _validate(path, result)
+    # Il raccoglitore dei cicli riattraversa di continuo gli alberi delle parti, che restano
+    # vivi per build: su un pacchetto al limite costava un terzo del tempo. Gli alberi non
+    # hanno cicli (il parser e il costruttore si sciolgono a fine lettura), quindi il
+    # raccoglitore si spegne per la validazione e torna com'era dopo.
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        with contextlib.suppress(TooManyProblems):
+            _validate(path, result, data)
+    finally:
+        if collecting:
+            gc.enable()
     result.report.finish()
     return result
 
 
-def _validate(path: Path, result: Validation) -> None:
+def _validate(path: Path, result: Validation, data: bytes | None) -> None:
     report = result.report
-    package = read_package(path, report)
+    package = read_package(path, report, data)
     if package is None:
         return
     result.package = package
@@ -349,8 +368,11 @@ def _check_parts(
             "regodoc.limit.images",
             f"{len(images)} immagini, il massimo è {CONTENT_LIMITS['images']}",
         )
+    # I pixel di tutte le immagini hanno un tetto comune (§7.2): ogni immagine prende la sua
+    # parte dal budget che resta.
+    budget = int(CONTENT_LIMITS["images_pixel_bytes"])
     for path in sorted(images):
-        check_image(path, package.files[path], report)
+        budget -= check_image(path, package.files[path], report, budget)
     # Il controllore delle parti segna da sé gli elementi in cui non è sceso.
     context.complete = context.complete and complete
     _check_uses(context, images, complete=context.complete)

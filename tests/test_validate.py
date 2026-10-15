@@ -669,7 +669,7 @@ class XmlParsingTest(unittest.TestCase):
     def test_forbidden_constructs(self) -> None:
         cases = {
             '<!DOCTYPE part [<!ENTITY x "y">]><part/>': "regodoc.xml.doctype",
-            "<part>&nbsp;</part>": "regodoc.xml.syntax",
+            "<part>&nbsp;</part>": "regodoc.xml.entity",
             '<?xml-stylesheet href="x"?><part/>': "regodoc.xml.processing_instruction",
             "<part><p><![CDATA[x]]></p></part>": "regodoc.xml.cdata",
             '<part xmlns="urn:x"/>': "regodoc.xml.namespace",
@@ -693,7 +693,8 @@ class XmlParsingTest(unittest.TestCase):
         for text, message in cases.items():
             with self.subTest(text):
                 found = validate_files(with_file("parts/network.xml", text)).report.errors
-                self.assertEqual([d.code for d in found], ["regodoc.xml.syntax"])
+                expected = "regodoc.xml.entity" if "&nbsp;" in text else "regodoc.xml.syntax"
+                self.assertEqual([d.code for d in found], [expected])
                 self.assertIn(message, found[0].message)
 
     def test_declaration(self) -> None:

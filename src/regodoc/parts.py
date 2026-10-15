@@ -173,6 +173,18 @@ def parse_part(data: bytes, file: str, report: Collector) -> Node | None:
         line, column = position_in(prefix, len(prefix))
         report.error("regodoc.text.encoding", "il file non è UTF-8 valido", file, line, column)
         return None
+    if "\x00" in text:
+        # Il carattere nullo non esiste in XML, e con i byte nulli expat riconosce da sé
+        # l'UTF-16 anche quando gli si chiede l'UTF-8: un file UTF-16 senza BOM passerebbe.
+        line, column = position_in(text, text.index("\x00"))
+        report.error(
+            "regodoc.text.encoding",
+            "il file contiene byte nulli: non è UTF-8, forse è UTF-16",
+            file,
+            line,
+            column,
+        )
+        return None
     if re.match(rb"<\?xml[ \t\r\n]", data) and not (
         data.startswith(XML_DECLARATION)
         and (len(data) == len(XML_DECLARATION) or data[len(XML_DECLARATION)] in b" \t\r\n<")
@@ -196,7 +208,13 @@ def parse_part(data: bytes, file: str, report: Collector) -> Node | None:
             # Memoria finita dentro expat: è l'ambiente, non il pacchetto (contratto, §2.3).
             raise MemoryError from error
         message = _EXPAT_MESSAGES.get(error.code, "XML non ben formato")
-        report.error("regodoc.xml.syntax", message, file, error.lineno, error.offset + 1)
+        # Un'entità non definita, come &nbsp;, è una questione di entità (specifica, §5.4).
+        code = (
+            "regodoc.xml.entity"
+            if error.code == _EXPAT_CODES[_EXPAT.XML_ERROR_UNDEFINED_ENTITY]
+            else "regodoc.xml.syntax"
+        )
+        report.error(code, message, file, error.lineno, error.offset + 1)
         return None
     except RecursionError:
         report.error("regodoc.xml.depth", "annidamento eccessivo", file)
@@ -210,6 +228,13 @@ class _TreeBuilder:
     def __init__(self) -> None:
         self.root: Node | None = None
         self.stack: list[Node] = []
+        # Testo in attesa: expat lo consegna a pezzi, anche uno per a capo. I pezzi contigui
+        # nel file diventano un solo pezzo, con la posizione del primo: una tupla per pezzo
+        # di expat terrebbe in memoria centinaia di MiB per una parte piena di a capo.
+        self.pending: list[str] = []
+        self.pending_start = (0, 0)
+        self.end_line = 0
+        self.end_column = 0
         self.parser = xml.parsers.expat.ParserCreate(encoding="UTF-8")
         parser = self.parser
         parser.SetParamEntityParsing(xml.parsers.expat.XML_PARAM_ENTITY_PARSING_NEVER)
@@ -253,9 +278,31 @@ class _TreeBuilder:
         return handler
 
     def parse(self, text: str) -> None:
-        self.parser.Parse(text.encode("utf-8"), True)
+        try:
+            self.parser.Parse(text.encode("utf-8"), True)
+            self.flush()
+        finally:
+            # I gestori di expat tengono il costruttore, e il costruttore il parser: senza
+            # sciogliere il ciclo, l'albero di ogni parte resta in memoria fino al prossimo
+            # passaggio del raccoglitore ciclico.
+            self.parser = None  # type: ignore[assignment]
+
+    def flush(self) -> None:
+        """Mette nell'albero il testo in attesa, come un solo pezzo."""
+        if not self.pending:
+            return
+        data = "".join(self.pending)
+        self.pending = []
+        children = self.stack[-1].children
+        chunk = (data, *self.pending_start)
+        if children and isinstance(children[-1], Text):
+            children[-1].chunks.append(chunk)
+        else:
+            children.append(Text([chunk]))
 
     def start(self, tag: str, attributes: list[str]) -> None:
+        if self.pending:
+            self.flush()
         line, column = self.position()
         names = attributes[0::2]
         if ":" in tag or any(":" in name or name == "xmlns" for name in names):
@@ -277,19 +324,33 @@ class _TreeBuilder:
         self.stack.append(node)
 
     def end(self, _tag: str) -> None:
+        if self.pending:
+            self.flush()
         self.stack.pop()
 
     def characters(self, data: str) -> None:
-        line, column = self.position()
         if not self.stack:
             return  # solo spazi bianchi fuori dalla radice: expat rifiuta il resto
-        children = self.stack[-1].children
-        if children and isinstance(children[-1], Text):
-            children[-1].chunks.append((data, line, column))
+        parser = self.parser
+        line = parser.CurrentLineNumber
+        column = parser.CurrentColumnNumber + 1
+        if self.pending and (line != self.end_line or column != self.end_column):
+            self.flush()  # un riferimento a carattere in mezzo: le colonne non coincidono più
+        if not self.pending:
+            self.pending_start = (line, column)
+        self.pending.append(data)
+        # Dove finirà questo pezzo: lì deve cominciare il prossimo per unirsi a lui.
+        newlines = data.count("\n")
+        if newlines:
+            self.end_line = line + newlines
+            self.end_column = len(data) - data.rfind("\n")
         else:
-            children.append(Text([(data, line, column)]))
+            self.end_line = line
+            self.end_column = column + len(data)
 
     def comment(self, data: str) -> None:
+        if self.pending:
+            self.flush()
         line, column = self.position()
         if not self.stack:
             raise _Abort(

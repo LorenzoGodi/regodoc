@@ -120,12 +120,18 @@ class _Stop(Exception):
     """Interrompe la lettura dell'involucro dopo un errore che rende inutile proseguire."""
 
 
-def read_package(path: Path, report: Collector) -> PackageFiles | None:
-    """Legge un pacchetto da archivio o da cartella; None se l'involucro è da rifiutare."""
+def read_package(path: Path, report: Collector, data: bytes | None = None) -> PackageFiles | None:
+    """Legge un pacchetto da archivio o da cartella; None se l'involucro è da rifiutare.
+
+    ``data``, se c'è, sono i byte dell'archivio già letti da chi chiama, al massimo il limite
+    più uno: così l'impronta del rapporto e la validazione riguardano gli stessi byte.
+    """
     try:
-        if path.is_dir():
+        if data is None and path.is_dir():
             return _read_directory(path, report)
-        return _read_archive(path, report)
+        if data is None:
+            data = read_archive_bytes(path)
+        return _read_archive(data, report)
     except _Stop:
         return None
 
@@ -154,14 +160,19 @@ class _Entry:
         return self.name.endswith("/")
 
 
-def _read_archive(path: Path, report: Collector) -> PackageFiles:
+def read_archive_bytes(path: Path) -> bytes:
+    """I byte dell'archivio, al massimo il limite più uno: oltre, l'archivio è comunque
+    rifiutato e il resto non serve leggerlo."""
+    with path.open("rb") as handle:
+        return handle.read(ENVELOPE_LIMITS["compressed_bytes"] + 1)
+
+
+def _read_archive(data: bytes, report: Collector) -> PackageFiles:
     # Gli errori dell'archivio intero non nominano il file: chi chiama passa spesso un nome
     # temporaneo, che nel rapporto non direbbe niente (contratto, §4.4).
     where = ""
     # Passo 1: dimensione del file.
     limit = ENVELOPE_LIMITS["compressed_bytes"]
-    with path.open("rb") as handle:
-        data = handle.read(limit + 1)
     if len(data) > limit:
         report.error("regodoc.archive.too_large", f"l'archivio supera {limit // _MIB} MiB", where)
         raise _Stop

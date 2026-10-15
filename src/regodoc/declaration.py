@@ -10,6 +10,7 @@ Le unità dei limiti sono binarie: 1 KiB = 1024 byte, 1 MiB = 1024 KiB (specific
 per coerenza con i limiti in byte di Rego, che sono potenze di due.
 """
 
+import xml.parsers.expat
 from types import MappingProxyType
 from typing import Final
 
@@ -69,6 +70,12 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "manifest_bytes": 64 * _KIB,
         "readme_bytes": 64 * _KIB,
         "image_side_pixels": 6000,
+        # Byte dei pixel di un PNG, larghezza × altezza × byte per pixel: un'immagine RGBA a
+        # 8 bit di 6000 × 6000 pixel. Il motore li decomprime per controllarli, e così fa
+        # pdfTeX: il tetto ne limita tempo e memoria.
+        "image_pixel_bytes": 144_000_000,
+        # Lo stesso, per tutte le immagini del pacchetto.
+        "images_pixel_bytes": 600_000_000,
         "section_depth": 3,
         "list_depth": 3,
         "element_depth": 24,
@@ -177,6 +184,9 @@ def describe() -> dict[str, object]:
     return {
         "engine": ENGINE_NAME,
         "version": __version__,
+        # La versione di expat con cui questo interprete legge le parti: le difese del
+        # lettore XML dipendono anche da lei (specifica, §6.3).
+        "expat": ".".join(str(n) for n in xml.parsers.expat.version_info),
         "contract": CONTRACT_VERSION,
         "contracts": list(CONTRACTS),
         "package": {"mimetype": PACKAGE_MIMETYPE, "extension": PACKAGE_EXTENSION},

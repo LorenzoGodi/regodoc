@@ -330,7 +330,10 @@ nome temporaneo. Vale `""` anche per gli errori di una sola voce dell'archivio (
   tema non definisce (§6.2); `--strict` non lo conta.
 
 **Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del pacchetto
-accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi, più al massimo una
+accorciate a 80 caratteri. Nei messaggi e in `file` i caratteri di controllo (`ESC`
+compreso), i caratteri di formato e bidirezionali e i surrogati spaiati diventano `U+XXXX`,
+visibili: il rapporto resta UTF-8 valido e innocuo in un terminale. Un percorso di chi chiama
+compare nei messaggi solo con l'ultimo nome: il resto del percorso non entra nel rapporto. Il rapporto elenca al massimo 500 problemi, più al massimo una
 voce di chiusura:
 
 - un **errore** che arriva quando 500 problemi sono già elencati ferma la lettura con
@@ -369,6 +372,7 @@ codice d'uscita:
 |---|---|
 | `engine` | `"regodoc"` |
 | `version` | versione del motore, PEP 440 |
+| `expat` | versione di expat dell'interprete che esegue il motore, per esempio `2.6.1`: il lettore XML delle parti la usa, e chi chiama la confronta fra un'installazione e l'altra |
 | `contract` | versione corrente del contratto |
 | `contracts` | le versioni del contratto supportate da `--contract` |
 | `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`), per la firma del §3.1 |
@@ -402,6 +406,7 @@ motore.
 | `content.part_bytes`, `structure_bytes`, `variables_bytes`, `manifest_bytes`, `readme_bytes` | byte | dimensione di ciascun file |
 | `content.images`, `image_bytes`, `images_total_bytes` | immagini, byte | numero e dimensioni delle immagini; `images_total_bytes` coincide con `envelope.expanded_bytes` e si applica con quello: le immagini stanno nel contenuto espanso, che il motore misura durante l'estrazione |
 | `content.image_side_pixels` | pixel | lato più lungo di un'immagine |
+| `content.image_pixel_bytes`, `images_pixel_bytes` | byte | larghezza × altezza × byte per pixel di un PNG, con i byte per pixel arrotondati in su, per immagine e per tutte le immagini: il motore decomprime i pixel dei PNG per controllarli |
 | `content.table_rows`, `table_columns`, `table_columns_normal_size` | righe, colonne | per tabella; oltre `table_columns_normal_size` il carattere si riduce in verticale |
 | `content.cell_characters` | caratteri | per cella |
 | `content.variables` | variabili | voci di `variables.toml` |

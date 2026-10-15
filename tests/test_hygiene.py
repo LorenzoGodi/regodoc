@@ -137,7 +137,13 @@ class MessageTest(unittest.TestCase):
 
     def test_first_line(self) -> None:
         self.assertEqual(
-            self.check("impalcatura\n"), ["la prima riga deve cominciare con il lotto, «Ln: »"]
+            self.check("impalcatura\n"),
+            ["la prima riga deve cominciare con il lotto, «Ln: » o «An: »"],
+        )
+        self.assertEqual(self.check("A11: revisione\n"), [])
+        self.assertEqual(
+            self.check("B2: altro\n"),
+            ["la prima riga deve cominciare con il lotto, «Ln: » o «An: »"],
         )
 
     def test_trailer(self) -> None:

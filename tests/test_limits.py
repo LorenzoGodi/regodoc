@@ -10,7 +10,7 @@ from unittest import mock
 from regodoc import validate
 from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS
 from regodoc.diagnostics import Collector, TooManyProblems
-from tests.support import example_files, png, validate_files
+from tests.support import build_zip, example_files, png, png_pixels, validate_bytes, validate_files
 
 L = CONTENT_LIMITS
 HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -47,6 +47,11 @@ def part_of_size(size: int) -> bytes:
     start = f'{HEAD}<part>\n<section id="limit"><title>T</title><p>'.encode()
     end = b"</p></section>\n</part>\n"
     return start + b"a" * (size - len(start) - len(end)) + end
+
+
+def errors_zip(files: dict[str, bytes], stored: tuple[str, ...]) -> list[str]:
+    """I codici d'errore di un archivio con alcune voci memorizzate senza compressione."""
+    return [d.code for d in validate_bytes(build_zip(files, stored)).report.errors]
 
 
 def errors(files: dict[str, bytes]) -> list[str]:
@@ -277,6 +282,8 @@ class ContentBoundaryTest(unittest.TestCase):
             "readme_bytes",  # test_envelope
             "images_total_bytes",  # coincide con il tetto dell'involucro
             "table_columns_normal_size",  # tocca la resa, non la validazione
+            "image_pixel_bytes",  # sotto, al passo intero di byte per pixel
+            "images_pixel_bytes",  # sotto
         }
         self.assertEqual(sorted(set(L) - covered), [])
 
@@ -342,6 +349,36 @@ class ContentBoundaryTest(unittest.TestCase):
                     self.assertEqual(found, [])  # solo l'avviso sui metadati
                 else:
                     self.assertEqual(found, [code])
+
+    def test_image_pixel_bytes(self) -> None:
+        # 6000 × 6000 RGBA a 8 bit è esattamente il tetto. Il passo successivo possibile, con
+        # gli stessi lati, è RGB a 16 bit: i byte per pixel sono interi, il tetto non si può
+        # superare di un byte solo.
+        self.assertEqual(L["image_pixel_bytes"], 6000 * 6000 * 4)
+        cases = (
+            (png_pixels(6000, 6000, color=6), []),
+            (png_pixels(6000, 6000, color=2, depth=16, raw=b""), ["regodoc.limit.image_size"]),
+        )
+        for image, expected in cases:
+            files = {**example_files(), "images/coverage.png": image}
+            found = errors_zip(files, stored=("images/coverage.png",))
+            self.assertEqual(found, expected)
+
+    def test_images_pixel_bytes(self) -> None:
+        # Quattro immagini al tetto, una da 24.000.000 byte: 600.000.000 in tutto. Un'immagine
+        # in più di un solo pixel grigio supera il tetto di un byte.
+        self.assertEqual(L["images_pixel_bytes"], 4 * L["image_pixel_bytes"] + 24_000_000)
+        files = example_files()
+        big = png_pixels(6000, 6000, color=6)
+        for number in range(4):
+            files[f"images/big{number}.png"] = big
+        # L'immagine dell'esempio, usata da una figura, prende i 24.000.000 byte che restano.
+        files["images/coverage.png"] = png_pixels(6000, 1000, color=6)
+        stored = tuple(path for path in files if path.startswith("images/"))
+        self.assertEqual(errors_zip(files, stored=stored), [])
+        files["images/zz-one.png"] = png_pixels(1, 1)
+        stored = (*stored, "images/zz-one.png")
+        self.assertEqual(errors_zip(files, stored=stored), ["regodoc.limit.images"])
 
     def test_element_depth(self) -> None:
         def nested(depth: int) -> bytes:

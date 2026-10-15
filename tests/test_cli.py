@@ -291,12 +291,31 @@ class MemoryTest(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "linux", "RLIMIT_AS vale come limite solo su Linux")
     def test_address_space_limit(self) -> None:
-        limit = 40 * 1024 * 1024
+        # Il limite è relativo allo spazio che l'interprete occupa già dopo aver caricato il
+        # motore: un numero fisso dipende dalla versione di Python (con 3.14 l'avvio ne
+        # chiede di più) e non metterebbe alla prova la lettura del pacchetto.
+        root = Path(__file__).resolve().parent.parent
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); import regodoc.cli; "
+                "print(next(l.split()[1] for l in open('/proc/self/status') "
+                "if l.startswith('VmPeak')))",
+                str(root / "src"),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=60,
+        )
+        limit = int(probe.stdout) * 1024 + 32 * 1024 * 1024
 
         def limited() -> None:
             resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
-        root = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory() as folder:
             package = Path(folder) / "p.regodoc"
             package.write_bytes(heavy_package())

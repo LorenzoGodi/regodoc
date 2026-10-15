@@ -27,12 +27,14 @@ def example_files(root: Path = EXAMPLE) -> dict[str, bytes]:
     return files
 
 
-def build_zip(files: dict[str, bytes]) -> bytes:
-    """Un archivio con ``mimetype`` non compresso e le altre voci compresse."""
+def build_zip(files: dict[str, bytes], stored: tuple[str, ...] = ()) -> bytes:
+    """Un archivio con ``mimetype`` non compresso e le altre voci compresse, salvo quelle di
+    ``stored``, memorizzate così come sono."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         for name, data in files.items():
-            method = zipfile.ZIP_STORED if name == "mimetype" else zipfile.ZIP_DEFLATED
+            plain = name == "mimetype" or name in stored
+            method = zipfile.ZIP_STORED if plain else zipfile.ZIP_DEFLATED
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = method
             info.external_attr = 0o100644 << 16
@@ -114,3 +116,58 @@ def run_cli(*argv: str) -> tuple[int, str, str]:
 def _text(stream: io.TextIOWrapper) -> str:
     stream.flush()
     return stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]
+
+
+def png_pixels(
+    width: int,
+    height: int,
+    *,
+    depth: int = 8,
+    color: int = 0,
+    interlace: int = 0,
+    raw: bytes | None = None,
+    stream: bytes | None = None,
+    palette: bool = True,
+) -> bytes:
+    """Un PNG con pixel tutti a zero, compressi davvero: le righe hanno la lunghezza che
+    l'intestazione dichiara, salvo ``raw``, i byte da comprimere al loro posto."""
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
+    if stream is not None:
+        pass
+    elif raw is None:
+        # Le righe di ogni passaggio di Adam7, o un solo passaggio senza interlacciamento.
+        passes = (
+            (
+                (0, 0, 8, 8),
+                (4, 0, 8, 8),
+                (0, 4, 4, 8),
+                (2, 0, 4, 4),
+                (0, 2, 2, 4),
+                (1, 0, 2, 2),
+                (0, 1, 1, 2),
+            )
+            if interlace
+            else ((0, 0, 1, 1),)
+        )
+        compressor = zlib.compressobj(9)
+        pieces = []
+        for column, row_start, column_step, row_step in passes:
+            columns = len(range(column, width, column_step))
+            rows = len(range(row_start, height, row_step))
+            if columns:
+                row = bytes(1 + -(-columns * depth * channels // 8))
+                pieces += [compressor.compress(row) for _ in range(rows)]
+        stream = b"".join(pieces) + compressor.flush()
+    else:
+        stream = zlib.compress(raw)
+    header = struct.pack(">IIBBBBB", width, height, depth, color, 0, 0, interlace)
+    chunks = [chunk(b"IHDR", header)]
+    if color == 3 and palette:
+        chunks.append(chunk(b"PLTE", bytes(3)))
+    chunks += [chunk(b"IDAT", stream), chunk(b"IEND", b"")]
+    return b"\x89PNG\r\n\x1a\n" + b"".join(chunks)

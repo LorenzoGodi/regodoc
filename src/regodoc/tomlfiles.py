@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from regodoc.declaration import CONTENT_LIMITS
-from regodoc.diagnostics import Collector
+from regodoc.diagnostics import Collector, clip
 from regodoc.source import ID
 from regodoc.text import bad_char_message, find_bad_chars, plain_text_problems, position_in
 
@@ -23,6 +23,14 @@ _MAX_INTEGER = int(CONTENT_LIMITS["number_abs_max"])
 NEGATIVE_TYPES = frozenset({"number", "percent", "eur"})
 _TOML_ERROR_POSITION = re.compile(r"\(at line (\d+), column (\d+)\)")
 _TOML_ERROR_END = re.compile(r"\(at end of document\)")
+# Segmenti al massimo in una chiave puntata (a.b.c) o nel nome di una tabella ([a.b.c]): i
+# file del formato ne usano al massimo due, e tomllib costa tempo e memoria quadratici nella
+# lunghezza di una chiave puntata (specifica, §6.2).
+MAX_KEY_SEGMENTS = 8
+_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+# Un intero decimale oltre il limite di cifre di Python: tomllib lo lascerebbe uscire come
+# ValueError senza posizione.
+_LONG_INTEGER = re.compile(r"[0-9][0-9_]{4000,}")
 
 
 @dataclass(frozen=True)
@@ -143,8 +151,69 @@ def _find_closing(text: str, start: int, quote: str, *, escapes: bool) -> int:
     return len(text)
 
 
+def long_dotted_key(text: str) -> int | None:
+    """Indice della prima chiave puntata con più di ``MAX_KEY_SEGMENTS`` segmenti, fuori
+    dalle stringhe e dai commenti, o None. Conta anche i segmenti dei nomi di tabella."""
+    index = 0
+    length = len(text)
+    segments = 0
+    start = 0
+    expect_segment = True
+    while index < length:
+        char = text[index]
+        if char in " \t":
+            index += 1
+            continue
+        if char == "#":
+            end = text.find("\n", index)
+            index = length if end < 0 else end
+            segments, expect_segment = 0, True
+            continue
+        is_segment = False
+        if text.startswith(('"""', "'''"), index):
+            quote = text[index : index + 3]
+            index = _find_closing(text, index + 3, quote, escapes=quote == '"""')
+            is_segment = False
+        elif char in "\"'":
+            end = _find_closing(text, index + 1, char, escapes=char == '"')
+            if expect_segment and segments == 0:
+                start = index
+            index, is_segment = end, True
+        elif match := _BARE_KEY.match(text, index):
+            if expect_segment and segments == 0:
+                start = index
+            index, is_segment = match.end(), True
+        elif char == "." and not expect_segment:
+            expect_segment = True
+            index += 1
+            continue
+        else:
+            index += 1
+        if is_segment and expect_segment:
+            segments += 1
+            expect_segment = False
+            if segments > MAX_KEY_SEGMENTS:
+                return start
+        else:
+            segments, expect_segment = (1, False) if is_segment else (0, True)
+            if is_segment:
+                start = index
+    return None
+
+
 def parse_toml(text: str, file: str, report: Collector) -> dict[str, object] | None:
     """Analizza il TOML; in caso d'errore lo registra con la posizione, in italiano."""
+    dotted = long_dotted_key(text)
+    if dotted is not None:
+        line, column = position_in(text, dotted)
+        report.error(
+            "regodoc.toml.depth",
+            f"chiave puntata con più di {MAX_KEY_SEGMENTS} segmenti",
+            file,
+            line,
+            column,
+        )
+        return None
     try:
         return tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
@@ -160,7 +229,21 @@ def parse_toml(text: str, file: str, report: Collector) -> dict[str, object] | N
         )
     except RecursionError:
         report.error("regodoc.toml.depth", "annidamento eccessivo di array o tabelle", file)
+    except ValueError:
+        # Un intero con più cifre di quante Python ne converta: tomllib non dà la posizione.
+        found = _LONG_INTEGER.search(text)
+        line, column = position_in(text, found.start()) if found else (0, 0)
+        report.error("regodoc.toml.syntax", "numero intero con troppe cifre", file, line, column)
     return None
+
+
+def _shown(value: object) -> str:
+    """Un valore citato in un messaggio: accorciato, e senza fallire su un intero enorme."""
+    try:
+        text = repr(value)
+    except ValueError:
+        return "con troppe cifre per citarlo"
+    return clip(text, 40)
 
 
 def _line_of_key(text: str, key: str) -> int:
@@ -511,7 +594,7 @@ def _scalar(
     def fail(expected: str) -> None:
         report.error(
             "regodoc.toml.value",
-            f"«{name}»: il tipo «{kind}» vuole {expected}, non {_type_name(value)} {value!r}",
+            f"«{name}»: il tipo «{kind}» vuole {expected}, non {_type_name(value)} {_shown(value)}",
             file,
             line,
         )

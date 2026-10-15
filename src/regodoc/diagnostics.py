@@ -17,6 +17,19 @@ _QUOTED = (
 )
 
 
+# Caratteri che in un messaggio non si stampano così come sono: controlli (ESC compreso),
+# caratteri di formato invisibili e bidirezionali, surrogati spaiati, che non si scrivono
+# nemmeno in UTF-8. Diventano «U+XXXX», visibili e innocui in un terminale o in una pagina.
+_UNSAFE = re.compile(
+    "[\x00-\x1f\x7f-\x9f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ud800-\udfff]"
+)
+
+
+def sanitize(text: str) -> str:
+    """Rende visibili i caratteri che un messaggio non deve stampare così come sono."""
+    return _UNSAFE.sub(lambda m: f"U+{ord(m.group()):04X}", text)
+
+
 def clip(text: str, limit: int = QUOTE_MAX) -> str:
     """Accorcia una stringa del pacchetto prima di citarla in un messaggio."""
     return text if len(text) <= limit else text[: limit - 1] + "…"
@@ -54,12 +67,15 @@ class Diagnostic:
     def __post_init__(self) -> None:
         """Accorcia le stringhe citate fra «» o fra <> e tiene il messaggio entro
         ``MESSAGE_MAX`` caratteri: un pacchetto ostile non può gonfiare il rapporto."""
-        message = self.message
+        message = sanitize(self.message)
         for pattern in _QUOTED:
             message = pattern.sub(lambda m: m.group(1) + clip(m.group(2)) + m.group(3), message)
         message = clip(message, MESSAGE_MAX)
         if message != self.message:
             object.__setattr__(self, "message", message)
+        file = sanitize(self.file)
+        if file != self.file:
+            object.__setattr__(self, "file", file)
 
     def __str__(self) -> str:
         """Forma «file:riga:colonna  codice  messaggio», come nella specifica (§8)."""

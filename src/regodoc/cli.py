@@ -15,11 +15,11 @@ import re
 import stat
 import sys
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import IO, NoReturn
 
 from regodoc import __version__, build, declaration, limits
-from regodoc.diagnostics import Collector, Severity, clip
+from regodoc.diagnostics import Collector, Severity, clip, sanitize
 from regodoc.validate import Validation, validate_package
 
 
@@ -118,19 +118,30 @@ class UsageExit(SystemExit):
         self.message = message
 
 
-def _write(stream: IO[str], text: str) -> None:
+def _write(stream: IO[str] | None, text: str) -> None:
     """Scrive testo in UTF-8 qualunque sia la localizzazione del terminale.
 
-    Prima ferma il timer del comando: la scrittura non si interrompe mai a metà.
+    Prima ferma il timer del comando: la scrittura non si interrompe mai a metà. Uno stream
+    che manca, perché chi chiama ha chiuso il descrittore prima dell'avvio, non riceve nulla.
+    Un surrogato spaiato, per esempio da un nome di file non UTF-8, si scrive come sequenza
+    di escape: il rapporto resta UTF-8 valido.
     """
     limits.disarm()
+    if stream is None:
+        return
     buffer = getattr(stream, "buffer", None)
     if buffer is None:
         stream.write(text)
     else:
         stream.flush()
-        buffer.write(text.encode("utf-8"))
+        buffer.write(text.encode("utf-8", "backslashreplace"))
         buffer.flush()
+
+
+def _shown(path: str) -> str:
+    """Un percorso di chi chiama nei messaggi: solo l'ultimo nome, accorciato. Il resto del
+    percorso è di chi chiama e non entra nel rapporto."""
+    return clip(sanitize(PurePath(path).name or path))
 
 
 def _note(text: str) -> None:
@@ -253,7 +264,7 @@ def _problem(code: str, message: str) -> dict[str, object]:
     return {
         "severity": "error",
         "code": code,
-        "message": message,
+        "message": sanitize(message),
         "file": "",
         "line": 0,
         "column": 0,
@@ -349,7 +360,7 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
     path = Path(args.package)
     problem = _package_problem(path, args.package)
     if problem is None and not path.is_file():
-        problem = f"«{clip(args.package)}» è una cartella: build accetta solo archivi"
+        problem = f"«{_shown(args.package)}» è una cartella: build accetta solo archivi"
     if problem is not None:
         return _finish(args.json, "build", ExitCode.USAGE, "regodoc.usage", problem)
     for option, value in (("--header", args.header), ("--theme", args.theme)):
@@ -359,7 +370,7 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
                 "build",
                 ExitCode.USAGE,
                 "regodoc.header.missing" if option == "--header" else "regodoc.theme.missing",
-                f"{option}: «{clip(value)}» non esiste",
+                f"{option}: «{_shown(value)}» non esiste",
             )
     try:
         outcome = build.run(
@@ -381,7 +392,7 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
             "build",
             ExitCode.ENVIRONMENT,
             "regodoc.environment",
-            f"non posso leggere «{clip(args.package)}»: permesso negato",
+            f"non posso leggere «{_shown(args.package)}»: permesso negato",
         )
     code = ExitCode(outcome.exit_code)
     validation = outcome.validation
@@ -417,11 +428,11 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
 def _package_problem(path: Path, given: str) -> str | None:
     """Il pacchetto esiste ed è un file regolare o una cartella (contratto, §3.1)."""
     if not path.exists():
-        return f"il pacchetto «{clip(given)}» non esiste"
+        return f"il pacchetto «{_shown(given)}» non esiste"
     mode = path.stat().st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         # Una FIFO o un dispositivo lascerebbero il motore in attesa senza fine.
-        return f"«{clip(given)}» non è né un file regolare né una cartella"
+        return f"«{_shown(given)}» non è né un file regolare né una cartella"
     return None
 
 
@@ -441,7 +452,7 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
             "validate",
             ExitCode.USAGE,
             "regodoc.usage",
-            f"il pacchetto «{clip(args.package)}» non esiste",
+            f"il pacchetto «{_shown(args.package)}» non esiste",
         )
     mode = path.stat().st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
@@ -451,7 +462,7 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
             "validate",
             ExitCode.USAGE,
             "regodoc.usage",
-            f"«{clip(args.package)}» non è né un file regolare né una cartella",
+            f"«{_shown(args.package)}» non è né un file regolare né una cartella",
         )
     try:
         validation = validate_package(path)
@@ -461,7 +472,7 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
             "validate",
             ExitCode.ENVIRONMENT,
             "regodoc.environment",
-            f"non posso leggere «{clip(args.package)}»: permesso negato",
+            f"non posso leggere «{_shown(args.package)}»: permesso negato",
         )
     return _report("validate", args, validation)
 
@@ -470,6 +481,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Esegue il comando e restituisce il codice d'uscita."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     _ACTIVE.update(time_seconds=None, memory_bytes=None)
+    if sys.stdout is None:
+        # stdout chiuso prima dell'avvio: il rapporto non ha dove andare (contratto, §4.1).
+        _note("regodoc: errore d'ambiente: l'uscita è chiusa\n")
+        return int(ExitCode.ENVIRONMENT)
     wants_json = "--json" in arguments
     command = next((a for a in arguments if a in COMMANDS), None)
     parser = build_parser()

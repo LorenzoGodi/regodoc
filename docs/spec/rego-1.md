@@ -320,7 +320,8 @@ Il formato delle parti è XML a vocabolario chiuso (decisione 24).
 </part>
 ```
 
-- Codifica UTF-8, senza BOM. La dichiarazione XML è facoltativa e, se c'è, deve essere
+- Codifica UTF-8, senza BOM e senza byte nulli (`regodoc.text.encoding`): con i byte nulli
+  un lettore XML riconoscerebbe da sé l'UTF-16. La dichiarazione XML è facoltativa e, se c'è, deve essere
   esattamente quella dell'esempio, in testa al file.
 - La radice è `<part>` per le parti e `<opening>` per le aperture, secondo come l'id compare
   in `structure.toml`. `<opening>` non ha `<summary>`.
@@ -686,7 +687,7 @@ sulle immagini, che sono già compresse e non hanno motivo di espandersi di più
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
 | 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
-| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2); poi `tomllib`; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
+| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2), chiavi puntate e nomi di tabella al massimo di 8 segmenti (`regodoc.toml.depth`: `tomllib` costa tempo e memoria quadratici nella lunghezza di una chiave puntata); poi `tomllib`, e un intero con troppe cifre per Python è un errore di sintassi; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
 
 ### 6.3 XML
 
@@ -704,7 +705,7 @@ Nessuna espressione regolare con backtracking esponenziale gira su testo arbitra
 
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
-| 10. Immagini | struttura di ogni immagine, senza decodificarne i pixel (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` |
+| 10. Immagini | struttura di ogni immagine; dei PNG anche i pixel compressi, senza conservarli (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` |
 | 11. Rimandi e totali | id unici; rimandi, citazioni, variabili e figure verso oggetti che esistono e del tipo giusto; totali del §7.2 | raccoglie tutti | `regodoc.xml.duplicate_id`, `.unknown_id`, `.reference_target`, `.reference_through`, `.cite_target`, `.unknown_variable`, `.var_form`, `.missing_image`, `regodoc.package.missing_part`, `.orphan_part`, `regodoc.limit.characters`, `.references`, `.sources`; avvisi `regodoc.toml.unused_variable`, `regodoc.image.unused` |
 
 Gli avvisi sulle variabili e sulle immagini mai usate si danno solo se il pacchetto è letto per
@@ -712,7 +713,11 @@ intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
 
 - **PNG**: firma, primo blocco `IHDR` con larghezza e altezza da 1 a 6.000 pixel e una
   combinazione valida di tipo di colore e profondità, CRC di ogni blocco, almeno un `IDAT`,
-  `IEND` presente e nient'altro dopo. Sono ammessi i blocchi `IHDR`, `PLTE`, `IDAT`, `IEND`,
+  `IEND` presente e nient'altro dopo. Un'immagine a tavolozza ha il blocco `PLTE` prima dei
+  pixel. I pixel si decomprimono senza conservarli: il flusso deve essere zlib valido e dare
+  esattamente le righe che l'intestazione dichiara, anche interlacciate, entro i tetti dei
+  byte dei pixel del §7.2 (`regodoc.limit.image_size` per immagine, `regodoc.limit.images`
+  per tutte). Sono ammessi i blocchi `IHDR`, `PLTE`, `IDAT`, `IEND`,
   `tRNS`, `gAMA`, `cHRM`, `sRGB`, `iCCP` e `pHYs`. Gli altri blocchi ancillari, per esempio
   testo, data o animazione, producono un avviso e non finiscono nel PDF; un blocco critico
   sconosciuto è un errore.
@@ -770,6 +775,7 @@ grammatica.
 | `README.md` | 64 KiB, oltre è `regodoc.limit.file_size` anche se il contenuto si ignora | `content.readme_bytes` |
 | Testo totale del documento | 1.500.000 caratteri (sotto) | `content.characters` |
 | Immagini | 80, ognuna al massimo 8 MiB e 6.000 × 6.000 pixel, tutte insieme entro i 40 MiB espansi, cioè dentro il limite dell'involucro del §7.1, che le applica | `content.images`, `content.image_bytes`, `content.image_side_pixels`, `content.images_total_bytes` |
+| Pixel dei PNG | larghezza × altezza × byte per pixel, con i byte arrotondati in su: al massimo 144.000.000 per immagine (un'immagine RGBA a 8 bit di 6.000 × 6.000 pixel) e 600.000.000 per tutte le immagini; il flusso compresso deve dare esattamente le righe dell'intestazione, e un'immagine a tavolozza ha il blocco `PLTE` prima dei pixel | `content.image_pixel_bytes`, `content.images_pixel_bytes` |
 | Tabella | 600 righe, 10 colonne, 2.000 caratteri per cella; oltre 8 colonne in carattere ridotto, solo in verticale | `content.table_rows`, `content.table_columns`, `content.cell_characters`, `content.table_columns_normal_size` |
 | Annidamento | 3 livelli di sezione, 3 di elenco, 24 elementi in tutto | `content.section_depth`, `content.list_depth`, `content.element_depth` |
 | Variabili | 1.500 | `content.variables` |

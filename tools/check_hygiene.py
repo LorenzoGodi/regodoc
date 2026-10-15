@@ -54,7 +54,8 @@ _BIDI_AND_INVISIBLE = frozenset(
 )
 _WORD = re.compile(r"[^\W_]+")
 _WORD_OR_NUMBER = re.compile(r"[^\W\d_]+|\d+")
-_FIRST_LINE = re.compile(r"L\d+: \S")
+# Un lotto («L5: ») o una revisione fuori dai lotti («A11: »).
+_FIRST_LINE = re.compile(r"[LA]\d+: \S")
 _CLOSING_KEYWORD = re.compile(
     r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[\s:]+([\w.-]+/[\w.-]+)?#\d+", re.IGNORECASE
 )
@@ -232,7 +233,9 @@ def check_message(where: str, message: str, terms: Terms) -> list[Problem]:
     lines = message.splitlines()
     first = lines[0] if lines else ""
     if not _FIRST_LINE.match(first):
-        problems.append(Problem(where, 1, "la prima riga deve cominciare con il lotto, «Ln: »"))
+        problems.append(
+            Problem(where, 1, "la prima riga deve cominciare con il lotto, «Ln: » o «An: »")
+        )
     for number, line in enumerate(lines, start=1):
         if line.startswith("#"):
             problems.append(Problem(where, number, "riga che comincia con #"))
