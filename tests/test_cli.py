@@ -414,6 +414,45 @@ class TimeLimitTest(unittest.TestCase):
         self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
         self.assertEqual(resource.getrlimit(resource.RLIMIT_AS), memory)
 
+    def test_report_is_written_with_the_timer_stopped(self) -> None:
+        # Una scrittura lenta, più lunga del tempo concesso: se il timer fosse ancora armato,
+        # scadrebbe a metà e stdout avrebbe un rapporto tronco seguito da un altro.
+        class SlowBuffer(io.BytesIO):
+            def write(self, data: bytes) -> int:  # type: ignore[override]
+                time.sleep(1.3)
+                return super().write(data)
+
+        out = io.TextIOWrapper(SlowBuffer(), "utf-8")
+        err = io.TextIOWrapper(io.BytesIO(), "utf-8")
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["--max-seconds", "1", "validate", str(EXAMPLE), "--json"])
+        self.assertEqual(code, ExitCode.OK)
+        report = json.loads(_text(out))
+        self.assertEqual(report["exit_code"], 0)
+
+    def test_without_posix_timers_the_time_is_null(self) -> None:
+        with mock.patch("regodoc.limits.time_enforced", return_value=False):
+            for argv in (("info", "--json"), ("validate", str(EXAMPLE), "--json")):
+                with self.subTest(argv):
+                    code, _out, _ = run_cli(*argv)
+                    self.assertEqual(code, ExitCode.OK)
+            report = json.loads(run_cli("validate", str(EXAMPLE), "--json")[1])
+        self.assertIsNone(report["limits_active"]["time_seconds"])
+
+    def test_a_timer_of_the_caller_survives(self) -> None:
+        fired: list[int] = []
+        previous = signal.signal(signal.SIGALRM, lambda *_: fired.append(1))
+        try:
+            signal.setitimer(signal.ITIMER_REAL, 100)
+            run_cli("validate", str(EXAMPLE), "--json")
+            remaining, _ = signal.getitimer(signal.ITIMER_REAL)
+            self.assertGreater(remaining, 90)
+            self.assertLessEqual(remaining, 100)
+            self.assertEqual(fired, [])
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous)
+
     @unittest.skipUnless(sys.platform == "linux", "il limite di memoria vale solo su Linux")
     def test_memory_limit_is_reported_and_kept_lower(self) -> None:
         code, out, _ = run_cli("validate", str(EXAMPLE), "--json")

@@ -119,7 +119,11 @@ class UsageExit(SystemExit):
 
 
 def _write(stream: IO[str], text: str) -> None:
-    """Scrive testo in UTF-8 qualunque sia la localizzazione del terminale."""
+    """Scrive testo in UTF-8 qualunque sia la localizzazione del terminale.
+
+    Prima ferma il timer del comando: la scrittura non si interrompe mai a metà.
+    """
+    limits.disarm()
     buffer = getattr(stream, "buffer", None)
     if buffer is None:
         stream.write(text)

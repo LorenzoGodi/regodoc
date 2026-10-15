@@ -112,7 +112,9 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
 
 - Con `enforced: true`, come in questa versione, il motore applica i limiti da sé:
   - **Tempo.** Allo scadere di `time_seconds` del comando il motore si ferma ed esce con il
-    codice 3 e `regodoc.limit.time`. `--max-seconds S` abbassa il tempo dichiarato per
+    codice 3 e `regodoc.limit.time`. Il timer si ferma prima della scrittura del rapporto,
+    che quindi non si interrompe mai a metà. Il timer richiede i segnali POSIX (Linux e
+    macOS); dove mancano, `limits_active.time_seconds` vale `null`. `--max-seconds S` abbassa il tempo dichiarato per
     questa chiamata; un valore più alto è ignorato, uno minore di 1 è un errore d'uso.
   - **Memoria.** Sui sistemi di `memory_enforced_on` (oggi `linux`) il motore limita lo
     spazio d'indirizzi del proprio processo (`RLIMIT_AS`) a `memory_bytes` all'avvio del

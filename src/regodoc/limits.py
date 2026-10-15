@@ -10,6 +10,7 @@ import contextlib
 import signal
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from types import FrameType
 
@@ -41,6 +42,11 @@ def time_limit(command: str | None, max_seconds: int | None) -> int | None:
     return min(declared, max_seconds) if max_seconds is not None else declared
 
 
+def time_enforced() -> bool:
+    """Vero dove il sistema ha il segnale e il timer che servono al tempo massimo (POSIX)."""
+    return hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
+
+
 def memory_enforced() -> bool:
     """Vero dove il motore applica da sé il limite di memoria."""
     return sys.platform in RESOURCES["memory_enforced_on"] and resource is not None
@@ -56,7 +62,8 @@ def applied(command: str | None, max_seconds: int | None) -> Iterator[dict[str, 
     active: dict[str, int | None] = {"time_seconds": None, "memory_bytes": None}
     with contextlib.ExitStack() as stack:
         seconds = time_limit(command, max_seconds)
-        if seconds is not None and threading.current_thread() is threading.main_thread():
+        main_thread = threading.current_thread() is threading.main_thread()
+        if seconds is not None and main_thread and time_enforced():
             stack.enter_context(_alarm(seconds))
             active["time_seconds"] = seconds
         if command is not None and memory_enforced():
@@ -64,18 +71,36 @@ def applied(command: str | None, max_seconds: int | None) -> Iterator[dict[str, 
         yield active
 
 
+# Stato del timer del comando: armato o no.
+_TIMER = {"armed": False}
+
+
+def disarm() -> None:
+    """Ferma il timer del comando. Si chiama prima di scrivere il rapporto: un tempo che
+    scade a metà scrittura lascerebbe su stdout un rapporto tronco seguito da un altro."""
+    if _TIMER["armed"]:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        _TIMER["armed"] = False
+
+
 @contextlib.contextmanager
 def _alarm(seconds: int) -> Iterator[None]:
     def expired(_signum: int, _frame: FrameType | None) -> None:
         raise TimeLimitExceeded(seconds)
 
-    previous = signal.signal(signal.SIGALRM, expired)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+    previous_handler = signal.signal(signal.SIGALRM, expired)
+    started = time.monotonic()
+    previous_delay, previous_interval = signal.setitimer(signal.ITIMER_REAL, seconds)
+    _TIMER["armed"] = True
     try:
         yield
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous)
+        disarm()
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_delay > 0:
+            # Il timer di chi chiama riparte con il tempo che gli restava.
+            remaining = max(previous_delay - (time.monotonic() - started), 1e-6)
+            signal.setitimer(signal.ITIMER_REAL, remaining, previous_interval)
 
 
 @contextlib.contextmanager
