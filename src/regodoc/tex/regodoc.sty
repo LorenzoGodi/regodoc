@@ -1,0 +1,273 @@
+% regodoc.sty: i comandi del contenuto e l'interfaccia del tema (docs/contract.md, §6).
+%
+% Questo file fa parte del motore regodoc (Apache-2.0). Lo carica document.tex, che il
+% motore scrive; poi carica theme.sty, il tema neutro o un tema esterno.
+%
+% Due famiglie di comandi:
+%   \Regodoc...  l'interfaccia del tema: agganci, che il tema ridefinisce, e dati, che legge;
+%   \Rd...       i comandi del contenuto, che document.tex usa e che il tema non ridefinisce.
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesPackage{regodoc}[2026/10/15 regodoc]
+
+\newcommand*\RegodocLanguage{it}
+\DeclareOption{it}{\renewcommand*\RegodocLanguage{it}}
+\DeclareOption{en}{\renewcommand*\RegodocLanguage{en}}
+\ProcessOptions\relax
+
+% --- PDF riproducibile (contratto, §10) ------------------------------------------------------
+% Niente /ID, niente chiavi PTEX con nome di file e versione; compressione fissata. Le date
+% del PDF vengono da SOURCE_DATE_EPOCH, che il motore fissa con FORCE_SOURCE_DATE=1.
+\pdfcompresslevel=9
+\pdfobjcompresslevel=2
+\pdftrailerid{}
+\pdfsuppressptexinfo=-1
+% Un carattere senza glifo è un errore, non un avviso che si perde nel log.
+\tracinglostchars=3
+
+% --- Pacchetti del motore e del tema neutro (info.tex.packages) -------------------------------
+\RequirePackage[T1]{fontenc}
+\RequirePackage{lmodern}
+\RequirePackage{textcomp}
+\ifnum\pdfstrcmp{\RegodocLanguage}{en}=0
+  \RequirePackage[english,shorthands=off]{babel}
+\else
+  \RequirePackage[italian,shorthands=off]{babel}
+\fi
+\RequirePackage{microtype}
+\RequirePackage[a4paper,margin=2.5cm,headheight=14pt]{geometry}
+\RequirePackage{xcolor}
+\RequirePackage{graphicx}
+\RequirePackage{array}
+\RequirePackage{longtable}
+\RequirePackage{booktabs}
+\RequirePackage{enumitem}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{fancyhdr}
+\RequirePackage{pdflscape}
+\RequirePackage[unicode,hidelinks,bookmarksnumbered=false]{hyperref}
+
+% Simboli dell'insieme del §5.2 della specifica che il LaTeX non conosce da sé.
+\DeclareUnicodeCharacter{2212}{\textminus}
+\DeclareUnicodeCharacter{2192}{\textrightarrow}
+\DeclareUnicodeCharacter{21D2}{\ensuremath{\Rightarrow}}
+\DeclareUnicodeCharacter{2264}{\ensuremath{\leq}}
+\DeclareUnicodeCharacter{2265}{\ensuremath{\geq}}
+% Lettere di Latin Extended-A senza glifo in T1: una resa composta, che una prova compila con
+% tutti i caratteri ammessi. La s lunga diventa una s.
+\newcommand\rd@overbar[4]{% lettera, altezza, larghezza, spostamento
+  \leavevmode\ooalign{#1\cr\hidewidth\kern#4\raisebox{#2}{\rule{#3}{.05em}}\hidewidth\cr}}
+\DeclareUnicodeCharacter{0126}{\rd@overbar{H}{1.15ex}{.75em}{0pt}}
+\DeclareUnicodeCharacter{0127}{\rd@overbar{h}{1.2ex}{.3em}{-.12em}}
+\DeclareUnicodeCharacter{0166}{\rd@overbar{T}{.7ex}{.35em}{0pt}}
+\DeclareUnicodeCharacter{0167}{\rd@overbar{t}{.42ex}{.28em}{0pt}}
+\DeclareUnicodeCharacter{0138}{\scalebox{.85}[.7]{K}}
+\DeclareUnicodeCharacter{013F}{L\kern-.1em\textperiodcentered}
+\DeclareUnicodeCharacter{0140}{l\textperiodcentered}
+\DeclareUnicodeCharacter{017F}{s}
+% IJ e ij hanno un glifo in T1, ma non nel carattere monospaziato, che non si allarga.
+\newcommand\rd@ij[2]{\ifdim\fontdimen3\font=\z@ #1\else#2\fi}
+\DeclareUnicodeCharacter{0132}{\rd@ij{IJ}{\IJ}}
+\DeclareUnicodeCharacter{0133}{\rd@ij{ij}{\ij}}
+
+% --- Dati per il tema (contratto, §6.3) ------------------------------------------------------
+\newcommand*\RegodocTitle{}
+\newcommand*\RegodocSubject{}
+\newcommand*\RegodocReference{}
+\newcommand*\RegodocVersionLabel{}
+\newcommand*\RegodocDate{}
+\newcommand*\RegodocPartName{}
+\newcommand*\RegodocFrame[1]{%
+  \ifcsname rd@frame@#1\endcsname\csname rd@frame@#1\endcsname\fi}
+\newcommand*\rd@figurename{}
+\newcommand*\rd@contentsname{}
+\newcommand*\rd@accent{gray}
+
+% --- Agganci del tema, con il comportamento neutro (contratto, §6.3) --------------------------
+\newcommand\RegodocThemeSetup{}
+\newcommand\RegodocTitlePage{}
+\newcommand\RegodocPageStyle{}
+\newcommand\RegodocPartOpening[3]{}
+\newcommand\RegodocOpeningStart{}
+\newenvironment{RegodocBox}[2]{}{}
+\newcommand\RegodocLabel[2]{#2}
+
+% --- Comandi del preambolo di document.tex ---------------------------------------------------
+\newcommand\RdColor[2]{\definecolor{regodoc-#1}{HTML}{#2}}
+\newcommand\RdNames[3]{%
+  \def\RegodocPartName{#1}\def\rd@figurename{#2}\def\rd@contentsname{#3}}
+\newcommand\RdTitle[1]{\def\RegodocTitle{#1}}
+\newcommand\RdSubject[1]{\def\RegodocSubject{#1}}
+\newcommand\RdReference[1]{\def\RegodocReference{#1}}
+\newcommand\RdVersionLabel[1]{\def\RegodocVersionLabel{#1}}
+\newcommand\RdDate[1]{\def\RegodocDate{#1}}
+\newcommand\RdFrame[2]{\expandafter\def\csname rd@frame@#1\endcsname{#2}}
+
+% --- Comandi del corpo -----------------------------------------------------------------------
+\newcounter{rd@bookmark}
+\newcommand*\rd@bookmark[2]{% livello, testo
+  \stepcounter{rd@bookmark}%
+  \pdfbookmark[#1]{#2}{rd@bm@\arabic{rd@bookmark}}}
+\newcommand*\rd@target[1]{\ifx\relax#1\relax\else\hypertarget{#1}{}\fi}
+% Una riga dell'indice, con un'ancora propria: \addcontentsline creerebbe con hyperref un
+% secondo segnalibro, oltre a quello di \rd@bookmark.
+\newcounter{rd@toc}
+\newcommand\rd@tocline[2]{% livello, testo
+  \stepcounter{rd@toc}%
+  \hypertarget{rd@toc@\arabic{rd@toc}}{}%
+  \protected@write\@auxout{}{\string\@writefile{toc}{\protect\contentsline{#1}{#2}{\thepage}%
+    {rd@toc@\arabic{rd@toc}}\protected@file@percent}}}
+
+\newcommand\RdTitlePage{%
+  \RegodocTitlePage
+  \RegodocPageStyle}
+\newcommand\RdTableOfContents{%
+  \section*{\rd@contentsname}%
+  \@starttoc{toc}%
+  \clearpage}
+\newenvironment{RdLegend}[1]{%
+  \par\noindent\textbf{#1}\par\smallskip
+  \begin{itemize}[label={},leftmargin=0pt,itemsep=2pt]}{%
+  \end{itemize}\par\bigskip}
+\newcommand\RdLegendItem[2]{\item\relax\RegodocLabel{#1}{#2}}
+
+\newcommand\RdOpening[1]{%
+  \clearpage
+  \def\rd@accent{gray}%
+  \rd@target{#1}%
+  \RegodocOpeningStart}
+\newcommand\RdPart[4]{% numero romano, ruolo, ancora, titolo
+  \clearpage
+  \def\rd@accent{#2}%
+  \rd@target{#3}%
+  \rd@bookmark{0}{\RegodocPartName\space#1. #4}%
+  \rd@tocline{section}{\RegodocPartName\space#1\quad#4}%
+  \RegodocPartOpening{#1}{#4}{#2}}
+\newcommand\RdSummary[1]{%
+  \par{\large\itshape#1\par}\bigskip}
+\newcommand\RdSection[4]{% livello, ancora, titolo, titolo per i segnalibri
+  \rd@bookmark{#1}{#4}%
+  \ifcase#1\or
+    \section*{\rd@target{#2}\rd@tocline{subsection}{#3}#3}%
+  \or
+    \subsection*{\rd@target{#2}#3}%
+  \else
+    \subsubsection*{\rd@target{#2}#3}%
+  \fi}
+
+\newcount\rd@listkind
+\newenvironment{RdList}[1]{%
+  \ifnum\pdfstrcmp{#1}{numbered}=0 \rd@listkind=1 \enumerate\else\rd@listkind=0 \itemize\fi
+  \edef\rd@endlist{\ifnum\rd@listkind=1 \noexpand\endenumerate\else\noexpand\enditemize\fi}}{%
+  \rd@endlist}
+\newcommand\RdItem{\item\relax}
+
+\newenvironment{RdBox}[2]{\begin{RegodocBox}{#1}{#2}}{\end{RegodocBox}}
+\newenvironment{RdSmall}{\par\small}{\par}
+
+% Tabelle: longtable, con l'intestazione ripetuta in cima a ogni pagina.
+\newlength\RdStar
+\newcommand\RdCellStart{\raggedright\arraybackslash}
+\newenvironment{RdTable}[5]{% corpo, colonne, colonne «*», larghezza fissa, preambolo
+  \par
+  \setlength\RdStar{\dimexpr(\linewidth-#4-2\tabcolsep*#2)/#3\relax}%
+  \ifdim\RdStar<1cm \setlength\RdStar{1cm}\fi
+  \ifnum\pdfstrcmp{#1}{small}=0 \small\fi
+  \setlength\LTpre{\medskipamount}\setlength\LTpost{\medskipamount}%
+  \longtable[l]{#5}\toprule}{%
+  \bottomrule\endlongtable\par}
+\newcommand\RdCell[4]{% tipo, colonne, larghezza, contenuto
+  \multicolumn{#2}{>{\RdCellStart}p{#3}}{\rd@cellfont{#1}#4}}
+\newcommand*\rd@cellfont[1]{%
+  \ifnum\pdfstrcmp{#1}{row}=0 \else\bfseries\fi}
+\newcommand\RdHeadEnd{\\\midrule\endhead}
+\newcommand\RdRowEnd{\\}
+\newcommand\RdSeparator{\midrule}
+\newenvironment{RdLandscape}{\begin{landscape}}{\end{landscape}}
+
+\newcounter{rd@figure}
+\newcommand\RdFigure[3]{% percorso, larghezza, didascalia
+  \par\medskip
+  \stepcounter{rd@figure}%
+  \begin{center}
+    \includegraphics[width=#2\linewidth]{#1}\par\nopagebreak\smallskip
+    {\small\textbf{\rd@figurename~\arabic{rd@figure}.}\ifx\relax#3\relax\else\space#3\fi\par}
+  \end{center}\medskip}
+
+\newenvironment{RdListing}{%
+  \par\medskip
+  \begingroup\ttfamily\small\raggedright\parindent=0pt\relax}{%
+  \par\endgroup\medskip}
+\newcommand\RdListingLine[1]{\hangindent=2em\hangafter=1 \strut#1\par}
+
+\newenvironment{RdSources}[1]{%
+  \par\medskip\noindent\textbf{#1}\par\smallskip}{\par}
+\newcommand\RdSourceGroup[1]{\par\medskip\noindent\textit{#1}\par\smallskip}
+\newcommand\RdSource[7]{% numero, ancora, indirizzo in esadecimale, indirizzo, titolo, editore, consultata
+  \par\noindent\hangindent=2.5em\hangafter=1
+  \makebox[2.5em][l]{\rd@target{#2}[#1]}%
+  #5. #6. \RdLink{#3}{\texttt{#4}}\ifx\relax#7\relax\else, #7\fi.\par}
+
+% In linea.
+\newcommand\RdB[1]{\textbf{#1}}
+\newcommand\RdI[1]{\textit{#1}}
+\newcommand\RdCode[1]{\texttt{#1}}
+\newcommand\RdMono[1]{\texttt{#1}}
+\newcommand\RdTone[2]{\textcolor{regodoc-#1}{\textbf{#2}}}
+\newcommand\RdLabel[2]{\RegodocLabel{#1}{#2}}
+\newcommand\RdLink[2]{% indirizzo in esadecimale, testo
+  \begingroup\edef\rd@url{\pdfunescapehex{#1}}%
+  \expandafter\rd@href\expandafter{\rd@url}{#2}\endgroup}
+\newcommand\rd@href[2]{\href{#1}{#2}}
+\newcommand\RdMail[2]{\RdLink{#1}{#2}}
+\newcommand\RdDomain[1]{#1}
+\newcommand\RdRef[2]{\hyperlink{#1}{#2}}
+\newcommand\RdCite[2]{[\hyperlink{#1}{#2}]}
+\newcommand\RdBreak{\newline}
+\newcommand\RdAB{\allowbreak}
+
+% --- Il tema ---------------------------------------------------------------------------------
+% Registra i pacchetti che theme.sty chiede direttamente (contratto, §6.1): il motore li
+% confronta con tex_packages del tema e con info.tex.packages.
+\newif\ifrd@intheme
+\newcount\rd@depth
+\AddToHook{package/before}{%
+  \ifrd@intheme
+    \ifnum\rd@depth=1 \wlog{regodoc-package: \CurrentFile}\fi
+    \global\advance\rd@depth by 1
+  \fi}
+\AddToHook{package/after}{\ifrd@intheme\global\advance\rd@depth by -1 \fi}
+
+% I comandi del contenuto: il tema non li ridefinisce. Il motore li confronta prima e dopo il
+% tema, all'inizio e alla fine del documento.
+\def\rd@guarded{%
+  RdColor,RdNames,RdTitle,RdSubject,RdReference,RdVersionLabel,RdDate,RdFrame,%
+  RdTitlePage,RdTableOfContents,RdLegend,endRdLegend,RdLegendItem,RdOpening,RdPart,%
+  RdSummary,RdSection,RdList,endRdList,RdItem,RdBox,endRdBox,RdSmall,endRdSmall,RdTable,%
+  endRdTable,RdCell,RdHeadEnd,RdRowEnd,RdSeparator,RdCellStart,RdLandscape,endRdLandscape,%
+  RdFigure,RdListing,endRdListing,RdListingLine,RdSources,endRdSources,RdSourceGroup,%
+  RdSource,RdB,RdI,RdCode,RdMono,RdTone,RdLabel,RdLink,RdMail,RdDomain,RdRef,RdCite,%
+  RdBreak,RdAB}
+\def\rd@save#1{\expandafter\let\csname rd@saved@#1\expandafter\endcsname\csname#1\endcsname}
+\def\rd@check#1{%
+  \expandafter\ifx\csname rd@saved@#1\expandafter\endcsname\csname#1\endcsname\else
+    \wlog{regodoc-redefined: #1}%
+  \fi}
+\def\rd@checkall{\@for\rd@name:=\rd@guarded\do{\expandafter\rd@check\expandafter{\rd@name}}}
+\@for\rd@name:=\rd@guarded\do{\expandafter\rd@save\expandafter{\rd@name}}
+
+\rd@inthemetrue
+\RequirePackage{theme}
+\rd@inthemefalse
+\rd@checkall
+
+\AddToHook{begindocument/before}{%
+  \RegodocThemeSetup
+  \hypersetup{
+    pdftitle={\RegodocTitle},
+    pdfsubject={\RegodocSubject},
+    pdfcreator={regodoc},
+    pdfproducer={regodoc},
+    pdflang={\RegodocLanguage}}}
+\AddToHook{begindocument/end}{\rd@checkall}
+\AddToHook{enddocument/afterlastpage}{\rd@checkall}
+\endinput

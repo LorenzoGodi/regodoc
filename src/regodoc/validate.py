@@ -15,7 +15,7 @@ from regodoc import __version__
 from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS, GRAMMAR_CURRENT, GRAMMARS_READ
 from regodoc.diagnostics import Collector, TooManyProblems, clip
 from regodoc.images import check_image
-from regodoc.parts import Context, PartChecker, Target, Use, parse_part
+from regodoc.parts import Context, Node, PartChecker, Target, Use, parse_part
 from regodoc.source import IMAGE_PATH, PART_PATH, PackageFiles, is_allowed_path, read_package
 from regodoc.text import find_bad_chars
 from regodoc.tomlfiles import (
@@ -50,6 +50,8 @@ class Validation:
     package: PackageFiles | None = None
     input_sha256: str | None = None
     input_bytes: int | None = None
+    # Gli alberi delle parti lette, per id: build li usa senza rileggere i file.
+    roots: dict[str, Node] = field(default_factory=dict)
 
     def files(self) -> list[dict[str, object]]:
         """I file di contenuto, nell'ordine canonico, con impronta e dimensione."""
@@ -173,7 +175,7 @@ def _validate(path: Path, result: Validation) -> None:
     variables = read_variables(variables_data, report) if variables_data is not None else None
     result.variables = variables.valid if variables is not None else {}
     declared = variables.declared if variables is not None else set()
-    _check_parts(package, structure, result.variables, declared, report)
+    result.roots = _check_parts(package, structure, result.variables, declared, report)
 
 
 def _check_manifest(
@@ -301,7 +303,8 @@ def _check_parts(
     variables: dict[str, Variable],
     declared: set[str] | None,
     report: Collector,
-) -> None:
+) -> dict[str, Node]:
+    roots: dict[str, Node] = {}
     entries = {entry.id: entry for entry in structure.entries}
     context = Context(report, variables, entries)
     context.declared_variables = declared
@@ -338,6 +341,7 @@ def _check_parts(
         if root is None:
             complete = False
         else:
+            roots[entry.id] = root
             PartChecker(context, path, entry).check_root(root)
     images = {path for path in package.files if IMAGE_PATH.fullmatch(path)}
     if len(images) > CONTENT_LIMITS["images"]:
@@ -351,6 +355,7 @@ def _check_parts(
     context.complete = context.complete and complete
     _check_uses(context, images, complete=context.complete)
     _check_totals(context)
+    return roots
 
 
 def _check_uses(context: Context, images: set[str], *, complete: bool) -> None:

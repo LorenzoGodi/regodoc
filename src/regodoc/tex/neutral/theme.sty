@@ -1,0 +1,48 @@
+% Tema neutro del motore regodoc (docs/contract.md, §6). Ridefinisce solo gli agganci e usa
+% solo i dati e i colori che regodoc.sty gli dà.
+\ProvidesPackage{theme}[2026/10/15 regodoc neutral]
+
+\renewcommand\RegodocThemeSetup{%
+  \setlength\parindent{0pt}%
+  \setlength\parskip{0.5\baselineskip plus 2pt}%
+  \setlist{itemsep=2pt,topsep=4pt}}
+
+\renewcommand\RegodocTitlePage{%
+  \begin{titlepage}
+    \raggedright
+    \vspace*{0.25\textheight}
+    {\Huge\bfseries\RegodocTitle\par}
+    \ifx\RegodocSubject\empty\else\bigskip{\Large\RegodocSubject\par}\fi
+    \vfill
+    {\large
+      \ifx\RegodocReference\empty\else\RegodocReference\par\fi
+      \ifx\RegodocVersionLabel\empty\else\RegodocVersionLabel\par\fi
+      \RegodocDate\par}
+  \end{titlepage}}
+
+\fancypagestyle{regodoc}{%
+  \fancyhf{}%
+  \fancyhead[L]{\small\nouppercase{\RegodocTitle}}%
+  \fancyhead[R]{\small\RegodocReference}%
+  \fancyfoot[C]{\small\thepage}%
+  \renewcommand\headrulewidth{0.4pt}}
+\renewcommand\RegodocPageStyle{\pagestyle{regodoc}}
+
+\renewcommand\RegodocPartOpening[3]{%
+  {\color{regodoc-#3}%
+   {\large\bfseries\RegodocPartName\space#1\par}\smallskip
+   {\LARGE\bfseries#2\par}}%
+  \smallskip{\color{regodoc-#3}\rule{\linewidth}{1.2pt}}\par\bigskip}
+
+\renewenvironment{RegodocBox}[2]{%
+  \ifx\relax#2\relax\def\neutral@title{}\else\def\neutral@title{title={#2},}\fi
+  \edef\neutral@box{\noexpand\tcolorbox[\unexpanded\expandafter{\neutral@title}%
+    breakable,enhanced,colback=regodoc-#1!6,colframe=regodoc-#1,colbacktitle=regodoc-#1,
+    boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt,
+    fonttitle=\noexpand\bfseries,coltitle=white]}%
+  \neutral@box}{%
+  \endtcolorbox}
+
+\renewcommand\RegodocLabel[2]{%
+  \colorbox{regodoc-#1}{\color{white}\sffamily\bfseries\footnotesize\strut#2}}
+\endinput

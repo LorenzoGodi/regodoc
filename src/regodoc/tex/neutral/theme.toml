@@ -1,0 +1,21 @@
+# Tema neutro del motore regodoc: un tema come gli altri, nella forma del contratto del tema
+# (docs/contract.md, §6), che fa anche da esempio.
+name = "neutral"
+version = "1"
+theme_contract = 1
+frame_keys = []
+tex_packages = []
+
+[palette]
+azure = "2F5F8A"
+slate = "4A5560"
+sage = "4F6F4B"
+bronze = "7D5F2A"
+plum = "674766"
+brick = "8E4436"
+olive = "5F6328"
+gray = "5E5E5E"
+ok = "2F6B3A"
+warning = "9A6200"
+critical = "A12B2B"
+muted = "6E6E6E"

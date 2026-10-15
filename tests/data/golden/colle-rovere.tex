@@ -1,0 +1,156 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[it]{regodoc}
+\RdColor{azure}{2F5F8A}
+\RdColor{slate}{4A5560}
+\RdColor{sage}{4F6F4B}
+\RdColor{bronze}{7D5F2A}
+\RdColor{plum}{674766}
+\RdColor{brick}{8E4436}
+\RdColor{olive}{5F6328}
+\RdColor{gray}{5E5E5E}
+\RdColor{ok}{2F6B3A}
+\RdColor{warning}{9A6200}
+\RdColor{critical}{A12B2B}
+\RdColor{muted}{6E6E6E}
+\RdNames{Parte}{Figura}{Indice}
+\RdTitle{Rinnovo della rete della Cantina Colle Rovere}
+\RdSubject{Analisi dello stato attuale e proposta}
+\RdReference{CR-2026-07}
+\RdVersionLabel{Bozza 0.3}
+\RdDate{5 ottobre 2026}
+\begin{document}
+\RdTitlePage
+\RdTableOfContents
+\begin{RdLegend}{Legenda delle etichette}
+\RdLegendItem{slate}{osservato}
+\RdLegendItem{warning}{da verificare}
+\end{RdLegend}
+
+\RdOpening{rd-summary}
+
+\RdSection{1}{rd-in-brief}
+{In breve}
+{In breve}
+
+Il rapporto riguarda la rete e gli archivi della cantina; i lavori proposti partono
+il 16 novembre 2026 e richiedono al massimo 14~giorni. Domande e osservazioni vanno
+all’Ufficio tecnico della cantina.
+\par
+\begin{RdList}{numbered}
+\RdItem Rifare la copertura senza fili della barricaia.
+\RdItem Affidare la manutenzione a un installatore, per 320–410~euro l’anno.
+\RdItem Provare il recupero dei file a ogni fine vendemmia.
+\end{RdList}
+
+Le analisi complete sono in \RdRef{rd-network}{Parti~I–II}.
+\par
+
+\RdPart{I}{azure}{rd-network}
+{Rete e collegamenti}
+\RdSummary{Rete degli uffici, collegamento a Internet e copertura senza fili della cantina.}
+
+\RdSection{1}{rd-lan}
+{Rete locale}
+{Rete locale}
+
+\RdLabel{slate}{osservato} Le \RdMono{14} postazioni di ufficio e laboratorio passano
+da un apparato centrale di \RdI{vecchia generazione}; il dominio interno è \RdDomain{colle-\RdAB{}rovere.\RdAB{}example}.
+\par
+
+Le segnalazioni vanno a \RdMail{6D61696C746F3A697440636F6C6C652D726F766572652E6578616D706C65}{it@\RdAB{}colle-\RdAB{}rovere.\RdAB{}example};
+la guida dei punti di accesso è in \RdLink{68747470733A2F2F646F63732E6578616D706C652E636F6D2F61702F696E7374616C6C617A696F6E65}{Installazione
+dei punti di accesso}\RdCite{rd-ap-guide}{1}.
+\par
+
+\RdSection{2}{rd-wifi}
+{Copertura senza fili}
+{Copertura senza fili}
+
+La barricaia è coperta al 72,5\%: oltre la seconda fila di botti il segnale è \RdTone{warning}{debole},
+una “zona d’ombra” per i lettori delle etichette.
+\par
+\RdFigure{images/coverage.png}{0.6}
+{Copertura misurata prima dei lavori.}
+
+\RdSection{1}{rd-sources-network}
+{Fonti}
+{Fonti}
+\begin{RdSources}{Fonti}
+\RdSource{1}{rd-ap-guide}{68747470733A2F2F646F63732E6578616D706C652E636F6D2F61702F696E7374616C6C617A696F6E65}
+{https:\RdAB{}/\RdAB{}/\RdAB{}docs.\RdAB{}example.\RdAB{}com/\RdAB{}ap/\RdAB{}installazione}
+{Guida all’installazione dei punti di accesso}
+{Example Networks}
+{consultata il 10 settembre 2026}
+\RdSource{2}{}{68747470733A2F2F646F63732E6578616D706C652E636F6D2F6E61732F636F706965}
+{https:\RdAB{}/\RdAB{}/\RdAB{}docs.\RdAB{}example.\RdAB{}com/\RdAB{}nas/\RdAB{}copie}
+{Copie pianificate sul NAS}
+{Example Storage}
+{}
+\end{RdSources}
+
+\RdPart{II}{sage}{rd-backup}
+{Copie di sicurezza}
+\RdSummary{Dove stanno gli archivi della cantina e come renderli più sicuri.}
+
+\RdSection{1}{rd-current-backup}
+{Archivi e copie}
+{Archivi e copie}
+
+\RdLabel{slate}{osservato} Il disco di rete in ufficio è quasi pieno; il nuovo
+disco di copia avrà \RdMono{4~TB}, e dopo un guasto il recupero completo richiederà
+circa 6~ore.
+\par
+
+Per le copie fuori dalla cantina vedi \RdRef{rd-offsite}{“Copia esterna”}.
+\par
+\begin{RdBox}{sage}{}
+
+Funziona già bene:
+\par
+\begin{RdList}{bullet}
+\RdItem le versioni precedenti dei fogli di calcolo;
+\RdItem gli accessi separati per ufficio e laboratorio.
+\end{RdList}
+\end{RdBox}
+\begin{RdTable}{normal}{3}{1}{4.8cm}
+{>{\RdCellStart}p{\RdStar}>{\RdCellStart}p{2.2cm}>{\RdCellStart}p{2.6cm}}
+\RdCell{head}{1}{\RdStar}{Archivio}
+&\RdCell{head}{1}{2.2cm}{Dove}
+&\RdCell{head}{1}{2.6cm}{Copia}
+\RdHeadEnd
+\RdCell{row}{1}{\RdStar}{Registro di cantina e analisi di laboratorio}
+&\RdCell{row}{1}{2.2cm}{disco di rete}
+&\RdCell{row}{1}{2.6cm}{\RdTone{warning}{settimanale}}
+\RdRowEnd
+\RdCell{row}{1}{\RdStar}{Etichette e grafica:\par
+\begin{RdList}{bullet}
+\RdItem file di stampa;
+\RdItem fotografie delle annate.
+\end{RdList}}
+&\RdCell{row}{1}{2.2cm}{portatile grafico}
+&\RdCell{row}{1}{2.6cm}{\RdTone{critical}{nessuna} \RdLabel{warning}{da verificare}}
+\RdRowEnd
+\RdSeparator
+\RdCell{total}{2}{\dimexpr\RdStar+2.2cm+2\tabcolsep\relax}{Capacità del nuovo disco}
+&\RdCell{total}{1}{2.6cm}{\RdMono{4} TB}
+\RdRowEnd
+\end{RdTable}
+
+\RdSection{2}{rd-offsite}
+{Copia esterna}
+{Copia esterna}
+
+Una copia lontana dalla cantina protegge anche da incendio e furto. La prova a
+secco del trasferimento:
+\par
+\begin{RdListing}
+\RdListingLine{rclone~sync~-{}\RdAB{}-\RdAB{}dry-\RdAB{}run~/\RdAB{}volume1/\RdAB{}archivi/~esterno:\RdAB{}colle-\RdAB{}rovere/}
+\RdListingLine{echo~\textquotedbl{}prova~conclusa\textquotedbl{}}
+\end{RdListing}
+\begin{RdSmall}
+
+Con \RdCode{-{}\RdAB{}-\RdAB{}dry-\RdAB{}run} il comando elenca i file senza trasferirli.
+\par
+\end{RdSmall}
+
+\end{document}
