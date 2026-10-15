@@ -140,6 +140,7 @@ def validate_package(path: Path) -> Validation:
             result.input_bytes = len(data)
     with contextlib.suppress(TooManyProblems):
         _validate(path, result)
+    result.report.finish()
     return result
 
 

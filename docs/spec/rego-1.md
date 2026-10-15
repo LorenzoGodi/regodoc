@@ -629,8 +629,8 @@ errore o se raccoglie tutti gli errori del passo.
   - `structure.toml` (passo 8): manca; supera 64 KiB; comincia con un BOM; non è UTF-8;
     contiene un carattere fuori elenco (§5.2); `tomllib` non lo legge, per sintassi o
     annidamento. Chiavi, tipi e valori sbagliati non fermano la lettura;
-  - in qualunque passo, il limite dei problemi: dopo 500 problemi la lettura si ferma con
-    `regodoc.limit.problems` (§7.2).
+  - in qualunque passo, il limite dei problemi: un errore oltre i 500 problemi ferma la
+    lettura con l'errore `regodoc.limit.problems` (§7.2); gli avvisi oltre il tetto no.
 
   Lo stesso vale per `variables.toml`, che però non ferma mai la lettura: se una delle
   verifiche preliminari o `tomllib` lo rifiutano, il motore prosegue senza variabili.
@@ -776,7 +776,7 @@ grammatica.
 | `href` | 2.000 caratteri | `content.href_characters` |
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
-| Problemi elencati in un rapporto | 500; poi la lettura si ferma con `regodoc.limit.problems` | `content.problems` |
+| Problemi elencati in un rapporto | 500; un errore in più ferma la lettura con l'errore `regodoc.limit.problems`; gli avvisi in più non si elencano, la lettura prosegue e un avviso `regodoc.limit.problems` li conta | `content.problems` |
 
 **Che cosa conta nei 1.500.000 caratteri.** Il testo dei blocchi di testo misto, dopo la
 riduzione degli spazi del §5.1; il contenuto di `<code>`, di `<address>` e dei titoli delle

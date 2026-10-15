@@ -303,9 +303,11 @@ nome temporaneo. Vale `""` anche per gli errori di una sola voce dell'archivio (
   tema non definisce (§6.2); `--strict` non lo conta.
 
 **Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del pacchetto
-accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi più l'errore
-`regodoc.limit.problems`, con cui la lettura si ferma. Con i campi del §4.2 per 200 file, un rapporto resta sotto
-1 MiB.
+accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi, più una voce
+`regodoc.limit.problems`. Se al tetto arriva un errore, la lettura si ferma e quella voce è
+un errore. Se arrivano solo avvisi, la lettura prosegue, gli avvisi in più non si elencano e
+la voce è un avviso che li conta: un pacchetto valido con molti avvisi resta valido. Con i
+campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
 
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
@@ -376,7 +378,7 @@ motore.
 | `content.sources` | fonti | elementi `<source>` |
 | `content.href_characters` | caratteri | per `href` |
 | `content.listing_line_characters` | caratteri | per riga di un `<listing>` |
-| `content.problems` | problemi | elencati in un rapporto prima di fermarsi |
+| `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura e gli avvisi si contano soltanto |
 
 ### 5.2 Capacità
 
