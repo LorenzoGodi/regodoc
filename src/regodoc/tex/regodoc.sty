@@ -25,6 +25,9 @@
 \tracinglostchars=3
 
 % --- Pacchetti del motore e del tema neutro (info.tex.packages) -------------------------------
+% Niente conversione da EPS: i comandi esterni sono spenti, e il pacchetto ammette solo PNG e
+% JPEG. Senza questo, pdftex.def carica epstopdf, che avvisa della mancanza dei comandi esterni.
+\providecommand\DoNotLoadEpstopdf{}
 \RequirePackage[T1]{fontenc}
 \RequirePackage{lmodern}
 \RequirePackage{textcomp}
