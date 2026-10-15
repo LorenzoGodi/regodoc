@@ -931,6 +931,28 @@ non bloccano il pacchetto.
 | `regodoc.limit.warnings` | avviso; §7.2 |
 | `regodoc.limit.memory` | §6.5; contratto, §2.3: codice d'uscita 3 |
 | `regodoc.limit.time` | §6.5; contratto, §2.3: codice d'uscita 3 |
+| `regodoc.header.missing` | contratto, §3.2: codice d'uscita 2 |
+| `regodoc.header.syntax` | contratto, §3.2: codice d'uscita 2 |
+| `regodoc.header.unknown_key` | contratto, §3.2: codice d'uscita 2 |
+| `regodoc.header.contract` | contratto, §3.2: codice d'uscita 2 |
+| `regodoc.header.value` | contratto, §3.2: codice d'uscita 2 |
+| `regodoc.header.date` | §2; contratto, §3.2: codice d'uscita 2 |
+| `regodoc.theme.missing` | contratto, §3.3: codice d'uscita 2 |
+| `regodoc.theme.layout` | contratto, §3.3 e §6: codice d'uscita 2 |
+| `regodoc.theme.limit` | contratto, §3.3: codice d'uscita 2 |
+| `regodoc.theme.asset` | contratto, §6: codice d'uscita 2 |
+| `regodoc.theme.encoding` | contratto, §6: codice d'uscita 2 |
+| `regodoc.theme.toml` | contratto, §6.1: codice d'uscita 2 |
+| `regodoc.theme.forbidden` | contratto, §6.5: codice d'uscita 2 |
+| `regodoc.theme.package` | contratto, §6.1: codice d'uscita 2 |
+| `regodoc.theme.redefined` | contratto, §6.4 e §6.5: codice d'uscita 2 |
+| `regodoc.theme.shell` | contratto, §6.5: codice d'uscita 2 |
+| `regodoc.theme.read` | contratto, §6.5: codice d'uscita 2 |
+| `regodoc.theme.write` | contratto, §6.5: codice d'uscita 2 |
+| `regodoc.theme.compile` | contratto, §7: codice d'uscita 2 |
+| `regodoc.theme.role_default` | avviso informativo; contratto, §6.2 |
+| `regodoc.theme.frame_key` | avviso informativo; contratto, §6.1 |
+| `regodoc.tex.missing` | contratto, §7: codice d'uscita 3 |
 | `regodoc.usage` | contratto, §7: codice d'uscita 2 |
 | `regodoc.environment` | contratto, §7: codice d'uscita 3 |
 | `regodoc.not_implemented` | contratto, §7: codice d'uscita 3 |

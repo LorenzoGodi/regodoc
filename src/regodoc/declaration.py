@@ -86,7 +86,7 @@ COMMANDS: Final = MappingProxyType(
         "info": "ready",
         "validate": "ready",
         "canon": "draft",
-        "build": "draft",
+        "build": "ready",
         "upgrade": "draft",
     }
 )
@@ -136,7 +136,13 @@ THEME_HOOKS: Final = (
 THEME_LIMITS: Final = MappingProxyType({"files": 200, "bytes": 8 * _MIB})
 
 # Capacità stabili di questa versione (docs/contract.md, §5 e §9).
-CAPABILITIES: Final = ("validate", "validate.directory")
+CAPABILITIES: Final = (
+    "validate",
+    "validate.directory",
+    "build.pdf",
+    "build.latex",
+    "build.theme",
+)
 
 LANGUAGES: Final = ("it", "en")
 
@@ -144,13 +150,13 @@ LANGUAGES: Final = ("it", "en")
 # citazioni, una di riserva per i riferimenti che si spostano.
 PASSES: Final = MappingProxyType({"min": 2, "max": 4})
 
-# Pacchetti LaTeX che il motore e il tema neutro caricano. Provvisorio finché la resa in PDF non
-# è scritta: tutti sono nell'immagine TeX di Rego.
+# Pacchetti LaTeX che regodoc.sty e il tema neutro caricano direttamente, cioè quelli che
+# chiedono all'immagine TeX (contratto, §6.1). Una prova li confronta con regodoc.sty.
 TEX_PACKAGES: Final = (
+    "array",
     "babel",
     "booktabs",
     "enumitem",
-    "etoolbox",
     "fancyhdr",
     "fontenc",
     "geometry",
@@ -161,7 +167,7 @@ TEX_PACKAGES: Final = (
     "microtype",
     "pdflscape",
     "tcolorbox",
-    "titlesec",
+    "textcomp",
     "xcolor",
 )
 

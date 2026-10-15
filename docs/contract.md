@@ -98,8 +98,9 @@ Per pdflatex il motore costruisce un ambiente da zero, senza ereditare quello de
 `PATH` ridotto alla cartella di `pdflatex`; `HOME`, `TEXMFHOME`, `TEXMFVAR` e `TEXMFCONFIG`
 nella cartella di lavoro; `openin_any=p`, `openout_any=p`, `shell_escape=f`; `MKTEXFMT=0`,
 `MKTEXPK=0`, `MKTEXTFM=0`; `LC_ALL=C.UTF-8`; `SOURCE_DATE_EPOCH` dalla data del documento e
-`FORCE_SOURCE_DATE=1`. pdflatex gira con `-no-shell-escape -interaction=batchmode
--halt-on-error -recorder`, **nello stesso gruppo di processi del motore**, così chi uccide il
+`FORCE_SOURCE_DATE=1`; `max_print_line`, `error_line` e `half_error_line` larghi, perché le
+righe del log, che il motore legge, non vadano a capo. pdflatex gira con `-no-shell-escape
+-interaction=batchmode -halt-on-error -recorder`, **nello stesso gruppo di processi del motore**, così chi uccide il
 gruppo (§2.3) uccide anche pdflatex. L'uscita di pdflatex e di ogni altro processo figlio va
 in file della cartella di lavoro, mai su stdout o stderr del motore: su stdout c'è solo il
 rapporto.
@@ -204,10 +205,19 @@ Un'intestazione mancante, illeggibile o sbagliata ferma `build` con il codice 2 
 ### 3.3 Il tema (`--theme`)
 
 Una cartella conforme al contratto del tema (§6). Senza `--theme` il motore usa il proprio
-tema neutro. Regole della cartella: niente collegamenti simbolici né file speciali; al massimo
-200 file e 8 MiB in tutto (`info.theme.limits`); nomi con caratteri in `[a-z0-9._/-]`. Il motore la copia nella
-propria cartella di lavoro senza seguire collegamenti. Un tema mancante, illeggibile o
-sbagliato ferma `build` con il codice 2 e un errore `regodoc.theme.*`.
+tema neutro. Regole della cartella:
+
+- contiene solo `theme.toml`, `theme.sty` e immagini PNG, JPEG o PDF in `assets/`, anche in
+  sottocartelle, con nomi in minuscolo (`[a-z0-9._-]`);
+- niente collegamenti simbolici né file speciali (`regodoc.theme.layout`);
+- al massimo 200 file e 8 MiB in tutto, `info.theme.limits` (`regodoc.theme.limit`);
+- ogni immagine comincia con la firma del proprio formato (`regodoc.theme.asset`);
+- `theme.toml` e `theme.sty` sono in UTF-8, senza BOM né caratteri di controllo
+  (`regodoc.theme.encoding`).
+
+Il motore legge la cartella senza seguire collegamenti e la copia nella propria cartella di
+lavoro. Un tema mancante, illeggibile o sbagliato ferma `build` con il codice 2 e un errore
+`regodoc.theme.*`.
 
 ## 4. Il rapporto
 
@@ -506,14 +516,15 @@ Un pacchetto LaTeX caricato dopo `regodoc.sty`. Può ridefinire solo gli agganci
 | `\RegodocPageStyle` | dopo il frontespizio | — |
 | `\RegodocPartOpening` | inizio di ogni parte | numero romano, titolo, ruolo |
 | `\RegodocOpeningStart` | inizio di ogni apertura | — |
-| `\RegodocBox` | ambiente dei riquadri | ruolo, titolo nella lingua del documento (anche vuoto) |
+| `\RegodocBox` | ambiente dei riquadri: il tema lo ridefinisce con `\renewenvironment{RegodocBox}` | ruolo, titolo nella lingua del documento (anche vuoto) |
 | `\RegodocLabel` | etichetta in linea | ruolo, dicitura nella lingua del documento |
 
 I dati arrivano al tema solo attraverso macro di sola lettura, con testo già trascritto dal
 generatore:
 
 - `\RegodocTitle`, `\RegodocSubject`, `\RegodocReference`, `\RegodocVersionLabel`,
-  `\RegodocDate`;
+  `\RegodocDate` (vuoti quando il pacchetto non li dà; la data è già scritta per esteso);
+- `\RegodocPartName`, la parola «Parte» o «Part» nella lingua del documento;
 - `\RegodocFrame{chiave}`;
 - `\RegodocLanguage`;
 - il colore `regodoc-<ruolo>` per ogni ruolo.
@@ -521,6 +532,64 @@ generatore:
 Il tema non riceve mai testo del pacchetto non trascritto e non definisce comandi che il
 generatore usa per il contenuto. Il tema neutro del motore è un tema come gli altri, nella
 stessa forma, e fa da esempio.
+
+### 6.4 I comandi del contenuto
+
+`document.tex`, che il motore scrive, usa solo i comandi di `regodoc.sty` con il prefisso
+`\Rd`, e ciascuno riceve solo testo già trascritto o valori che il motore ha controllato
+(id, percorsi d'immagine, misure, indirizzi in esadecimale). Il tema **non li ridefinisce**:
+`regodoc.sty` ne confronta il significato prima e dopo il caricamento di `theme.sty`,
+all'inizio e alla fine del documento, e un comando cambiato ferma `build` con il codice 2 e
+`regodoc.theme.redefined`, che lo nomina. Per cambiare l'aspetto il tema ridefinisce gli
+agganci del §6.3, o i comandi del LaTeX che gli agganci usano.
+
+| Dove | Comandi |
+|---|---|
+| preambolo | `\RdColor{ruolo}{RRGGBB}`, `\RdNames{parte}{figura}{indice}`, `\RdTitle`, `\RdSubject`, `\RdReference`, `\RdVersionLabel`, `\RdDate`, `\RdFrame{chiave}{valore}` |
+| struttura | `\RdTitlePage`, `\RdTableOfContents`, `RdLegend` con `\RdLegendItem{ruolo}{dicitura}`, `\RdOpening{ancora}`, `\RdPart{numero}{ruolo}{ancora}{titolo}`, `\RdSummary`, `\RdSection{livello}{ancora}{titolo}{titolo per i segnalibri}` |
+| blocchi | `RdList{bullet\|numbered}` con `\RdItem`, `RdBox{ruolo}{titolo}`, `RdSmall`, `RdListing` con `\RdListingLine`, `\RdFigure{percorso}{larghezza}{didascalia}`, `RdSources{titolo}` con `\RdSourceGroup` e `\RdSource` |
+| tabelle | `RdTable{corpo}{colonne}{colonne «*»}{larghezza fissa}{preambolo}`, `\RdCell{tipo}{colonne}{larghezza}{contenuto}`, `\RdHeadEnd`, `\RdRowEnd`, `\RdSeparator`, `\RdCellStart`, `\RdStar`, `RdLandscape` |
+| in linea | `\RdB`, `\RdI`, `\RdCode`, `\RdMono`, `\RdTone{ruolo}`, `\RdLabel{ruolo}{dicitura}`, `\RdLink{indirizzo}{testo}`, `\RdMail`, `\RdDomain`, `\RdRef{ancora}{testo}`, `\RdCite{ancora}{numero}`, `\RdBreak`, `\RdAB` |
+
+Dal vocabolario ai ruoli (§6.2), nel motore:
+
+- riquadri: `status` prende il ruolo dell'accento della parte, `gray` in un'apertura, e non
+  ha titolo; `note` il ruolo `muted` con «Nota» o «Note»; `warning` il ruolo `warning` con
+  «Attenzione» o «Attention»; `critical` il ruolo `critical` con «Critico» o «Critical»;
+- etichette: `observed` → `slate`, `declared` → `plum`, `decided` → `ok`, `proposed` →
+  `azure`, `to-verify` → `warning`, `critical` → `critical`;
+- toni: il ruolo con lo stesso nome.
+
+### 6.5 Che cosa un tema non può fare
+
+Un tema esterno arriva da chi chiama, ma il motore lo tratta come un ingresso non fidato. Un
+tema non può eseguire comandi, leggere file fuori dalla cartella di lavoro (il pacchetto e il
+tema) e dall'albero TeX installato, scrivere fuori dalla cartella di lavoro, ridefinire i
+comandi del §6.4, caricare pacchetti non dichiarati (§6.1) o classi. Le barriere:
+
+1. **La cartella del tema** (§3.3).
+2. **Un controllo statico di `theme.sty`**, fuori dai commenti: i comandi che leggono o
+   scrivono file per nome, eseguono programmi o recuperano un primitivo (`\write18`,
+   `\ShellEscape`, `\input`, `\include`, `\InputIfFileExists`, `\openin`, `\openout`,
+   `\pdfobj`, `\pdfmapfile`, `\pdfmapline`, `\pdffiledump`, `\pdfmdfivesum`,
+   `\pdffilesize`, `\pdffilemoddate`, `\pdfximage`, `\pdfprimitive`, `\primitive`, e i
+   nomi di expl3 `\tex_…:D`, `\pdftex_…:D` e le funzioni di file e di sistema) danno
+   `regodoc.theme.forbidden`, con riga e colonna. È un aiuto, non la barriera: con
+   `\csname` o con i catcode si aggira.
+3. **L'ambiente di pdfTeX** (§2.2): niente comandi esterni, e `\input`, `\openin`,
+   `\openout`, `\includegraphics` e simili rifiutano i percorsi assoluti e quelli con `..`.
+   Un comando esterno tentato dà `regodoc.theme.shell`; una lettura o una scrittura rifiutata
+   `regodoc.theme.read` o `regodoc.theme.write`, con il file e la riga quando il log li dà.
+4. **Il file `.fls` di `-recorder`**, dopo ogni passata: ogni file letto deve stare nella
+   cartella di lavoro o nell'albero TeX (le cartelle che `kpsewhich` dà per `$TEXMF`,
+   `$TEXMFCNF`, `$TEXMFSYSVAR` e `$TEXMFSYSCONFIG`, nello stesso ambiente), ogni file scritto
+   nella cartella di lavoro. Serve perché alcune letture di pdfTeX non passano dal controllo
+   dell'ambiente: `\pdfobj file`, `\pdfmapfile`, `\pdfmapline` e `\font` con un percorso
+   assoluto. Un `.fls` riscritto durante la compilazione è anch'esso un errore.
+
+Con una di queste barriere `build` esce con il codice 2 e **non scrive nessuna uscita**. Su
+quelle letture il motore garantisce che il file letto non esca dal motore, non che pdfTeX non
+lo legga.
 
 ## 7. Codici d'uscita
 
@@ -530,8 +599,8 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
 |---|---|---|
 | 0 | esito positivo, anche con avvisi (senza `--strict`) | usa l'uscita |
 | 1 | pacchetto rifiutato per errori, o per avvisi con `--strict`; l'elenco è nel rapporto | mostra gli errori a chi ha caricato il pacchetto |
-| 2 | errore d'uso: argomenti, file mancante o non regolare, opzione sconosciuta, contratto non supportato, intestazione o tema sbagliati, data mancante, uscita non valida; anche un pacchetto valido che non compila con un tema esterno (`regodoc.theme.compile`), perché il difetto è del tema | corregge la chiamata o il tema: è un difetto di chi chiama |
-| 3 | errore d'ambiente: TeX assente (`regodoc.tex.missing`), memoria esaurita (`regodoc.limit.memory`), cartella non scrivibile, tempo massimo superato, stdout chiuso da chi legge, comando non ancora disponibile | segnala l'ambiente; non ritenta alla cieca |
+| 2 | errore d'uso: argomenti, file mancante o non regolare, opzione sconosciuta, contratto non supportato, intestazione o tema sbagliati, un divieto del tema (§6.5), data mancante, uscita non valida; anche un pacchetto valido che non compila con un tema esterno (`regodoc.theme.compile`), perché il difetto è del tema | corregge la chiamata o il tema: è un difetto di chi chiama |
+| 3 | errore d'ambiente: TeX assente o un pacchetto LaTeX che manca all'immagine TeX (`regodoc.tex.missing`), memoria esaurita (`regodoc.limit.memory`), cartella non scrivibile, tempo massimo superato, stdout chiuso da chi legge, comando non ancora disponibile | segnala l'ambiente; non ritenta alla cieca |
 | 4 | errore interno: un'eccezione non prevista; anche un pacchetto valido che non compila con il tema neutro (`regodoc.internal`), perché il difetto è del motore | segnala un difetto del motore; non ritenta |
 | 130 | interrotto | — |
 
@@ -613,8 +682,22 @@ Due compilazioni dello stesso pacchetto danno lo stesso PDF, byte per byte, quan
 - la data del documento (§3.2) e l'intestazione;
 - le opzioni di `build`.
 
-Il motore non usa l'ora di sistema, ordina tutto ciò che scrive e azzera l'identificatore del
-PDF (`\pdftrailerid{}`). La CI del motore lo prova a ogni modifica: compila due volte lo stesso
+Il motore non usa l'ora di sistema e ordina tutto ciò che scrive: le parti nell'ordine di
+`structure.toml`, i ruoli nell'ordine di `info.theme.roles`, le chiavi di `frame` e i file del
+tema in ordine dei byte. Nel PDF:
+
+- le date di creazione e di modifica sono l'istante della data del documento (§3.2), con
+  `SOURCE_DATE_EPOCH` e `FORCE_SOURCE_DATE=1`;
+- niente `/ID` (`\pdftrailerid{}`) e niente chiavi `PTEX.*`, che portano nome di file e
+  versione (`\pdfsuppressptexinfo=-1`); `Producer` e `Creator` valgono `regodoc`;
+- la compressione è fissata (`\pdfcompresslevel=9`, `\pdfobjcompresslevel=2`);
+- i caratteri sono Latin Modern Type 1 dell'immagine TeX, e il prefisso dei sottoinsiemi di
+  pdfTeX dipende solo dai glifi usati;
+- il percorso della cartella di lavoro non entra mai.
+
+Le passate si ripetono finché `.aux`, `.toc` e `.out` di due passate consecutive sono
+uguali, da `info.passes.min` a `info.passes.max`: se all'ultima cambiano ancora, la
+compilazione fallisce. La CI del motore lo prova a ogni modifica: compila due volte lo stesso
 sorgente, in due cartelle diverse, sull'immagine TeX di riferimento, e confronta i byte.
 
 ## 11. Studio di autonomia

@@ -118,8 +118,9 @@ jobs:
       - name: Pacchetti dell'immagine di Rego e di quella di collaudo
         run: |
           sed -i 's#http://#https://#g' /etc/apt/sources.list.d/debian.sources
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          apt-get -o Acquire::Retries=3 update
+          DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y \
+            --no-install-recommends \
             lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra \
             texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science \
             make poppler-utils
@@ -132,7 +133,15 @@ jobs:
           cat /etc/debian_version
           pdflatex --version | head -n 1
           python3 --version
-      - name: Compilazione riproducibile
-        env:
-          REGODOC_REQUIRE_TEX: "1"
-        run: python3 -m unittest tests.test_tex_smoke -v
+          # Da confrontare con texlive-packages.txt dell'immagine di Rego.
+          dpkg-query -W lmodern 'texlive-*'
+      # Come nel collaudo di Rego: un utente senza privilegi, che non può scrivere fuori dalla
+      # propria cartella. Il motore fissa da sé MKTEXFMT, MKTEXPK e MKTEXTFM a 0.
+      - name: Utente non root
+        run: |
+          useradd --create-home prove
+          chown -R prove .
+      - name: Prove, con TeX obbligatorio
+        run: >-
+          runuser -u prove -- env REGODOC_REQUIRE_TEX=1 PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1
+          python3 -m unittest discover -s tests -t . -v

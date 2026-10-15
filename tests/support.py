@@ -1,5 +1,6 @@
 """Strumenti comuni delle prove: il pacchetto d'esempio, in cartella o in archivio."""
 
+import contextlib
 import io
 import struct
 import tempfile
@@ -7,6 +8,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
+from regodoc import cli
 from regodoc.validate import Validation, validate_package
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
@@ -99,3 +101,16 @@ def jpeg(width: int = 4, height: int = 4, sof: int = 0xC0, precision: int = 8) -
         + b"\x12\x34\xff\x00\x56"
         + b"\xff\xd9"
     )
+
+
+def run_cli(*argv: str) -> tuple[int, str, str]:
+    """Esegue il comando nel processo e restituisce codice, stdout e stderr."""
+    out, err = io.TextIOWrapper(io.BytesIO(), "utf-8"), io.TextIOWrapper(io.BytesIO(), "utf-8")
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(list(argv))
+    return code, _text(out), _text(err)
+
+
+def _text(stream: io.TextIOWrapper) -> str:
+    stream.flush()
+    return stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]

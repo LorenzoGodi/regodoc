@@ -99,7 +99,7 @@ def emitted_codes() -> set[str]:
     for path in (ROOT / "src" / "regodoc").glob("*.py"):
         text = path.read_text("utf-8")
         found |= set(re.findall(r'"(regodoc\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"', text))
-    return found
+    return found - {"regodoc.sty"}  # il nome di un file, non un codice
 
 
 class CodeIndexTest(unittest.TestCase):

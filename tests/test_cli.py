@@ -20,20 +20,7 @@ from unittest import mock
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
-from tests.support import EXAMPLE, build_zip, example_files
-
-
-def run_cli(*argv: str) -> tuple[int, str, str]:
-    """Esegue il comando nel processo e restituisce codice, stdout e stderr."""
-    out, err = io.TextIOWrapper(io.BytesIO(), "utf-8"), io.TextIOWrapper(io.BytesIO(), "utf-8")
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = cli.main(list(argv))
-    return code, _text(out), _text(err)
-
-
-def _text(stream: io.TextIOWrapper) -> str:
-    stream.flush()
-    return stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]
+from tests.support import EXAMPLE, _text, build_zip, example_files, run_cli
 
 
 class InfoTest(unittest.TestCase):
@@ -52,7 +39,6 @@ class DraftCommandTest(unittest.TestCase):
     def test_draft_commands_say_so(self) -> None:
         cases = {
             "canon": ("canon", "p.regodoc", "-o", "q.regodoc"),
-            "build": ("build", "p.regodoc", "-o", "p.pdf"),
             "upgrade": ("upgrade", "p.regodoc", "-o", "q.regodoc"),
         }
         for name, argv in cases.items():

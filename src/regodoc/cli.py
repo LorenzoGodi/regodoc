@@ -18,8 +18,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, NoReturn
 
-from regodoc import __version__, declaration, limits
-from regodoc.diagnostics import Severity, clip
+from regodoc import __version__, build, declaration, limits
+from regodoc.diagnostics import Collector, Severity, clip
 from regodoc.validate import Validation, validate_package
 
 
@@ -201,16 +201,18 @@ def build_parser() -> ItalianArgumentParser:
     _add_json(canon)
     canon.set_defaults(handler=_cmd_draft)
 
-    build = commands.add_parser("build", help="produce LaTeX o PDF da un pacchetto")
-    _add_package(build)
-    _add_output(build)
-    build.add_argument(
+    build_command = commands.add_parser("build", help="produce LaTeX o PDF da un pacchetto")
+    _add_package(build_command)
+    _add_output(build_command)
+    build_command.add_argument(
         "--format", choices=("pdf", "latex"), default="pdf", help="formato d'uscita (pdf)"
     )
-    build.add_argument("--header", metavar="FILE", help="intestazione in JSON fornita da Rego")
-    build.add_argument("--theme", metavar="CARTELLA", help="cartella di un tema esterno")
-    _add_json(build)
-    build.set_defaults(handler=_cmd_draft)
+    build_command.add_argument(
+        "--header", metavar="FILE", help="intestazione in JSON di chi chiama"
+    )
+    build_command.add_argument("--theme", metavar="CARTELLA", help="cartella di un tema esterno")
+    _add_json(build_command)
+    build_command.set_defaults(handler=_cmd_build)
 
     upgrade = commands.add_parser("upgrade", help="porta un pacchetto alla grammatica corrente")
     _add_package(upgrade)
@@ -341,6 +343,94 @@ def _report(command: str, args: argparse.Namespace, validation: Validation) -> E
         verdict = "pacchetto rifiutato" if failed else "pacchetto valido"
         _write(sys.stderr, f"regodoc: {verdict} ({errors} errori, {warnings} avvisi)\n")
     return code
+
+
+def _cmd_build(args: argparse.Namespace) -> ExitCode:
+    path = Path(args.package)
+    problem = _package_problem(path, args.package)
+    if problem is None and not path.is_file():
+        problem = f"«{clip(args.package)}» è una cartella: build accetta solo archivi"
+    if problem is not None:
+        return _finish(args.json, "build", ExitCode.USAGE, "regodoc.usage", problem)
+    for option, value in (("--header", args.header), ("--theme", args.theme)):
+        if value is not None and not Path(value).exists():
+            return _finish(
+                args.json,
+                "build",
+                ExitCode.USAGE,
+                "regodoc.header.missing" if option == "--header" else "regodoc.theme.missing",
+                f"{option}: «{clip(value)}» non esiste",
+            )
+    try:
+        outcome = build.run(
+            path,
+            args.output,
+            output_format=args.format,
+            header_path=Path(args.header) if args.header is not None else None,
+            theme_path=Path(args.theme) if args.theme is not None else None,
+            contract=args.contract or declaration.CONTRACT_VERSION,
+            strict=args.strict,
+        )
+    except build.OutputError as error:
+        code = ExitCode.ENVIRONMENT if error.environment else ExitCode.USAGE
+        kind = "regodoc.environment" if error.environment else "regodoc.usage"
+        return _finish(args.json, "build", code, kind, error.message)
+    except PermissionError:
+        return _finish(
+            args.json,
+            "build",
+            ExitCode.ENVIRONMENT,
+            "regodoc.environment",
+            f"non posso leggere «{clip(args.package)}»: permesso negato",
+        )
+    code = ExitCode(outcome.exit_code)
+    validation = outcome.validation
+    collector = validation.report
+    if args.json:
+        payload = _payload(
+            "build",
+            code,
+            errors=[d.to_json() for d in collector.errors],
+            warnings=[d.to_json() for d in collector.warnings],
+        )
+        summary = validation.summary()
+        payload["input"] = (
+            {"sha256": validation.input_sha256, "bytes": validation.input_bytes}
+            if validation.input_sha256 is not None
+            else None
+        )
+        payload["grammar"] = summary["grammar"]
+        payload["package_header"] = summary["package_header"]
+        payload["warnings_omitted"] = collector.warnings_omitted
+        payload["outputs"] = outcome.outputs
+        payload["passes"] = outcome.passes
+        payload["theme"] = outcome.theme
+        payload["tex"] = outcome.tex
+        _write_json(payload)
+    else:
+        _print_items(collector)
+        verdict = "uscita scritta" if code is ExitCode.OK else "nessuna uscita"
+        _write(sys.stderr, f"regodoc: {verdict} (codice {int(code)})\n")
+    return code
+
+
+def _package_problem(path: Path, given: str) -> str | None:
+    """Il pacchetto esiste ed è un file regolare o una cartella (contratto, §3.1)."""
+    if not path.exists():
+        return f"il pacchetto «{clip(given)}» non esiste"
+    mode = path.stat().st_mode
+    if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+        # Una FIFO o un dispositivo lascerebbero il motore in attesa senza fine.
+        return f"«{clip(given)}» non è né un file regolare né una cartella"
+    return None
+
+
+def _print_items(collector: Collector) -> None:
+    for diagnostic in collector.items:
+        prefix = {Severity.ERROR: "errore", Severity.WARNING: "avviso"}.get(
+            diagnostic.severity, "nota"
+        )
+        _write(sys.stderr, f"{prefix}: {diagnostic}\n")
 
 
 def _cmd_validate(args: argparse.Namespace) -> ExitCode:

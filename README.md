@@ -38,7 +38,7 @@ python3 -m venv .venv
 | `regodoc info` | Stampa in JSON la versione del motore, la versione del contratto, le grammatiche lette e i limiti | pronto |
 | `regodoc validate PACCHETTO` | Controlla un pacchetto, archivio o cartella, e ne elenca errori e avvisi | pronto |
 | `regodoc canon PACCHETTO -o USCITA` | Riscrive il pacchetto in forma canonica | in arrivo |
-| `regodoc build PACCHETTO -o USCITA` | Produce PDF o LaTeX (`--format`), con un tema esterno (`--theme`) e un'intestazione (`--header`) | in arrivo |
+| `regodoc build PACCHETTO -o USCITA` | Produce PDF o LaTeX (`--format`), con un tema esterno (`--theme`) e un'intestazione (`--header`) | pronto |
 | `regodoc upgrade PACCHETTO -o USCITA` | Porta il pacchetto alla grammatica corrente | in arrivo |
 
 Ogni comando che legge un pacchetto accetta `--json`, che scrive il rapporto in JSON su stdout,
