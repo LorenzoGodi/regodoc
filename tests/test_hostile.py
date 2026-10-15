@@ -242,7 +242,11 @@ class CommandTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertEqual(json.loads(result.stdout)["exit_code"], 2)
             directory = Path(os.fsdecode(Path(folder).as_posix().encode() + b"/pkg\xff"))
-            directory.mkdir()
+            try:
+                directory.mkdir()
+            except OSError:
+                # APFS di macOS rifiuta i nomi non UTF-8: lì il caso non può presentarsi.
+                return
             for name, data in example_files().items():
                 target = directory / name
                 target.parent.mkdir(parents=True, exist_ok=True)

@@ -125,7 +125,6 @@ def secret_file(test: unittest.TestCase) -> Path:
     return path
 
 
-@unittest.skipUnless(PDFLATEX or REQUIRE_TEX, "pdflatex non disponibile")
 class PdfReaderTest(unittest.TestCase):
     """Il lettore degli oggetti del PDF, su PDF scritti a mano."""
 
@@ -168,6 +167,7 @@ class PdfReaderTest(unittest.TestCase):
             self.assertEqual(caught.exception.code, "regodoc.pdf.active")
 
 
+@unittest.skipUnless(PDFLATEX or REQUIRE_TEX, "pdflatex non disponibile")
 class ExternalThemeTest(unittest.TestCase):
     """Un caso per divieto: il codice, nessuna uscita, nessuna traccia del file segreto."""
 
