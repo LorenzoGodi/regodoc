@@ -90,15 +90,20 @@ class TooManyProblems(Exception):
 class Collector:
     """Raccoglie errori e avvisi, con un tetto per non produrre rapporti smisurati.
 
-    Al tetto un errore ferma la lettura con ``regodoc.limit.problems``, anch'esso un errore.
-    Un avviso no: non cambia l'esito, quindi la lettura prosegue, gli avvisi in più non si
-    elencano e ``finish`` li conta in un solo avviso ``regodoc.limit.problems``. Così un
-    pacchetto valido con molti avvisi resta valido (specifica, §7.2).
+    Il rapporto elenca al massimo ``limit`` problemi (specifica, §7.2):
+
+    - un errore che arriva oltre il tetto ferma la lettura con l'errore
+      ``regodoc.limit.problems``, che ne cita il codice e la posizione;
+    - un avviso oltre il tetto non cambia l'esito: non si elenca, si conta in
+      ``warnings_omitted``, e ``finish`` aggiunge un solo avviso ``regodoc.limit.warnings``.
+
+    Così un pacchetto entro i limiti con molti avvisi resta valido.
     """
 
     limit: int = field(default_factory=lambda: int(CONTENT_LIMITS["problems"]))
     items: list[Diagnostic] = field(default_factory=list)
-    dropped_warnings: int = 0
+    warnings_omitted: int = 0
+    stopped: bool = False
 
     def error(
         self, code: str, message: str, file: str = "", line: int = 0, column: int = 0
@@ -117,39 +122,42 @@ class Collector:
         self._add(Diagnostic(Severity.INFO, code, message, file, line, column))
 
     def _add(self, diagnostic: Diagnostic) -> None:
-        if len(self.items) >= self.limit:
-            if diagnostic.severity is not Severity.ERROR:
-                self.dropped_warnings += 1
-                return
-            self._stop()
-        self.items.append(diagnostic)
-        if len(self.items) >= self.limit and diagnostic.severity is Severity.ERROR:
-            self._stop()
+        if len(self.items) < self.limit:
+            self.items.append(diagnostic)
+        elif diagnostic.severity is not Severity.ERROR:
+            self.warnings_omitted += 1
+        else:
+            self._stop(diagnostic)
 
-    def _stop(self) -> NoReturn:
-        """Un errore al tetto: la lettura si ferma, e gli avvisi in sospeso non contano più."""
-        self.dropped_warnings = 0
+    def _stop(self, cause: Diagnostic) -> NoReturn:
+        """Un errore oltre il tetto: la lettura si ferma, e l'errore si cita nel messaggio."""
+        where = ":".join(str(x) for x in (cause.file, cause.line, cause.column) if x)
+        self.stopped = True
         self.items.append(
             Diagnostic(
                 Severity.ERROR,
                 "regodoc.limit.problems",
-                f"troppi problemi: la lettura si ferma dopo {self.limit}",
+                f"troppi problemi: la lettura si ferma al primo errore oltre i {self.limit}, "
+                f"{cause.code}" + (f" in {where}" if where else ""),
+                cause.file,
+                cause.line,
+                cause.column,
             )
         )
         raise TooManyProblems
 
     def finish(self) -> None:
-        """Chiude la raccolta: conta in un avviso gli avvisi rimasti fuori dal tetto."""
-        if self.dropped_warnings:
+        """Chiude la raccolta: conta in un avviso quelli rimasti fuori dal tetto."""
+        if self.warnings_omitted and not self.stopped:
+            count = self.warnings_omitted
+            text = "1 avviso non è elencato" if count == 1 else f"{count} avvisi non sono elencati"
             self.items.append(
                 Diagnostic(
                     Severity.WARNING,
-                    "regodoc.limit.problems",
-                    f"altri {self.dropped_warnings} avvisi non sono elencati: il rapporto si "
-                    f"ferma a {self.limit} problemi",
+                    "regodoc.limit.warnings",
+                    f"{text}: il rapporto elenca al massimo {self.limit} problemi",
                 )
             )
-            self.dropped_warnings = 0
 
     @property
     def errors(self) -> list[Diagnostic]:

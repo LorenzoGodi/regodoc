@@ -325,6 +325,7 @@ def _report(command: str, args: argparse.Namespace, validation: Validation) -> E
             else None
         )
         payload.update(validation.summary())
+        payload["warnings_omitted"] = collector.warnings_omitted
         _write_json(payload)
     else:
         for diagnostic in collector.items:

@@ -10,7 +10,7 @@ from unittest import mock
 from regodoc import validate
 from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS
 from regodoc.diagnostics import Collector, TooManyProblems
-from tests.support import codes, example_files, png, validate_files
+from tests.support import example_files, png, validate_files
 
 L = CONTENT_LIMITS
 HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -358,40 +358,80 @@ class ContentBoundaryTest(unittest.TestCase):
         beyond = errors({**files, "parts/backup.xml": nested(L["element_depth"] + 1)})
         self.assertIn("regodoc.limit.depth", beyond)
 
-    def test_problems(self) -> None:
+    def test_errors_at_and_beyond_the_problem_cap(self) -> None:
         limit = L["problems"]
-        body = section("<p>" + '<var name="nope"/>' * (limit + 10) + "</p>")
-        validation = validate_files(with_backup(body))
-        found = codes(validation)
-        self.assertEqual(found[-1], "regodoc.limit.problems")
-        self.assertEqual(len(found), limit + 1)
-        report = json.dumps([d.to_json() for d in validation.report.items], ensure_ascii=False)
+
+        def package(errors_count: int) -> list[object]:
+            body = section("<p>" + '<var name="nope"/>' * errors_count + "</p>")
+            return validate_files(with_backup(body)).report.items
+
+        at = package(limit)
+        self.assertEqual(
+            [d.code for d in at if d.severity == "error"].count("regodoc.xml.unknown_variable"),
+            limit,
+        )
+        self.assertNotIn("regodoc.limit.problems", [d.code for d in at])
+        beyond = package(limit + 1)
+        self.assertEqual(len(beyond), limit + 1)
+        last = beyond[-1]
+        self.assertEqual((last.code, str(last.severity)), ("regodoc.limit.problems", "error"))
+        self.assertIn("regodoc.xml.unknown_variable in parts/backup.xml:", last.message)
+        report = json.dumps([d.to_json() for d in beyond], ensure_ascii=False)
         self.assertLess(len(report.encode()), 1024 * 1024)
 
 
 class WarningsBeyondTheCapTest(unittest.TestCase):
-    def test_many_warnings_keep_the_package_valid(self) -> None:
-        # Al limite delle variabili, quasi tutte mai usate: più avvisi del tetto dei problemi.
-        validation = validate_files(
-            {**example_files(), "variables.toml": variables(L["variables"])}
-        )
+    """Emendamento del 15/10/2026: gli avvisi oltre il tetto non rifiutano il pacchetto."""
+
+    def validate(self, unused: int) -> object:
+        # Le variabili dell'esempio sono tutte usate: ogni variabile in più è un avviso.
+        have = example_files()["variables.toml"].decode().count("\n")
+        return validate_files({**example_files(), "variables.toml": variables(have + unused)})
+
+    def test_warnings_at_the_cap(self) -> None:
+        validation = self.validate(L["problems"])
         report = validation.report
         self.assertFalse(report.has_errors())
-        self.assertEqual(len(report.items), L["problems"] + 1)
-        last = report.items[-1]
-        self.assertEqual((last.code, str(last.severity)), ("regodoc.limit.problems", "warning"))
-        self.assertIn("non sono elencati", last.message)
+        self.assertEqual(len(report.items), L["problems"])
+        self.assertEqual(report.warnings_omitted, 0)
+        self.assertNotIn("regodoc.limit.warnings", [d.code for d in report.items])
 
-    def test_an_error_after_the_cap_still_stops(self) -> None:
+    def test_one_and_two_warnings_beyond_the_cap(self) -> None:
+        for extra, text in ((1, "1 avviso non è elencato"), (2, "2 avvisi non sono elencati")):
+            with self.subTest(extra):
+                report = self.validate(L["problems"] + extra).report
+                self.assertFalse(report.has_errors())
+                self.assertEqual(report.warnings_omitted, extra)
+                self.assertEqual(len(report.items), L["problems"] + 1)
+                last = report.items[-1]
+                self.assertEqual(
+                    (last.code, str(last.severity)), ("regodoc.limit.warnings", "warning")
+                )
+                self.assertIn(text, last.message)
+
+    def test_an_error_after_many_warnings_stops_and_is_named(self) -> None:
         collector = Collector(limit=3)
-        for _ in range(3):
+        for _ in range(5):
             collector.warning("regodoc.toml.unused_variable", "x")
         with self.assertRaises(TooManyProblems):
+            collector.error("regodoc.xml.unknown_id", "x", "parts/a.xml", 7, 3)
+        collector.finish()
+        self.assertEqual(len(collector.items), 4)
+        last = collector.items[-1]
+        self.assertEqual((last.code, str(last.severity)), ("regodoc.limit.problems", "error"))
+        self.assertIn("regodoc.xml.unknown_id in parts/a.xml:7:3", last.message)
+        self.assertEqual(collector.warnings_omitted, 2)
+
+    def test_errors_exactly_at_the_cap_do_not_stop(self) -> None:
+        collector = Collector(limit=3)
+        for _ in range(3):
             collector.error("regodoc.xml.unknown_id", "x")
         collector.finish()
-        self.assertEqual([d.code for d in collector.items][-1:], ["regodoc.limit.problems"])
-        self.assertEqual(len(collector.items), 4)
-        self.assertTrue(collector.has_errors())
+        self.assertEqual([d.code for d in collector.items], ["regodoc.xml.unknown_id"] * 3)
+
+    def test_the_cli_reports_the_omitted_warnings(self) -> None:
+        validation = self.validate(L["problems"] + 7)
+        self.assertEqual(validation.report.warnings_omitted, 7)
 
 
 class EnvelopeBoundaryTest(unittest.TestCase):

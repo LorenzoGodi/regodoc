@@ -346,7 +346,12 @@ class VersionOneTest(unittest.TestCase):
     def test_contract_is_version_one(self) -> None:
         self.assertEqual(declaration.CONTRACT_VERSION, 1)
         self.assertEqual(declaration.CONTRACTS, (1,))
-        self.assertIn("Stato: **versione 1**", CONTRACT)
+        self.assertIn(
+            "Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del "
+            "primo rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre "
+            "il tetto dei problemi.**",
+            " ".join(CONTRACT.split()),
+        )
         self.assertNotIn("in approvazione", CONTRACT)
         self.assertIn("`--contract 0` esce con il codice 2", flat(section("9")))
 

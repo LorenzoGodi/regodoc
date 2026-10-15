@@ -1,8 +1,11 @@
 # Contratto del motore regodoc
 
-Stato: **versione 1**, approvata il 14/10/2026. `regodoc info` dichiara `"contract": 1`. La
-bozza che la precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama
-passa `--contract 1`.
+Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del primo
+rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre il tetto dei
+problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1),
+la chiave `warnings_omitted` e i testi puri di `generator` (§4.2). `regodoc info` dichiara
+`"contract": 1`. La bozza che la precedeva, dichiarata come versione 0, non è servita da
+nessun motore: chi chiama passa `--contract 1`.
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -246,6 +249,7 @@ pacchetto che la contiene.
 | `document`, `base_version` | i valori del manifesto, verificati solo nella forma (specifica, §1.3): il motore non sa che cosa identificano |
 | `files` | i file di contenuto, cioè tutti tranne `mimetype`, `manifest.json` e `README.md`, nell'ordine canonico (specifica, §9), ciascuno con `path`, `sha256` e `bytes` |
 | `files_sha256` | l'impronta dell'insieme dei file, sotto |
+| `warnings_omitted` | gli avvisi rimasti fuori dall'elenco oltre il tetto dei problemi (§4.4); 0 quando l'elenco è completo |
 | `package_header` | `title`, `subject`, `reference`, `date` (`AAAA-MM-GG`) e `language` dal `structure.toml` del pacchetto; `null` per una chiave assente. Il nome dice che viene dal pacchetto, per non confonderlo con l'intestazione di `--header` (§3.2) |
 
 **Che cosa descrivono i campi.** Per `validate` descrivono il pacchetto ricevuto: i file così
@@ -303,11 +307,17 @@ nome temporaneo. Vale `""` anche per gli errori di una sola voce dell'archivio (
   tema non definisce (§6.2); `--strict` non lo conta.
 
 **Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del pacchetto
-accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi, più una voce
-`regodoc.limit.problems`. Se al tetto arriva un errore, la lettura si ferma e quella voce è
-un errore. Se arrivano solo avvisi, la lettura prosegue, gli avvisi in più non si elencano e
-la voce è un avviso che li conta: un pacchetto valido con molti avvisi resta valido. Con i
-campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
+accorciate a 80 caratteri. Il rapporto elenca al massimo 500 problemi, più al massimo una
+voce di chiusura:
+
+- un **errore** che arriva quando 500 problemi sono già elencati ferma la lettura con
+  l'errore `regodoc.limit.problems`, che è sempre un errore e cita nel messaggio il codice e
+  la posizione dell'errore che ha fermato la lettura;
+- un **avviso** che arriva oltre il tetto non si elenca: la lettura prosegue, il rapporto
+  conta gli avvisi omessi in `warnings_omitted` (§4.2) e chiude l'elenco con un solo avviso
+  `regodoc.limit.warnings`. Un pacchetto entro i limiti resta valido per quanti avvisi abbia.
+
+Con i campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
 
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
@@ -341,7 +351,7 @@ codice d'uscita:
 | `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`), per la firma del §3.1 |
 | `grammars` | `current`, la grammatica che il motore scrive, e `read`, quelle che sa leggere, dalla più vecchia |
 | `limits` | `envelope` e `content`, tabella del §5.1 |
-| `resources` | `time_seconds` per comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il motore applica da sé il limite di memoria: vuoto finché `enforced` è `false`) ed `enforced` (§2.3) |
+| `resources` | `time_seconds` per comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il motore applica da sé il limite di memoria: vuoto quando `enforced` è `false`) ed `enforced` (§2.3) |
 | `commands` | per ciascun comando, `ready` oppure `draft` (non ancora disponibile, codice 3) |
 | `capabilities` | le capacità di questa versione (§5.2) |
 | `languages` | le lingue del documento supportate |
@@ -378,7 +388,7 @@ motore.
 | `content.sources` | fonti | elementi `<source>` |
 | `content.href_characters` | caratteri | per `href` |
 | `content.listing_line_characters` | caratteri | per riga di un `<listing>` |
-| `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura e gli avvisi si contano soltanto |
+| `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura con `regodoc.limit.problems` e gli avvisi si contano in `warnings_omitted` (§4.4) |
 
 ### 5.2 Capacità
 
