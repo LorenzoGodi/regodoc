@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, NoReturn
 
-from regodoc import __version__, declaration
+from regodoc import __version__, declaration, limits
 from regodoc.diagnostics import Severity, clip
 from regodoc.validate import Validation, validate_package
 
@@ -164,6 +164,12 @@ def build_parser() -> ItalianArgumentParser:
         metavar="N",
         help="versione del contratto attesa da chi chiama (docs/contract.md)",
     )
+    parser.add_argument(
+        "--max-seconds",
+        type=int,
+        metavar="S",
+        help="abbassa il tempo massimo del comando; un valore più alto è ignorato",
+    )
     commands = parser.add_subparsers(dest="command", metavar="COMANDO", title="comandi")
     commands.required = True
 
@@ -248,6 +254,10 @@ def _problem(code: str, message: str) -> dict[str, object]:
     }
 
 
+# Limiti in vigore per il comando in corso; null finché non sono applicati.
+_ACTIVE: dict[str, int | None] = {"time_seconds": None, "memory_bytes": None}
+
+
 def _payload(
     command: str | None,
     exit_code: ExitCode,
@@ -264,8 +274,8 @@ def _payload(
         "ok": exit_code is ExitCode.OK,
         "errors": list(errors),
         "warnings": list(warnings),
-        # Nessun limite di risorse è ancora applicato da questa versione: null lo dice.
-        "limits_active": {"time_seconds": None, "memory_bytes": None},
+        # I limiti di risorse davvero in vigore durante il comando (contratto, §4.1).
+        "limits_active": dict(_ACTIVE),
     }
 
 
@@ -364,6 +374,7 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
 def main(argv: Sequence[str] | None = None) -> int:
     """Esegue il comando e restituisce il codice d'uscita."""
     arguments = list(sys.argv[1:] if argv is None else argv)
+    _ACTIVE.update(time_seconds=None, memory_bytes=None)
     wants_json = "--json" in arguments
     command = next((a for a in arguments if a in COMMANDS), None)
     parser = build_parser()
@@ -381,7 +392,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"supporta: {supported}",
                 )
             )
-        return int(args.handler(args))
+        if args.max_seconds is not None and args.max_seconds < 1:
+            return int(
+                _finish(
+                    wants_json,
+                    command,
+                    ExitCode.USAGE,
+                    "regodoc.usage",
+                    "--max-seconds vuole un numero intero di secondi, almeno 1",
+                )
+            )
+        with limits.applied(args.command, args.max_seconds) as active:
+            _ACTIVE.update(active)
+            return int(args.handler(args))
     except UsageExit as exit_:
         # Errore della riga di comando: argparse ha già scritto uso e messaggio su stderr. Il
         # rapporto c'è anche senza comando, con «command» a null (contratto, §4.1).
@@ -396,6 +419,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     except SystemExit as exit_:
         # argparse esce con SystemExit anche per l'aiuto e la versione.
         return exit_.code if isinstance(exit_.code, int) else int(ExitCode.USAGE)
+    except limits.TimeLimitExceeded as exceeded:
+        return int(
+            _finish(
+                wants_json,
+                command,
+                ExitCode.ENVIRONMENT,
+                "regodoc.limit.time",
+                f"tempo massimo superato ({exceeded.seconds} s); non ritentare con lo stesso "
+                "pacchetto",
+            )
+        )
     except KeyboardInterrupt:
         return int(
             _finish(wants_json, command, ExitCode.INTERRUPTED, "regodoc.interrupted", "interrotto")

@@ -98,7 +98,7 @@ class DeclarationContractTest(unittest.TestCase):
             self.assertIn(f"\\{hook}", section("6.3"))
 
     def test_resources_say_whether_they_are_enforced(self) -> None:
-        self.assertIs(declaration.RESOURCES["enforced"], False)
+        self.assertIs(declaration.RESOURCES["enforced"], True)
         self.assertNotIn("limits.enforced", declaration.CAPABILITIES)
 
     def test_info_is_stable_json(self) -> None:
@@ -150,12 +150,14 @@ class DeclarationContractTest(unittest.TestCase):
         for family in ("grammar", "header", "theme", "tex"):
             self.assertIn(f"`regodoc.{family}.*`", text)
 
-    def test_memory_is_not_enforced_by_the_engine(self) -> None:
+    def test_limits_are_enforced_by_the_engine(self) -> None:
         resources = declaration.describe()["resources"]
-        self.assertIs(resources["enforced"], False)
-        self.assertEqual(resources["memory_enforced_on"], [])
+        self.assertIs(resources["enforced"], True)
+        self.assertEqual(resources["memory_enforced_on"], ["linux"])
         text = flat(section("2"))
+        self.assertIn("Con `enforced: true`, come in questa versione", text)
         self.assertIn("`RLIMIT_AS`", text)
+        self.assertIn("`--max-seconds S` abbassa il tempo dichiarato", text)
         self.assertIn("codice 3 con `regodoc.limit.memory`", text)
 
     def test_theme_limits_are_declared(self) -> None:
@@ -195,7 +197,8 @@ class DeclarationContractTest(unittest.TestCase):
 
     def test_report_edges(self) -> None:
         self.assertIn('vale `""` per un problema che non riguarda un file', flat(section("4.4")))
-        self.assertIn("`regodoc.limit.time` o `regodoc.limit.memory`", flat(section("2")))
+        for code in ("regodoc.limit.time", "regodoc.limit.memory"):
+            self.assertIn(f"codice 3 e `{code}`", flat(section("2")))
         self.assertIn("senza un rapporto JSON valido", flat(section("4.1")))
 
     def test_enforcement_is_not_a_capability(self) -> None:

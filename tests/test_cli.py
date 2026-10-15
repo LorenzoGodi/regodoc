@@ -7,9 +7,11 @@ import os
 import random
 import resource
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import xml.parsers.expat
 import zlib
@@ -112,21 +114,32 @@ class ValidateCommandTest(unittest.TestCase):
             self.assertIn("errore: structure.toml:1", err)
 
     def test_json_report_for_every_exit_code(self) -> None:
+        memory = declaration.RESOURCES["memory_bytes"] if sys.platform == "linux" else None
+        applied = {"time_seconds": 30, "memory_bytes": memory}
         cases = [
-            (("validate", "/nessun/percorso", "--json"), ExitCode.USAGE, "regodoc.usage"),
-            (("validate", self.EXAMPLE, "--json", "--colore"), ExitCode.USAGE, "regodoc.usage"),
-            (("canon", "p", "-o", "q", "--json"), ExitCode.ENVIRONMENT, "regodoc.not_implemented"),
+            (("validate", "/nessun/percorso", "--json"), ExitCode.USAGE, "regodoc.usage", applied),
+            # La riga di comando sbagliata si ferma prima dei limiti: null.
+            (
+                ("validate", self.EXAMPLE, "--json", "--colore"),
+                ExitCode.USAGE,
+                "regodoc.usage",
+                {"time_seconds": None, "memory_bytes": None},
+            ),
+            (
+                ("canon", "p", "-o", "q", "--json"),
+                ExitCode.ENVIRONMENT,
+                "regodoc.not_implemented",
+                applied,
+            ),
         ]
-        for argv, exit_code, code in cases:
+        for argv, exit_code, code, active in cases:
             with self.subTest(argv):
                 result, out, _ = run_cli(*argv)
                 self.assertEqual(result, exit_code)
                 report = json.loads(out)
                 self.assertEqual(report["exit_code"], exit_code)
                 self.assertEqual(report["errors"][0]["code"], code)
-                self.assertEqual(
-                    report["limits_active"], {"time_seconds": None, "memory_bytes": None}
-                )
+                self.assertEqual(report["limits_active"], active)
         for error, exit_code, code in (
             (KeyboardInterrupt, ExitCode.INTERRUPTED, "regodoc.interrupted"),
             (RuntimeError("guasto"), ExitCode.INTERNAL, "regodoc.internal"),
@@ -359,6 +372,82 @@ _ENTRY = (
     "import sys; sys.path.insert(0, sys.argv[1]); from regodoc.cli import main; "
     "sys.exit(main(['validate', sys.argv[2], '--json']))"
 )
+
+
+def slow(_path: object) -> None:
+    time.sleep(10)
+
+
+class TimeLimitTest(unittest.TestCase):
+    def test_time_limit_stops_the_command(self) -> None:
+        started = time.monotonic()
+        with mock.patch("regodoc.cli.validate_package", side_effect=slow):
+            code, out, err = run_cli("--max-seconds", "1", "validate", str(EXAMPLE), "--json")
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(code, ExitCode.ENVIRONMENT)
+        report = json.loads(out)
+        self.assertEqual(report["errors"][0]["code"], "regodoc.limit.time")
+        self.assertIn("non ritentare", report["errors"][0]["message"])
+        self.assertEqual(report["limits_active"]["time_seconds"], 1)
+        self.assertNotIn("Traceback", err)
+
+    def test_max_seconds_only_lowers(self) -> None:
+        declared = declaration.RESOURCES["time_seconds"]["validate"]
+        for value, expected in (("5", 5), (str(declared + 100), declared)):
+            with self.subTest(value):
+                code, out, _ = run_cli("--max-seconds", value, "validate", str(EXAMPLE), "--json")
+                self.assertEqual(code, ExitCode.OK)
+                self.assertEqual(json.loads(out)["limits_active"]["time_seconds"], expected)
+
+    def test_max_seconds_must_be_positive(self) -> None:
+        for value in ("0", "-3"):
+            with self.subTest(value):
+                code, out, _ = run_cli("--max-seconds", value, "validate", str(EXAMPLE), "--json")
+                self.assertEqual(code, ExitCode.USAGE)
+                self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.usage")
+
+    def test_limits_are_restored_after_the_command(self) -> None:
+        before = signal.getsignal(signal.SIGALRM)
+        memory = resource.getrlimit(resource.RLIMIT_AS)
+        run_cli("validate", str(EXAMPLE), "--json")
+        self.assertIs(signal.getsignal(signal.SIGALRM), before)
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_AS), memory)
+
+    @unittest.skipUnless(sys.platform == "linux", "il limite di memoria vale solo su Linux")
+    def test_memory_limit_is_reported_and_kept_lower(self) -> None:
+        code, out, _ = run_cli("validate", str(EXAMPLE), "--json")
+        self.assertEqual(code, ExitCode.OK)
+        self.assertEqual(
+            json.loads(out)["limits_active"]["memory_bytes"], declaration.RESOURCES["memory_bytes"]
+        )
+
+    @unittest.skipUnless(sys.platform == "linux", "il limite di memoria vale solo su Linux")
+    def test_engine_limit_stops_a_heavy_package(self) -> None:
+        # Senza limiti imposti da chi chiama: il motore applica il proprio, abbassato qui a 40
+        # MiB solo per la prova, e il pacchetto pesante lo supera.
+        root = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / "p.regodoc"
+            package.write_bytes(heavy_package())
+            entry = (
+                "import sys; sys.path.insert(0, sys.argv[1]); from types import MappingProxyType; "
+                "from regodoc import declaration as d; "
+                "d.RESOURCES = MappingProxyType({**d.RESOURCES, 'memory_bytes': 40 * 2**20}); "
+                "import regodoc.limits as l; l.RESOURCES = d.RESOURCES; "
+                "from regodoc.cli import main; sys.exit(main(['validate', sys.argv[2], '--json']))"
+            )
+            result = subprocess.run(
+                [sys.executable, "-I", "-B", "-c", entry, str(root / "src"), str(package)],
+                capture_output=True,
+                check=False,
+                timeout=120,
+                cwd=folder,
+            )
+        self.assertEqual(result.returncode, ExitCode.ENVIRONMENT, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual([e["code"] for e in report["errors"]], ["regodoc.limit.memory"])
+        self.assertEqual(report["limits_active"]["memory_bytes"], 40 * 2**20)
 
 
 class NoCommandTest(unittest.TestCase):

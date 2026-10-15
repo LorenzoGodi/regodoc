@@ -978,7 +978,7 @@ class PartChecker:
                     )
             elif child.tag not in allowed:
                 self.unexpected(child, node)
-            elif child.tag in ancestors and child.tag in ("b", "i", "tone", "link"):
+            elif child.tag in ancestors and child.tag in ("b", "i", "tone"):
                 self.skipped()
                 self.at(
                     child,

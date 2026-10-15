@@ -648,17 +648,18 @@ tace sui problemi che quella mancanza potrebbe causare:
   volta sola, e nessun file di parte dà `regodoc.package.orphan_part`, perché potrebbe essere
   di una voce esclusa;
 - **il pacchetto è letto per intero** se ogni voce di `structure.toml` ha l'id valido e non
-  ripetuto, ogni parte dichiarata esiste, si legge ed è percorsa per intero, e nessun file di
-  parte è orfano. Una parte non è percorsa per intero quando il motore non scende in uno dei
-  suoi elementi: con la radice sbagliata (`regodoc.xml.root`) non scende affatto, e non
+  ripetuto, ogni parte dichiarata esiste, si legge ed è percorsa per intero, e nessun file
+  di parte è orfano. Una parte non è percorsa per intero quando il motore non scende in uno
+  dei suoi elementi: con la radice sbagliata (`regodoc.xml.root`) non scende affatto, e non
   scende in un elemento fuori vocabolario o fuori posto, nei figli di un elemento che deve
   essere vuoto o contenere solo testo, in una sezione oltre il terzo livello
   (`regodoc.xml.section_depth`), in un elenco oltre il terzo livello
-  (`regodoc.xml.list_depth`), né in un `<b>`, `<i>`, `<tone>` o `<link>` dentro uno uguale
-  (`regodoc.xml.nested_inline`). Se non è letto per intero,
-  gli id raccolti e gli usi sono incompleti: un rimando o una citazione verso un id che non
-  si trova non dà `regodoc.xml.unknown_id` né `regodoc.xml.reference_through`, e non si
-  danno gli avvisi `regodoc.toml.unused_variable` e `regodoc.image.unused`.
+  (`regodoc.xml.list_depth`), né in un `<b>`, `<i>` o `<tone>` dentro uno uguale
+  (`regodoc.xml.nested_inline`); un `<link>` dentro un `<link>` è un elemento fuori posto.
+  Se non è letto per intero, gli id raccolti e gli usi sono incompleti: un rimando o una
+  citazione verso un id che non si trova non dà `regodoc.xml.unknown_id` né
+  `regodoc.xml.reference_through`, e non si danno gli avvisi `regodoc.toml.unused_variable`
+  e `regodoc.image.unused`.
 
 ### 6.1 Archivio
 
@@ -723,9 +724,9 @@ intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
 ### 6.5 Risorse ed esecuzione
 
 - Ogni comando ha un tempo massimo e un limite di memoria, che il motore dichiara
-  (`regodoc info`, `resources`). In questa versione li applica chi chiama (contratto, §2.3).
-  Superarli è un errore d'ambiente, codice 3: se la memoria finisce mentre il motore lavora,
-  il motore esce da sé con `regodoc.limit.memory`.
+  (`regodoc info`, `resources`) e applica da sé: il tempo sempre, la memoria sui sistemi di
+  `memory_enforced_on` (contratto, §2.3). Superarli è un errore d'ambiente, codice 3, con
+  `regodoc.limit.time` o `regodoc.limit.memory`.
 - Il motore non scrive mai fuori dalla propria cartella di lavoro temporanea e dal file
   d'uscita indicato da chi lo chiama.
 - Il contenuto del pacchetto non diventa mai un comando: pdflatex gira con `shell escape`
@@ -926,6 +927,7 @@ non bloccano il pacchetto.
 | `regodoc.limit.sources` | §6.4 passo 11, §7.2 |
 | `regodoc.limit.problems` | §7.2 |
 | `regodoc.limit.memory` | §6.5; contratto, §2.3: codice d'uscita 3 |
+| `regodoc.limit.time` | §6.5; contratto, §2.3: codice d'uscita 3 |
 | `regodoc.usage` | contratto, §7: codice d'uscita 2 |
 | `regodoc.environment` | contratto, §7: codice d'uscita 3 |
 | `regodoc.not_implemented` | contratto, §7: codice d'uscita 3 |

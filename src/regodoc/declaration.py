@@ -97,13 +97,11 @@ RESOURCES: Final = MappingProxyType(
             {"info": 5, "validate": 30, "canon": 30, "build": 300, "upgrade": 60}
         ),
         "memory_bytes": 1024 * _MIB,
-        # I sistemi dove il motore applica da sé il limite di memoria: nessuno finché
-        # «enforced» è falso.
-        "memory_enforced_on": (),
-        # Questa versione non applica ancora i limiti di risorse: li deve applicare chi chiama,
-        # limitando la memoria all'avvio e uccidendo il gruppo di processi del motore allo
-        # scadere del tempo (contratto, §2.3).
-        "enforced": False,
+        # I sistemi dove il motore limita da sé la memoria, con RLIMIT_AS: altrove il
+        # limite dello spazio d'indirizzi non è applicato dal sistema (contratto, §2.3).
+        "memory_enforced_on": ("linux",),
+        # Il motore applica da sé il tempo e, dove può, la memoria (regodoc/limits.py).
+        "enforced": True,
     }
 )
 

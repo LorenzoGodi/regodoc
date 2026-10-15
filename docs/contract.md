@@ -34,8 +34,8 @@ motore non cambia.** Tutto ciò che il motore può aggiungere senza cambiarlo è
 ### 2.1 Comandi e opzioni
 
 ```
-python -I -B -m regodoc [--contract N] info [--json]
-python -I -B -m regodoc [--contract N] COMANDO ARGOMENTI [--json] [--strict]
+python -I -B -m regodoc [--contract N] [--max-seconds S] info [--json]
+python -I -B -m regodoc [--contract N] [--max-seconds S] COMANDO ARGOMENTI [--json] [--strict]
 python -I -B -m regodoc --version
 python -I -B -m regodoc -h
 ```
@@ -59,6 +59,7 @@ Opzioni comuni:
 - `--strict` (non per `info`): gli avvisi contano come errori, salvo gli avvisi informativi
   (§4.4). Rego non lo
   usa al caricamento dei pacchetti: gli avvisi li mostra a chi ha caricato il pacchetto.
+- `--max-seconds S`: abbassa il tempo massimo del comando (§2.3).
 - `--contract N`: chi chiama dichiara la versione del contratto che si aspetta. Se il motore
   non la supporta, esce con il codice 2 e il rapporto minimo (§4.1), nella forma stabile fra
   tutte le versioni. Rego passa sempre `--contract`.
@@ -103,25 +104,33 @@ rapporto.
 
 `info` dichiara in `resources` il tempo massimo per comando e il limite di memoria, e con
 `resources.enforced` se questa versione del motore li applica da sé; `memory_enforced_on`
-elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto finché `enforced` è
+elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `enforced` è
 `false`.
 
-- Con `enforced: false`, come in questa versione, il motore non li applica: li applica chi
-  chiama.
-  - **Tempo.** Chi chiama avvia il motore in un gruppo di processi suo (per esempio
-    `start_new_session`) e, scaduti `time_seconds` del comando più un margine di 10 secondi,
-    uccide l'intero gruppo con `SIGKILL`, compresi i processi di pdflatex. Tratta il caso
-    come codice 3 con il codice d'errore `regodoc.limit.time`.
+- Con `enforced: true`, come in questa versione, il motore applica i limiti da sé:
+  - **Tempo.** Allo scadere di `time_seconds` del comando il motore si ferma ed esce con il
+    codice 3 e `regodoc.limit.time`. `--max-seconds S` abbassa il tempo dichiarato per
+    questa chiamata; un valore più alto è ignorato, uno minore di 1 è un errore d'uso.
+  - **Memoria.** Sui sistemi di `memory_enforced_on` (oggi `linux`) il motore limita lo
+    spazio d'indirizzi del proprio processo (`RLIMIT_AS`) a `memory_bytes` all'avvio del
+    comando; pdflatex lo eredita. Se chi chiama ha già impostato un limite più basso, resta il
+    suo. Se la memoria finisce, il motore esce con il codice 3 e `regodoc.limit.memory`.
+  - `limits_active` nel rapporto (§4.1) dice i valori davvero applicati.
+  - Chi chiama tiene comunque una rete di sicurezza: avvia il motore in un gruppo di processi
+    suo (per esempio `start_new_session`) e, scaduti `time_seconds` più un margine di 10
+    secondi, uccide l'intero gruppo con `SIGKILL`, compresi i processi di pdflatex, e tratta
+    il caso come codice 3 con `regodoc.limit.time`. Dove `memory_enforced_on` non comprende
+    il sistema, la memoria la limita chi chiama, come sotto.
+- Con `enforced: false` il motore non li applica: li applica chi chiama.
+  - **Tempo.** Con il gruppo di processi e `SIGKILL` allo scadere di `time_seconds` più 10
+    secondi, come sopra, trattando il caso come codice 3 con `regodoc.limit.time`.
   - **Memoria.** Chi chiama limita la memoria del processo prima di avviare il motore: su
     Linux con il limite dello spazio d'indirizzi (`RLIMIT_AS`, per esempio con `setrlimit`
     nel processo figlio prima dell'avvio, o con `prlimit`) a `memory_bytes`, oppure con il
-    limite di memoria di un cgroup. Il limite vale anche per pdflatex, che lo eredita. Se la
-    memoria finisce mentre il motore lavora, il motore esce da sé con il codice 3 e
-    `regodoc.limit.memory`. Se invece il sistema uccide il processo (per esempio il cgroup
-    con `SIGKILL`), chi chiama tratta il caso come codice 3 con `regodoc.limit.memory`.
-- Con `enforced: true` il motore applica i limiti da sé ed esce con il codice 3 e
-  `regodoc.limit.time` o `regodoc.limit.memory`. Da quella versione accetta
-  `--max-seconds S`, che abbassa il tempo dichiarato; un valore più alto è ignorato.
+    limite di memoria di un cgroup. Se la memoria finisce mentre il motore lavora, il motore
+    esce da sé con il codice 3 e `regodoc.limit.memory`. Se invece il sistema uccide il
+    processo (per esempio il cgroup con `SIGKILL`), chi chiama tratta il caso come codice 3
+    con `regodoc.limit.memory`.
 - Un tempo superato o la memoria esaurita non si ritentano alla cieca: con lo stesso pacchetto
   si ripetono.
 
@@ -217,7 +226,7 @@ non dovrebbe esistere; se capita, chi chiama la tratta come codice 3 con
 | `ok` | `true` solo con il codice 0 |
 | `errors` | gli errori (§4.4) |
 | `warnings` | gli avvisi, informativi compresi (§4.4) |
-| `limits_active` | i limiti di risorse davvero applicati: `time_seconds` e `memory_bytes`, ciascuno `null` quando non è applicato |
+| `limits_active` | i limiti di risorse davvero applicati al comando (§2.3): `time_seconds` e `memory_bytes`, ciascuno `null` quando non è applicato, per esempio la memoria fuori da `memory_enforced_on`, o entrambi quando la riga di comando è sbagliata e il comando non parte |
 
 Per `info` la risposta riuscita è la dichiarazione (§5); il rapporto minimo compare solo
 quando `info` fallisce.
@@ -233,7 +242,7 @@ pacchetto che la contiene.
 | `input` | `sha256` e `bytes` del file ricevuto; `null` per una cartella e per un file oltre `limits.envelope.compressed_bytes`, che il motore non legge per intero |
 | `grammar` | la grammatica dichiarata nel manifesto |
 | `grammar_in` | solo per `upgrade`: la grammatica del pacchetto ricevuto; `grammar` è quella d'uscita |
-| `generator` | `engine` e `version` del motore che ha scritto il pacchetto, dal manifesto; `null` se `generator` non ha esattamente queste due chiavi, testi da 1 a 64 caratteri |
+| `generator` | `engine` e `version` del motore che ha scritto il pacchetto, dal manifesto; `null` se `generator` non ha esattamente queste due chiavi, testi puri da 1 a 64 caratteri |
 | `document`, `base_version` | i valori del manifesto, verificati solo nella forma (specifica, §1.3): il motore non sa che cosa identificano |
 | `files` | i file di contenuto, cioè tutti tranne `mimetype`, `manifest.json` e `README.md`, nell'ordine canonico (specifica, §9), ciascuno con `path`, `sha256` e `bytes` |
 | `files_sha256` | l'impronta dell'insieme dei file, sotto |
