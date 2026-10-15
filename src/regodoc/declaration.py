@@ -54,6 +54,8 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "part_bytes": 384 * _KIB,
         "images": 80,
         "image_bytes": 8 * _MIB,
+        # Coincide con il tetto dell'involucro, che lo applica: le immagini stanno nel
+        # contenuto espanso (contratto, §5.1).
         "images_total_bytes": 40 * _MIB,
         "table_rows": 600,
         "table_columns": 10,

@@ -33,7 +33,8 @@ class LimitsTest(unittest.TestCase):
         self.assertEqual(limits["variables"], 1500)
 
     def test_images_fit_in_expanded_envelope(self) -> None:
-        self.assertLessEqual(
+        # Coincidono: il tetto delle immagini si applica con quello dell'involucro.
+        self.assertEqual(
             declaration.CONTENT_LIMITS["images_total_bytes"],
             declaration.ENVELOPE_LIMITS["expanded_bytes"],
         )

@@ -768,7 +768,7 @@ grammatica.
 | `manifest.json` | 64 KiB | `content.manifest_bytes` |
 | `README.md` | 64 KiB, oltre è `regodoc.limit.file_size` anche se il contenuto si ignora | `content.readme_bytes` |
 | Testo totale del documento | 1.500.000 caratteri (sotto) | `content.characters` |
-| Immagini | 80, ognuna al massimo 8 MiB e 6.000 × 6.000 pixel, tutte insieme entro i 40 MiB espansi | `content.images`, `content.image_bytes`, `content.image_side_pixels`, `content.images_total_bytes` |
+| Immagini | 80, ognuna al massimo 8 MiB e 6.000 × 6.000 pixel, tutte insieme entro i 40 MiB espansi, cioè dentro il limite dell'involucro del §7.1, che le applica | `content.images`, `content.image_bytes`, `content.image_side_pixels`, `content.images_total_bytes` |
 | Tabella | 600 righe, 10 colonne, 2.000 caratteri per cella; oltre 8 colonne in carattere ridotto, solo in verticale | `content.table_rows`, `content.table_columns`, `content.cell_characters`, `content.table_columns_normal_size` |
 | Annidamento | 3 livelli di sezione, 3 di elenco, 24 elementi in tutto | `content.section_depth`, `content.list_depth`, `content.element_depth` |
 | Variabili | 1.500 | `content.variables` |

@@ -11,7 +11,7 @@ import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from regodoc.declaration import CONTENT_LIMITS
+from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS
 from regodoc.validate import validate_package
 from tests.support import build_zip, codes, example_files, png, validate_bytes, validate_files
 
@@ -183,6 +183,157 @@ class RatioTest(unittest.TestCase):
         entries = example_raw()
         entries.append(Raw("images/flat.png", bytes(2 * MIB)))
         self.assertEqual(errors_of(handmade_zip(entries)), ["regodoc.archive.ratio"])
+
+
+def image_with(filler: bytes) -> bytes:
+    """Un PNG valido con un blocco ancillare privato: l'avviso sui metadati non è un errore."""
+    return png(extra=[(b"ruNk", filler)])
+
+
+IMAGE_OVERHEAD = len(image_with(b""))
+
+
+def bits(size: int, seed: int) -> bytes:
+    """Byte che valgono 0 o 1 a caso: si comprimono circa sette volte, sempre allo stesso
+    modo, quindi stanno sotto il rapporto 20 delle immagini."""
+    return random.Random(seed).randbytes(size).translate(bytes(i & 1 for i in range(256)))  # noqa: S311
+
+
+def archive_errors(entries: list[Raw]) -> list[str]:
+    return [c for c in errors_of(handmade_zip(entries)) if c.startswith("regodoc.archive")]
+
+
+class EnvelopeExactBoundaryTest(unittest.TestCase):
+    """Ogni limite dell'involucro passa al suo valore esatto e si supera di uno."""
+
+    def test_every_envelope_limit_has_an_exact_test(self) -> None:
+        tested = {
+            name.removeprefix("test_")
+            for name in dir(self)
+            if name.startswith("test_") and name.removeprefix("test_") in ENVELOPE_LIMITS
+        }
+        # «files» è provato al valore e al successivo in tests/test_limits.py.
+        self.assertEqual(sorted(set(ENVELOPE_LIMITS) - tested - {"files"}), [])
+
+    def test_compressed_bytes(self) -> None:
+        limit = ENVELOPE_LIMITS["compressed_bytes"]
+        noise = random.Random(7).randbytes(6 * MIB)  # noqa: S311 - prova ripetibile
+
+        def archive(extra: int) -> bytes:
+            entries = example_raw()
+            entries.append(Raw("images/a.png", image_with(noise), method=0))
+            entries.append(Raw("images/b.png", image_with(b""), method=0))
+            size = len(handmade_zip(entries))
+            entries[-1] = Raw("images/b.png", image_with(bytes(limit - size + extra)), method=0)
+            return handmade_zip(entries)
+
+        at = archive(0)
+        self.assertEqual(len(at), limit)
+        self.assertEqual([c for c in errors_of(at) if c.startswith("regodoc.archive")], [])
+        beyond = archive(1)
+        self.assertEqual(len(beyond), limit + 1)
+        self.assertEqual(errors_of(beyond), ["regodoc.archive.too_large"])
+
+    def test_expanded_bytes(self) -> None:
+        limit = ENVELOPE_LIMITS["expanded_bytes"]
+        image = CONTENT_LIMITS["image_bytes"]
+        base = example_raw()
+        used = sum(len(entry.content) for entry in base)
+
+        def entries(total: int) -> list[Raw]:
+            out = list(base)
+            remaining = total - used
+            number = 0
+            while remaining > 0:
+                size = min(image, remaining)
+                content = image_with(bits(size - IMAGE_OVERHEAD, number))
+                # Compressione veloce: il livello 9 su 40 MiB di bit casuali richiede minuti.
+                fast = zlib.compressobj(1, zlib.DEFLATED, -15)
+                data = fast.compress(content) + fast.flush()
+                out.append(Raw(f"images/e{number}.png", content, data=data))
+                remaining -= size
+                number += 1
+            return out
+
+        at = entries(limit)
+        self.assertEqual(sum(len(e.content) for e in at), limit)
+        self.assertEqual(archive_errors(at), [])
+        self.assertEqual(archive_errors(entries(limit + 1)), ["regodoc.archive.expanded_too_large"])
+
+    def test_compression_ratio(self) -> None:
+        ratio = ENVELOPE_LIMITS["compression_ratio"]
+        files = example_files()
+
+        # Tutti i file di testo al loro limite, allungati con caratteri neutri: si espandono
+        # moltissimo e compensano le parti e l'immagine, che si comprimono poco.
+        fillers = {
+            "structure.toml": (CONTENT_LIMITS["structure_bytes"], b"\n"),
+            "README.md": (CONTENT_LIMITS["readme_bytes"], b"\n"),
+            "manifest.json": (CONTENT_LIMITS["manifest_bytes"], b" "),
+        }
+
+        def build(padding: int, stored: int) -> list[Raw]:
+            out = []
+            for name, data in files.items():
+                content = data
+                if name == "variables.toml":
+                    content = data + b"\n" * padding
+                elif name in fillers:
+                    size, filler = fillers[name]
+                    content = data + filler * (size - len(data))
+                out.append(Raw(name, content, 0 if name == "mimetype" else 8))
+            filler = random.Random(3).randbytes(stored)  # noqa: S311 - prova ripetibile
+            return [*out, Raw("images/r.png", image_with(filler), method=0)]
+
+        def balance(entries: list[Raw]) -> int:
+            produced = sum(len(e.content) for e in entries)
+            consumed = sum(
+                len(e.content) if e.method == 0 else len(deflate(e.content)) for e in entries
+            )
+            return produced - ratio * consumed
+
+        def entries(excess: int) -> list[Raw]:
+            # variables.toml allungato con righe vuote si espande moltissimo; ogni byte di
+            # un'immagine «stored» toglie ratio - 1 al bilancio. Si sceglie il riempimento
+            # che rende il bilancio divisibile, poi l'immagine che lo porta a ``excess``.
+            padding = CONTENT_LIMITS["variables_bytes"] - len(files["variables.toml"]) - 200
+            for _ in range(10):
+                gap = balance(build(padding, 0)) - excess
+                if gap >= 0 and gap % (ratio - 1) == 0:
+                    result = build(padding, gap // (ratio - 1))
+                    self.assertEqual(balance(result), excess)
+                    return result
+                padding += (ratio - 1) - gap % (ratio - 1)
+            raise AssertionError("nessun riempimento adatto")
+
+        self.assertEqual(archive_errors(entries(0)), [])
+        self.assertEqual(archive_errors(entries(1)), ["regodoc.archive.ratio"])
+
+    def test_image_compression_ratio(self) -> None:
+        ratio = ENVELOPE_LIMITS["image_compression_ratio"]
+        noise = random.Random(11).randbytes(2100)  # noqa: S311 - prova ripetibile
+
+        def image(excess: int) -> bytes:
+            # Gli zeri in coda allungano l'immagine quasi senza allungare il flusso compresso,
+            # il rumore lo allunga byte per byte: con le due manopole si cerca la lunghezza
+            # esattamente ratio volte quella compressa, più ``excess``.
+            zeros = 0
+            for _ in range(5):  # avvicinamento al punto fisso
+                data = image_with(noise[:2000] + bytes(zeros))
+                zeros += ratio * len(deflate(data)) + excess - len(data)
+            for size in range(2000, 2100):
+                window = range(zeros - 1000, zeros + 1000)
+                for candidate in sorted(window, key=lambda z: abs(z - zeros)):
+                    data = image_with(noise[:size] + bytes(candidate))
+                    if len(data) == ratio * len(deflate(data)) + excess:
+                        return data
+            raise AssertionError("nessuna immagine adatta")
+
+        for excess, expected in ((0, []), (1, ["regodoc.archive.ratio"])):
+            with self.subTest(excess):
+                data = image(excess)
+                entries = [*example_raw(), Raw("images/i.png", data)]
+                self.assertEqual(archive_errors(entries), expected)
 
 
 class EntryLayoutTest(unittest.TestCase):
