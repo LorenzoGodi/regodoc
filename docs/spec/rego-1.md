@@ -725,9 +725,10 @@ intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
 ### 6.5 Risorse ed esecuzione
 
 - Ogni comando ha un tempo massimo e un limite di memoria, che il motore dichiara
-  (`regodoc info`, `resources`) e applica da sé: il tempo sempre, la memoria sui sistemi di
-  `memory_enforced_on` (contratto, §2.3). Superarli è un errore d'ambiente, codice 3, con
-  `regodoc.limit.time` o `regodoc.limit.memory`.
+  (`regodoc info`, `resources`) e applica da sé dove il sistema lo permette: il tempo dove ci
+  sono i segnali POSIX (Linux e macOS), la memoria sui sistemi di `memory_enforced_on`
+  (contratto, §2.3). Superarli è un errore d'ambiente, codice 3, con `regodoc.limit.time` o
+  `regodoc.limit.memory`.
 - Il motore non scrive mai fuori dalla propria cartella di lavoro temporanea e dal file
   d'uscita indicato da chi lo chiama.
 - Il contenuto del pacchetto non diventa mai un comando: pdflatex gira con `shell escape`

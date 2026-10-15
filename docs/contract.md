@@ -3,7 +3,8 @@
 Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del primo
 rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre il tetto dei
 problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1),
-la chiave `warnings_omitted` e i testi puri di `generator` (§4.2). `regodoc info` dichiara
+la chiave `warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica
+che un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
 `"contract": 1`. La bozza che la precedeva, dichiarata come versione 0, non è servita da
 nessun motore: chi chiama passa `--contract 1`.
 
@@ -114,8 +115,18 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
   - **Tempo.** Allo scadere di `time_seconds` del comando il motore si ferma ed esce con il
     codice 3 e `regodoc.limit.time`. Il timer si ferma prima della scrittura del rapporto,
     che quindi non si interrompe mai a metà. Il timer richiede i segnali POSIX (Linux e
-    macOS); dove mancano, `limits_active.time_seconds` vale `null`. `--max-seconds S` abbassa il tempo dichiarato per
-    questa chiamata; un valore più alto è ignorato, uno minore di 1 è un errore d'uso.
+    macOS); dove mancano, `limits_active.time_seconds` vale `null`. `--max-seconds S`
+    abbassa il tempo dichiarato per questa chiamata; un valore più alto è ignorato, uno
+    minore di 1 è un errore d'uso. Il caso peggiore valido, cioè un pacchetto entro tutti i
+    limiti del §5.1 costruito per chiedere il massimo lavoro al lettore, si valida in circa
+    8,5 s su un processore x86-64 di classe server; la CI del motore lo misura a ogni
+    modifica su Linux e macOS e fallisce oltre due terzi del tempo dichiarato.
+  - **Timer di chi chiama.** Se il motore gira dentro un processo che ha già un proprio
+    timer (`ITIMER_REAL`), per esempio una prova che lo chiama come funzione, quel timer è
+    sospeso per la durata del comando e riparte alla fine con il tempo che gli restava. Un
+    timer di chi chiama che scadrebbe prima della fine del comando scatta quindi subito dopo
+    la fine, non durante. Chi chiama il motore come processo separato, come raccomanda il
+    §1, non ne è toccato.
   - **Memoria.** Sui sistemi di `memory_enforced_on` (oggi `linux`) il motore limita lo
     spazio d'indirizzi del proprio processo (`RLIMIT_AS`) a `memory_bytes` all'avvio del
     comando; pdflatex lo eredita. Se chi chiama ha già impostato un limite più basso, resta il
@@ -251,7 +262,7 @@ pacchetto che la contiene.
 | `document`, `base_version` | i valori del manifesto, verificati solo nella forma (specifica, §1.3): il motore non sa che cosa identificano |
 | `files` | i file di contenuto, cioè tutti tranne `mimetype`, `manifest.json` e `README.md`, nell'ordine canonico (specifica, §9), ciascuno con `path`, `sha256` e `bytes` |
 | `files_sha256` | l'impronta dell'insieme dei file, sotto |
-| `warnings_omitted` | gli avvisi rimasti fuori dall'elenco oltre il tetto dei problemi (§4.4); 0 quando l'elenco è completo |
+| `warnings_omitted` | gli avvisi rimasti fuori dall'elenco oltre il tetto dei problemi (§4.4); 0 quando l'elenco è completo. Se poi un errore ferma la lettura, il valore resta: conta gli avvisi omessi fino a quel punto, anche se l'avviso `regodoc.limit.warnings` in quel caso non c'è |
 | `package_header` | `title`, `subject`, `reference`, `date` (`AAAA-MM-GG`) e `language` dal `structure.toml` del pacchetto; `null` per una chiave assente. Il nome dice che viene dal pacchetto, per non confonderlo con l'intestazione di `--header` (§3.2) |
 
 **Che cosa descrivono i campi.** Per `validate` descrivono il pacchetto ricevuto: i file così

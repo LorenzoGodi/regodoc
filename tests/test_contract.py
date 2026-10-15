@@ -201,6 +201,13 @@ class DeclarationContractTest(unittest.TestCase):
             self.assertIn(f"codice 3 e `{code}`", flat(section("2")))
         self.assertIn("senza un rapporto JSON valido", flat(section("4.1")))
 
+    def test_residual_notes_of_the_amendment(self) -> None:
+        self.assertIn("un `<link>` dentro un `<link>` è un elemento fuori posto", flat(CONTRACT))
+        self.assertIn("**Timer di chi chiama.**", section("2"))
+        self.assertIn("scatta quindi subito dopo la fine, non durante", flat(section("2")))
+        self.assertIn("Il caso peggiore valido", flat(section("2")))
+        self.assertIn("Se poi un errore ferma la lettura, il valore resta", flat(section("4.2")))
+
     def test_enforcement_is_not_a_capability(self) -> None:
         self.assertNotIn("limits.enforced", CONTRACT)
 
