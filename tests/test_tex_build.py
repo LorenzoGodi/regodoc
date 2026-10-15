@@ -63,7 +63,13 @@ class ExamplesCompileTest(unittest.TestCase):
                 package = Path(folder) / "p.regodoc"
                 package.write_bytes(build_zip(example_files(root)))
                 log = compile_log(package, Path(folder))
-                self.assertEqual(_LOG_WARNINGS.findall(log), [])
+                lines = log.split("\n")
+                found = [
+                    "\n".join(lines[i : i + 4])
+                    for i, line in enumerate(lines)
+                    if _LOG_WARNINGS.search(line)
+                ]
+                self.assertEqual(found, [])
 
     def test_two_builds_give_the_same_pdf(self) -> None:
         space = Workspace(self, example_files(LONG_EXAMPLE))

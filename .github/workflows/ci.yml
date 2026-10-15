@@ -123,7 +123,7 @@ jobs:
             --no-install-recommends \
             lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra \
             texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science \
-            make poppler-utils
+            make poppler-utils git
           rm -rf /var/lib/apt/lists/*
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
