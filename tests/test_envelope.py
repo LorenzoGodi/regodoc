@@ -268,7 +268,6 @@ class EnvelopeExactBoundaryTest(unittest.TestCase):
         # moltissimo e compensano le parti e l'immagine, che si comprimono poco.
         fillers = {
             "structure.toml": (CONTENT_LIMITS["structure_bytes"], b"\n"),
-            "README.md": (CONTENT_LIMITS["readme_bytes"], b"\n"),
             "manifest.json": (CONTENT_LIMITS["manifest_bytes"], b" "),
         }
 
@@ -278,6 +277,9 @@ class EnvelopeExactBoundaryTest(unittest.TestCase):
                 content = data
                 if name == "variables.toml":
                     content = data + b"\n" * padding
+                elif name == "README.md":
+                    # Il motore non legge il README: solo a capo, che si comprimono al meglio.
+                    content = b"\n" * CONTENT_LIMITS["readme_bytes"]
                 elif name in fillers:
                     size, filler = fillers[name]
                     content = data + filler * (size - len(data))
