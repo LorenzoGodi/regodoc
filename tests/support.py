@@ -9,14 +9,17 @@ from pathlib import Path
 
 from regodoc.validate import Validation, validate_package
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "colle-rovere"
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+EXAMPLE = EXAMPLES / "colle-rovere"
+# Il secondo esempio, lungo e in inglese, usa tutto il vocabolario di rego/1.
+LONG_EXAMPLE = EXAMPLES / "lakeside-rowing"
 
 
-def example_files() -> dict[str, bytes]:
-    """I file del pacchetto d'esempio, con mimetype per primo."""
-    files = {"mimetype": (EXAMPLE / "mimetype").read_bytes()}
-    for path in sorted(EXAMPLE.rglob("*")):
-        relative = path.relative_to(EXAMPLE).as_posix()
+def example_files(root: Path = EXAMPLE) -> dict[str, bytes]:
+    """I file di un pacchetto d'esempio, con mimetype per primo."""
+    files = {"mimetype": (root / "mimetype").read_bytes()}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
         if path.is_file() and relative != "mimetype":
             files[relative] = path.read_bytes()
     return files

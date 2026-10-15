@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Costs of the plan and how they are covered.</summary>
+  <section id="costs">
+    <title>Costs</title>
+    <p><label type="decided"/> The committee has approved a change of <var name="budgetChange"/> on the equipment line, offset by a grant of <var name="grantRange"/> (<var name="grantRange" form="min"/> at least) and a refund of <var name="refundPerMember"/> per member on the next fee.</p>
+    <table columns="* 2.6cm 2.6cm">
+      <head>
+        <cell>Item</cell>
+        <cell>Season 1</cell>
+        <cell>Season 2</cell>
+      </head>
+      <row>
+        <cell>Copy disk</cell>
+        <cell>yes</cell>
+        <cell>--</cell>
+      </row>
+      <row>
+        <cell>
+          <p>Shed work:</p>
+          <list>
+            <item>switch board;</item>
+            <item>lighting.</item>
+          </list>
+        </cell>
+        <cell span="2">shared across both seasons</cell>
+      </row>
+      <separator/>
+      <row type="total">
+        <cell>Grant</cell>
+        <cell span="2"><var name="grantRange" form="max"/> at most</cell>
+      </row>
+    </table>
+  </section>
+</part>

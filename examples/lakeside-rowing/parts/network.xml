@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>The office network, the shared computer and the copies.</summary>
+  <section id="office-net">
+    <title>Office network</title>
+    <p>The router of the club answers at <address>router.lakeside-rowing.example</address>; its manual is at <link href="https://docs.example.org/routers/r200">the supplier's site</link><cite to="router-manual"/>.</p>
+    <p>A copy of the shared folder runs every night; the test below lists what would be copied without copying it:</p>
+    <listing>
+rsync --dry-run --archive /srv/club/ backup-box:/copies/club/
+test -s /srv/club/register.ods &amp;&amp; echo "register present"
+[ "$(ls /srv/club | wc -l)" -gt 0 ] &amp;&amp; echo ok
+</listing>
+    <small>
+      <p>Run it with <code>--dry-run</code> first; the brackets in <code>a[b[0]]&gt;1</code> show how a test is written.</p>
+    </small>
+  </section>
+</part>

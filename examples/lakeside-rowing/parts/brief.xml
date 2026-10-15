@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opening>
+  <section id="in-short">
+    <title>In short</title>
+    <p>The <var name="clubName"/> keeps <var name="memberRecords"/> member records, a photo archive of <var name="photoArchive"/> and a shed with <var name="crewSeats"/>-seat boats; the survey took place on <var name="surveyDay"/>.</p>
+    <list type="numbered">
+      <item>Move the member records to one shared register (<reference to="members"/>).</item>
+      <item>Repair the shed network before winter (<reference to="shed" through="network"/>).</item>
+      <item>Keep two copies of the photo archive, one away from the lake (<reference to="archive"/>).</item>
+    </list>
+    <box type="status">
+      <p>Already working well: the booking sheet for the boats and the weekly safety check.</p>
+    </box>
+  </section>
+</opening>

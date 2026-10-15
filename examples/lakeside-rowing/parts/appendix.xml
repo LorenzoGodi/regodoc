@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Full inventory and sources.</summary>
+  <section id="inventory">
+    <title>Inventory</title>
+    <p>The wide table is printed on landscape pages; the second one stays in portrait with a smaller font.</p>
+    <table columns="* 1.4cm 1.4cm 1.4cm 1.4cm 1.4cm 1.4cm 1.4cm 1.4cm 1.4cm" orientation="landscape">
+      <head>
+        <cell>Item</cell>
+        <cell>Mar</cell>
+        <cell>Apr</cell>
+        <cell>May</cell>
+        <cell>Jun</cell>
+        <cell>Jul</cell>
+        <cell>Aug</cell>
+        <cell>Sep</cell>
+        <cell>Oct</cell>
+        <cell>Nov</cell>
+      </head>
+      <row>
+        <cell>Outings</cell>
+        <cell>12</cell>
+        <cell>18</cell>
+        <cell>25</cell>
+        <cell>31</cell>
+        <cell>34</cell>
+        <cell>22</cell>
+        <cell>27</cell>
+        <cell>15</cell>
+        <cell>6</cell>
+      </row>
+    </table>
+    <table columns="* 1.2cm 1.2cm 1.2cm 1.2cm 1.2cm 1.2cm 1.2cm 1.2cm" orientation="portrait">
+      <row>
+        <cell>Oars repaired</cell>
+        <cell>1</cell>
+        <cell>0</cell>
+        <cell>2</cell>
+        <cell>1</cell>
+        <cell>0</cell>
+        <cell>3</cell>
+        <cell>1</cell>
+        <cell>0</cell>
+      </row>
+    </table>
+  </section>
+  <section id="sources-list">
+    <title>Sources</title>
+    <sources id="sources">
+      <group title="Guides">
+        <source id="records-guide" href="https://guides.example.org/clubs/member-records" publisher="Example Sports Network" accessed="2026-08-30">Keeping member records in a small club</source>
+        <source id="router-manual" href="https://docs.example.org/routers/r200" publisher="Example Routers">R200 user manual</source>
+      </group>
+      <!-- Grants are listed apart. -->
+      <group title="Grants">
+        <source href="https://fund.example.org/sport/equipment" publisher="Example Regional Fund">Equipment grants for sports clubs</source>
+      </group>
+    </sources>
+  </section>
+</part>

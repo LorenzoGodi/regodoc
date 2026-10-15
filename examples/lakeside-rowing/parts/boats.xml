@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>The fleet, its condition and the oars.</summary>
+  <section id="fleet">
+    <title>Fleet</title>
+    <p><label type="declared"/> The coaches report that the two oldest eights lose <b>stiffness</b> in cold water; in winter the lake drops by about <var name="winterDrop"/> degrees against the autumn average.</p>
+    <table columns="* 2cm 2.4cm">
+      <head>
+        <cell>Boat</cell>
+        <cell>Seats</cell>
+        <cell>Condition</cell>
+      </head>
+      <row>
+        <cell>Heron</cell>
+        <cell><var name="crewSeats" form="number"/></cell>
+        <cell><tone type="ok">good</tone></cell>
+      </row>
+      <row>
+        <cell>Kingfisher</cell>
+        <cell><var name="crewSeats" form="number"/></cell>
+        <cell><tone type="warning">worn hull</tone> <label type="to-verify"/></cell>
+      </row>
+      <!-- Single sculls are counted together. -->
+      <row>
+        <cell>Single sculls</cell>
+        <cell>1</cell>
+        <cell><tone type="muted">not surveyed</tone></cell>
+      </row>
+    </table>
+    <box type="warning">
+      <p>The worn hull of <i>Kingfisher</i> should be checked before the first regatta.</p>
+    </box>
+  </section>
+</part>

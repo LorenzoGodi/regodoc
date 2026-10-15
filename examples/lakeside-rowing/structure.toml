@@ -1,0 +1,55 @@
+language = "en"
+toc = true
+
+[header]
+title = "Records and equipment of the Lakeside Rowing Club"
+subject = "Current state, risks and a two-season plan"
+reference = "LRC-2026-04"
+date = 2026-09-28
+version_label = "Draft 2"
+
+[[opening]]
+id = "brief"
+
+[[opening]]
+id = "reading-guide"
+
+[[part]]
+id = "members"
+title = "Member records"
+accent = "azure"
+
+[[part]]
+id = "boats"
+title = "Boats and oars"
+accent = "slate"
+
+[[part]]
+id = "shed"
+title = "The boat shed"
+accent = "sage"
+
+[[part]]
+id = "network"
+title = "Network and devices"
+accent = "bronze"
+
+[[part]]
+id = "archive"
+title = "Photo archive"
+accent = "plum"
+
+[[part]]
+id = "budget"
+title = "Budget"
+accent = "brick"
+
+[[part]]
+id = "training"
+title = "Training for volunteers"
+accent = "olive"
+
+[[part]]
+id = "appendix"
+title = "Inventory tables"
+accent = "gray"

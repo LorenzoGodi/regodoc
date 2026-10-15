@@ -1013,6 +1013,12 @@ Il pacchetto d'esempio completo, sintetico e valido, è nel repository in
 cantina immaginaria. Le prove lo validano a ogni modifica, sia come cartella sia come archivio.
 Qui sotto due dei suoi file, identici a quelli del repository: una prova lo verifica.
 
+Un secondo pacchetto, più lungo e in inglese, è in `examples/lakeside-rowing/`: il rapporto
+inventato di un circolo di canottaggio immaginario, con due aperture e otto parti. Usa tutto
+il vocabolario: ogni elemento, attributo e valore chiuso, ogni tipo di variabile, intervalli,
+valori negativi, tutti gli accenti, immagini PNG e JPEG e commenti. Una prova verifica che
+nulla del vocabolario resti fuori.
+
 `structure.toml`
 
 ```toml

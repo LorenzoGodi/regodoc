@@ -11,8 +11,9 @@ e TeX Live.
 > **Stato:** in costruzione. Funzionano `regodoc info` e `regodoc validate`. Gli altri
 > comandi esistono, rispondono «non ancora disponibile» ed escono con il codice 3, quello
 > degli errori d'ambiente. La specifica del formato è in
-> [`docs/spec/rego-1.md`](docs/spec/rego-1.md); un pacchetto d'esempio completo, sintetico,
-> è in `examples/colle-rovere/`.
+> [`docs/spec/rego-1.md`](docs/spec/rego-1.md). Due pacchetti d'esempio, sintetici, sono in
+> `examples/`: `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`, lungo, in inglese,
+> con tutto il vocabolario.
 
 ## Requisiti
 

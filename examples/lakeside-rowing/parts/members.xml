@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Where the member records live today and how to bring them into one register.</summary>
+  <section id="registers">
+    <title>Registers in use</title>
+    <p><label type="observed"/> Records are split between a spreadsheet, a paper ledger and the treasurer's laptop; the annual fee is <var name="annualFee"/> per member.</p>
+    <!-- One item per register, the most used first. -->
+    <list>
+      <item>The spreadsheet on the club computer:
+        <list type="bullet">
+          <item>one sheet per season;
+            <list>
+              <item>one row per member, with a "paid" column.</item>
+            </list>
+          </item>
+          <item>a sheet for the junior squad.</item>
+        </list>
+      </item>
+      <item>The paper ledger, kept in the office drawer.</item>
+    </list>
+    <section id="register-rules">
+      <title>Rules for the new register</title>
+      <p>Records of former members are kept for <var name="retentionMonths"/> after they leave, then deleted.</p>
+      <section id="register-access">
+        <title>Who can read it</title>
+        <p>Only the secretary and the treasurer; questions go to <address>secretary@lakeside-rowing.example</address>.</p>
+      </section>
+    </section>
+  </section>
+</part>

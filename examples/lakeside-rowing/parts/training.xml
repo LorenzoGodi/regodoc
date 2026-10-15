@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Training the volunteers who will keep the records.</summary>
+  <section id="training-plan">
+    <title>Plan</title>
+    <p>Each volunteer needs <var name="trainingDays"/> of training; moving the records takes <var name="migrationHours"/> in total, at most <var name="migrationHours" form="max"/>.</p>
+    <list type="numbered">
+      <item>How the register works.</item>
+      <item>How to answer a request to see one's own data.</item>
+      <item>How to restore a file from the copy.</item>
+    </list>
+  </section>
+</part>

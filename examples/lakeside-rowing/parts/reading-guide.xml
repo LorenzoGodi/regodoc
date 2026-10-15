@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opening>
+  <section id="how-to-read">
+    <title>How to read this report</title>
+    <p>Each finding carries a label: <label type="observed"/> seen during the survey, <label type="declared"/> reported by the volunteers, <label type="decided"/> agreed by the committee, <label type="proposed"/> suggested here, <label type="to-verify"/> still to be checked and <label type="critical"/> needing action before the next season.</p>
+    <p>Colours mark the state of a value: <tone type="ok">fine</tone>, <tone type="warning">to watch</tone>, <tone type="critical">urgent</tone> and <tone type="muted">not applicable</tone>.<break/>Sources are listed at the end of <reference to="appendix"/> and cited by number, for example <cite to="records-guide"/>.</p>
+  </section>
+</opening>

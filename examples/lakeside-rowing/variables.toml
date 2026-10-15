@@ -1,0 +1,15 @@
+clubName = { text = "Lakeside Rowing Club" }
+surveyDay = { date = 2026-08-21 }
+photoArchive = { gb = "1.284,5" }
+backupTarget = { tb = ["2", "4"], note = "two sizes offered by the same supplier" }
+memberRecords = { count = 3418 }
+crewSeats = { number = 8 }
+winterDrop = { number = "-3,5" }
+lockerUse = { percent = "87,5" }
+budgetChange = { percent = "-12" }
+annualFee = { eur = "185,50" }
+grantRange = { eur = ["1.200", "2.400"], note = "range announced by the regional sports fund" }
+refundPerMember = { eur = "-40" }
+migrationHours = { hours = ["6", "9,5"] }
+trainingDays = { days = 1 }
+retentionMonths = { months = 18 }

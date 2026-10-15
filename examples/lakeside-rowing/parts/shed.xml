@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>Layout of the shed, lockers and the landing stage.</summary>
+  <section id="layout">
+    <title>Layout</title>
+    <p><label type="observed"/> Lockers are used at <var name="lockerUse"/> of capacity; the racks along the north wall are full.</p>
+    <figure file="images/shed-plan.png" width="0.75">
+      <caption>Plan of the shed, with the racks drawn as <i>outlined</i> rectangles.</caption>
+    </figure>
+    <figure file="images/landing-stage.jpg">
+      <caption>The landing stage seen from the water.</caption>
+    </figure>
+    <box type="critical">
+      <p>The main switch board sits below the flood line of the landing stage.</p>
+      <list>
+        <item>Move it at least one metre higher.</item>
+        <item>Fit a residual current device.</item>
+      </list>
+    </box>
+  </section>
+</part>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<part>
+  <summary>The photo archive and where its copies go.</summary>
+  <section id="archive-now">
+    <title>The archive today</title>
+    <p><label type="observed"/> The archive holds <var name="photoArchive" form="number"/> GB of photos on a single disk; the proposed copy disk holds between <var name="backupTarget" form="min"/> and <var name="backupTarget" form="max"/>.</p>
+    <p><label type="proposed"/> Buy the larger disk, <var name="backupTarget"/>, and keep one copy at the secretary's home.</p>
+    <box type="note">
+      <p>Photos of minors are kept only with the written consent of a parent.</p>
+    </box>
+  </section>
+</part>
