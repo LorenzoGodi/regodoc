@@ -16,9 +16,11 @@
 
 % --- PDF riproducibile (contratto, §10) ------------------------------------------------------
 % Niente /ID, niente chiavi PTEX con nome di file e versione; compressione fissata. Le date
-% del PDF vengono da SOURCE_DATE_EPOCH, che il motore fissa con FORCE_SOURCE_DATE=1.
+% del PDF vengono da SOURCE_DATE_EPOCH, che il motore fissa con FORCE_SOURCE_DATE=1. Gli
+% oggetti non si comprimono: il motore li legge dopo la compilazione per escludere il
+% contenuto attivo (contratto, §6.5), e un oggetto compresso lo nasconderebbe.
 \pdfcompresslevel=9
-\pdfobjcompresslevel=2
+\pdfobjcompresslevel=0
 \pdftrailerid{}
 \pdfsuppressptexinfo=-1
 % Un carattere senza glifo è un errore, non un avviso che si perde nel log.
@@ -47,7 +49,8 @@
 \RequirePackage[most]{tcolorbox}
 \RequirePackage{fancyhdr}
 \RequirePackage{pdflscape}
-\RequirePackage[unicode,hidelinks,bookmarksnumbered=false]{hyperref}
+% Senza pdfstartview hyperref non scrive /OpenAction, che il motore rifiuta nel PDF (§6.5).
+\RequirePackage[unicode,hidelinks,bookmarksnumbered=false,pdfstartview=]{hyperref}
 
 % Simboli dell'insieme del §5.2 della specifica che il LaTeX non conosce da sé.
 \DeclareUnicodeCharacter{2212}{\textminus}
@@ -249,13 +252,22 @@
   endRdTable,RdCell,RdHeadEnd,RdRowEnd,RdSeparator,RdCellStart,RdLandscape,endRdLandscape,%
   RdFigure,RdListing,endRdListing,RdListingLine,RdSources,endRdSources,RdSourceGroup,%
   RdSource,RdB,RdI,RdCode,RdMono,RdTone,RdLabel,RdLink,RdMail,RdDomain,RdRef,RdCite,%
-  RdBreak,RdAB}
+  RdBreak,RdAB,RdCheckContent}
 \def\rd@save#1{\expandafter\let\csname rd@saved@#1\expandafter\endcsname\csname#1\endcsname}
+\newcount\rd@checked
 \def\rd@check#1{%
+  \global\advance\rd@checked by 1
   \expandafter\ifx\csname rd@saved@#1\expandafter\endcsname\csname#1\endcsname\else
     \wlog{regodoc-redefined: #1}%
   \fi}
 \def\rd@checkall{\@for\rd@name:=\rd@guarded\do{\expandafter\rd@check\expandafter{\rd@name}}}
+% Prova positiva del confronto: document.tex, scritto dal motore, chiude il corpo con questo
+% comando, e il motore pretende nel log la riga «regodoc-checked: N», con N il numero dei
+% comandi confrontati. Un tema che spegne il confronto, o ne svuota l'elenco, cambia la riga,
+% e build si ferma con regodoc.theme.tampered. Un tema ostile può imitarla: è un controllo,
+% non una barriera (contratto, §6.4).
+\newcommand\RdCheckContent{%
+  \global\rd@checked=0 \rd@checkall\wlog{regodoc-checked: \the\rd@checked}}
 \@for\rd@name:=\rd@guarded\do{\expandafter\rd@save\expandafter{\rd@name}}
 
 \rd@inthemetrue

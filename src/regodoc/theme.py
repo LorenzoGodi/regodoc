@@ -49,7 +49,7 @@ _FORBIDDEN = re.compile(
     r"\\(?:"
     r"write\s*18|ShellEscape|input|include|InputIfFileExists|openin|openout|pdfobj"
     r"|pdfmapfile|pdfmapline|pdffiledump|pdfmdfivesum|pdffilesize|pdffilemoddate|pdfximage"
-    r"|pdfprimitive|primitive"
+    r"|pdfprimitive|primitive|pdfcatalog|pdfpageattr|pdfpagesattr|pdfannot|pdfnames"
     r")(?![A-Za-z@])"
     r"|\\(?:tex|pdftex|etex|sys|file|ior|iow)_[A-Za-z_]*:[A-Za-z]*"
 )

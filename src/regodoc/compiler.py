@@ -37,6 +37,16 @@ _CANNOT_WRITE = re.compile(r"I can't write on file `([^']+)'")
 _SHELL = re.compile(r"^runsystem\((.*)\)\.\.\.disabled", re.M)
 _PACKAGE = re.compile(r"^regodoc-package: (\S+)$", re.M)
 _REDEFINED = re.compile(r"^regodoc-redefined: (\S+)$", re.M)
+_CHECKED = re.compile(r"^regodoc-checked: (\d+)$", re.M)
+STY: Final = Path(__file__).resolve().parent / "tex" / "regodoc.sty"
+# Quanti comandi del contenuto regodoc.sty confronta: la riga «regodoc-checked» deve dire
+# questo numero (contratto, §6.4).
+GUARDED: Final = len(
+    re.search(r"\\def\\rd@guarded\{%?(.*?)\}", STY.read_text(encoding="utf-8"), re.S)
+    .group(1)  # type: ignore[union-attr]
+    .replace("%", "")
+    .split(",")
+)
 _FILE_OPEN = re.compile(r"\(([^()\s]+\.(?:tex|sty|cls|cfg|def|fd|aux|toc|out|clo|ldf))")
 # Estensioni dei file che mancano all'immagine TeX, non al tema: un pacchetto, una classe.
 _TEX_SUPPORT = (".sty", ".cls", ".def", ".fd", ".cfg", ".clo", ".ldf", ".tfm", ".pfb", ".map")
@@ -75,6 +85,8 @@ class Result:
     passes: int
     version_line: str
     packages: list[str] = field(default_factory=list)
+    # I file .sty e .cls che pdflatex ha letto, secondo il .fls.
+    loaded: set[str] = field(default_factory=set)
 
 
 def find_pdflatex() -> str | None:
@@ -177,12 +189,78 @@ def compile_pdf(doc: Path, home: Path, epoch: int, pdflatex: str) -> Result:
                 "", f"rimandi e indice non sono stabili dopo {passes} passate di pdflatex"
             )
         previous = state
+    _check_marker(log)
+    pdf = (doc / f"{DOCUMENT}.pdf").read_bytes()
+    check_pdf(pdf)
     return Result(
-        pdf=(doc / f"{DOCUMENT}.pdf").read_bytes(),
+        pdf=pdf,
         passes=passes,
         version_line=version_line(pdflatex, env),
         packages=_PACKAGE.findall(log),
+        loaded=loaded_packages(doc),
     )
+
+
+def loaded_packages(doc: Path) -> set[str]:
+    """I nomi dei file .sty e .cls letti da pdflatex, dal .fls che scrive con -recorder."""
+    text = _read(doc / f"{DOCUMENT}.fls").decode("utf-8", "replace")
+    names = set()
+    for line in text.split("\n"):
+        if line.startswith("INPUT ") and line.endswith((".sty", ".cls")):
+            names.add(Path(line.removeprefix("INPUT ")).name)
+    return names
+
+
+def package_closure(
+    doc: Path, home: Path, epoch: int, pdflatex: str, packages: Iterable[str]
+) -> set[str]:
+    """I .sty e .cls che lo stesso documento legge con un tema che carica solo i pacchetti
+    dichiarati, senza altro codice: ciò che il tema può far leggere (contratto, §6.1).
+
+    È una compilazione in più, di una sola passata, in una cartella accanto a ``doc``.
+    """
+    probe = doc.parent / "probe"
+    probe.mkdir()
+    for name in (f"{DOCUMENT}.tex", "regodoc.sty"):
+        shutil.copyfile(doc / name, probe / name)
+    if (doc / "images").is_dir():
+        shutil.copytree(doc / "images", probe / "images")
+    requests = "".join(f"\\RequirePackage{{{name}}}\n" for name in packages)
+    (probe / "theme.sty").write_text(f"\\ProvidesPackage{{theme}}\n{requests}", encoding="utf-8")
+    subprocess.run(
+        [pdflatex, "-no-shell-escape", "-interaction=batchmode", "-recorder", f"{DOCUMENT}.tex"],
+        cwd=probe,
+        env=environment(pdflatex, home, epoch),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return loaded_packages(probe)
+
+
+def check_loaded(loaded: set[str], allowed: set[str]) -> None:
+    """Ogni .sty e .cls letto sta fra quelli che i pacchetti dichiarati leggono da sé."""
+    extra = sorted(loaded - allowed - {"theme.sty"})
+    if extra:
+        raise CompileError(
+            "regodoc.theme.package",
+            f"il tema fa leggere «{clip(extra[0])}», che non viene da regodoc.sty né dai "
+            "pacchetti di tex_packages in theme.toml",
+            file="theme.sty",
+        )
+
+
+def _check_marker(log: str) -> None:
+    """La prova positiva del confronto dei comandi del contenuto (contratto, §6.4)."""
+    found = _CHECKED.findall(log)
+    if found != [str(GUARDED)]:
+        raise CompileError(
+            "regodoc.theme.tampered",
+            "il confronto dei comandi del contenuto non è arrivato in fondo: il tema ha "
+            "toccato i controlli di regodoc.sty",
+            file="theme.sty",
+        )
 
 
 def check_packages(requested: Iterable[str], declared: Iterable[str]) -> None:
@@ -329,3 +407,165 @@ def _current_file(log: str) -> str:
         if name:
             return name.removeprefix("./") if name.startswith("./") else Path(name).name
     return ""
+
+
+# --- Contenuto attivo nel PDF (contratto, §6.5) ----------------------------------------------
+
+# Nomi PDF che portano contenuto attivo, azioni automatiche, file incorporati, o che
+# nasconderebbero oggetti alla lettura: un PDF che li contiene non esce dal motore.
+ACTIVE_NAMES: Final = frozenset(
+    {
+        "JavaScript",
+        "JS",
+        "OpenAction",
+        "AA",
+        "Launch",
+        "SubmitForm",
+        "ImportData",
+        "RichMedia",
+        "EmbeddedFile",
+        "EmbeddedFiles",
+        "XFA",
+        "ObjStm",
+    }
+)
+_XREF_ENTRY = re.compile(rb"(\d{10}) (\d{5}) ([nf])")
+_OBJECT = re.compile(rb"\s*(\d+)\s+(\d+)\s+obj\b")
+_DELIMITERS = b"()<>[]{}/%"
+_WHITESPACE = b"\x00\t\n\x0c\r "
+
+
+class PdfError(Exception):
+    """Il PDF non si legge con la struttura che pdfTeX scrive senza oggetti compressi."""
+
+
+def check_pdf(pdf: bytes) -> None:
+    """Legge ogni oggetto del PDF dalla tabella xref, salta stringhe e flussi, e rifiuta i
+    nomi di ``ACTIVE_NAMES``. Un PDF che non si lascia leggere così è rifiutato anch'esso."""
+    try:
+        names = _pdf_names(pdf)
+    except (PdfError, ValueError, IndexError) as error:
+        raise CompileError(
+            "regodoc.pdf.active",
+            f"il PDF non ha la struttura attesa, quindi non si può escludere contenuto attivo "
+            f"({error})",
+            file="theme.sty",
+        ) from error
+    found = sorted(names & ACTIVE_NAMES)
+    if found:
+        raise CompileError(
+            "regodoc.pdf.active",
+            f"il PDF contiene /{found[0]}: contenuto attivo o nascosto, che il motore non consegna",
+            file="theme.sty",
+        )
+
+
+def _pdf_names(pdf: bytes) -> set[str]:
+    start = pdf.rfind(b"startxref")
+    if start < 0:
+        raise PdfError("manca startxref")
+    offset = int(pdf[start + 9 :].split()[0])
+    if not pdf.startswith(b"xref", offset):
+        raise PdfError("tabella xref compressa o assente")
+    names: set[str] = set()
+    lines = pdf[offset:].split(b"trailer", 1)
+    if len(lines) != 2:
+        raise PdfError("manca il trailer")
+    table, trailer = lines
+    offsets = [int(m.group(1)) for m in _XREF_ENTRY.finditer(table) if m.group(3) == b"n"]
+    _scan(trailer, 0, names, stop_at_stream=False)
+    for position in offsets:
+        match = _OBJECT.match(pdf, position)
+        if match is None:
+            raise PdfError(f"nessun oggetto all'offset {position}")
+        _scan(pdf, match.end(), names, stop_at_stream=True)
+    return names
+
+
+def _scan(data: bytes, index: int, names: set[str], *, stop_at_stream: bool) -> None:
+    """Raccoglie i nomi di un oggetto fino a ``endobj``, saltando stringhe e flussi."""
+    length = len(data)
+    last_integers: list[int] = []
+    pending_length = False
+    stream_length: int | None = None
+    while index < length:
+        char = data[index]
+        if char in _WHITESPACE:
+            index += 1
+        elif char == ord("%"):
+            end = data.find(b"\n", index)
+            index = length if end < 0 else end
+        elif char == ord("("):
+            index = _skip_string(data, index)
+        elif data.startswith(b"<<", index) or data.startswith(b">>", index):
+            index += 2
+        elif char == ord("<"):
+            end = data.find(b">", index)
+            if end < 0:
+                raise PdfError("stringa esadecimale non chiusa")
+            index = end + 1
+        elif char == ord("/"):
+            end = index + 1
+            while end < length and data[end] not in _WHITESPACE and data[end] not in _DELIMITERS:
+                end += 1
+            name = re.sub(
+                rb"#([0-9A-Fa-f]{2})", lambda m: bytes([int(m.group(1), 16)]), data[index + 1 : end]
+            )
+            decoded = name.decode("latin-1")
+            names.add(decoded)
+            pending_length = decoded == "Length"
+            last_integers = []
+            index = end
+        elif char in b"[]{}":
+            index += 1
+        else:
+            end = index
+            while end < length and data[end] not in _WHITESPACE and data[end] not in _DELIMITERS:
+                end += 1
+            word = data[index:end]
+            index = end
+            if word == b"endobj" or (not stop_at_stream and word == b"startxref"):
+                return
+            if word == b"stream":
+                if stream_length is None:
+                    raise PdfError("flusso senza /Length diretta")
+                if data.startswith(b"\r\n", index):
+                    index += 2
+                elif data.startswith(b"\n", index):
+                    index += 1
+                index += stream_length
+                rest = data[index : index + 20].lstrip()
+                if not rest.startswith(b"endstream"):
+                    raise PdfError("lunghezza del flusso sbagliata")
+                index = data.index(b"endstream", index) + len(b"endstream")
+                continue
+            if word.isdigit():
+                last_integers.append(int(word))
+                if pending_length and len(last_integers) == 1:
+                    stream_length = int(word)
+            elif word == b"R":
+                if pending_length:
+                    raise PdfError("flusso con /Length indiretta")
+            else:
+                pending_length = False
+    if stop_at_stream:
+        raise PdfError("oggetto senza endobj")
+
+
+def _skip_string(data: bytes, index: int) -> int:
+    """L'indice dopo una stringa letterale, con le parentesi annidate e gli escape."""
+    depth = 0
+    length = len(data)
+    while index < length:
+        char = data[index]
+        if char == ord("\\"):
+            index += 2
+            continue
+        if char == ord("("):
+            depth += 1
+        elif char == ord(")"):
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise PdfError("stringa non chiusa")

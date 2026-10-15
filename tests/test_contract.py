@@ -168,9 +168,10 @@ class DeclarationContractTest(unittest.TestCase):
 
     def test_theme_package_check(self) -> None:
         text = flat(section("6.1"))
-        self.assertIn("**chiede direttamente**", text)
-        self.assertIn("non contano", text)
-        self.assertIn("Conta solo l'estensione `.sty`", text)
+        # Il controllo vero è sul .fls, fuori da TeX; l'aggancio di LaTeX è solo un aiuto.
+        self.assertIn("file `.fls` di `-recorder`", text)
+        self.assertIn("ogni file `.sty` o `.cls`", text)
+        self.assertIn("non una barriera", text)
 
     def test_build_identifies_the_tex_image(self) -> None:
         self.assertIn("`version_line`", section("4.3"))

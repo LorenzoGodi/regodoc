@@ -810,7 +810,7 @@ contano come errori.
 I codici sono raggruppati per famiglia. Le famiglie e i codici fuori famiglia sono elencati
 in un solo posto, il §4.4 del contratto del motore (`docs/contract.md`), che comprende anche
 quelli di `build` e degli aggiornamenti (`regodoc.grammar.*`, `regodoc.header.*`,
-`regodoc.theme.*`, `regodoc.tex.*`). Un codice, una volta pubblicato, non cambia
+`regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`). Un codice, una volta pubblicato, non cambia
 significato.
 
 ### 8.1 Indice dei codici
@@ -956,6 +956,8 @@ non bloccano il pacchetto.
 | `regodoc.theme.read` | contratto, §6.5: codice d'uscita 2 |
 | `regodoc.theme.write` | contratto, §6.5: codice d'uscita 2 |
 | `regodoc.theme.compile` | contratto, §7: codice d'uscita 2 |
+| `regodoc.theme.tampered` | contratto, §6.4: codice d'uscita 2 |
+| `regodoc.pdf.active` | contratto, §6.5: codice d'uscita 2 |
 | `regodoc.theme.role_default` | avviso informativo; contratto, §6.2 |
 | `regodoc.theme.frame_key` | avviso informativo; contratto, §6.1 |
 | `regodoc.tex.missing` | contratto, §7: codice d'uscita 3 |

@@ -13,7 +13,14 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc.compiler import CompileError, check_packages, compile_pdf, find_pdflatex
+from regodoc.compiler import (
+    CompileError,
+    check_loaded,
+    check_packages,
+    compile_pdf,
+    find_pdflatex,
+    package_closure,
+)
 from regodoc.diagnostics import Collector, Severity, clip
 from regodoc.header import Header, HeaderError, choose_date, read_header
 from regodoc.render import Document, render_document
@@ -120,7 +127,12 @@ def _compile(
         return outcome
     try:
         result = compile_pdf(doc, home, epoch, pdflatex)
+        # L'aggancio package/before di regodoc.sty dà un messaggio chiaro per i pacchetti
+        # chiesti dal tema; la barriera è il .fls, che il tema non tocca (contratto, §6.1).
         check_packages(result.packages, theme.tex_packages)
+        if theme.external:
+            allowed = package_closure(doc, home, epoch, pdflatex, theme.tex_packages)
+            check_loaded(result.loaded, allowed)
     except CompileError as error:
         if error.environment:
             report.error(error.code, error.message)

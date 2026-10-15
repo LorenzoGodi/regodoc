@@ -257,6 +257,7 @@ class _Emitter:
                 self.out(f"{{{title}}}")
             self.container(root, level=0)
         self.out("")
+        self.out(r"\RdCheckContent")
         self.out(r"\end{document}")
         return "\n".join(self.lines) + "\n"
 

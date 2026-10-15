@@ -126,6 +126,48 @@ def secret_file(test: unittest.TestCase) -> Path:
 
 
 @unittest.skipUnless(PDFLATEX or REQUIRE_TEX, "pdflatex non disponibile")
+class PdfReaderTest(unittest.TestCase):
+    """Il lettore degli oggetti del PDF, su PDF scritti a mano."""
+
+    @staticmethod
+    def pdf(*objects: bytes, xref: bool = True) -> bytes:
+        out = b"%PDF-1.5\n"
+        offsets = []
+        for number, body in enumerate(objects, start=1):
+            offsets.append(len(out))
+            out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+        start = len(out)
+        if xref:
+            out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+            out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+            out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode()
+        else:
+            start = offsets[-1]
+        return out + f"startxref\n{start}\n%%EOF\n".encode()
+
+    def test_clean_pdf(self) -> None:
+        stream = b"BT /JS (/OpenAction) Tj ET /AA"
+        pdf = self.pdf(
+            b"<< /Type /Catalog /Pages 2 0 R /URI (https://x/JS/AA \\) /AA) >>",
+            b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+        )
+        compiler.check_pdf(pdf)
+
+    def test_active_or_hidden_objects(self) -> None:
+        cases = (
+            self.pdf(b"<< /Type /Catalog /OpenAction 2 0 R >>"),
+            self.pdf(b"<< /Type /Catalog /Names << /J#61vaScript 2 0 R >> >>"),
+            self.pdf(b"<< /Type /ObjStm /N 1 /Length 3 >>\nstream\nabc\nendstream"),
+            self.pdf(b"<< /Type /XRef /Length 3 >>\nstream\nabc\nendstream", xref=False),
+            self.pdf(b"<< /Length 2 0 R >>\nstream\nabc\nendstream", b"3"),
+            self.pdf(b"<< /Length 1 >>\nstream\nabc\nendstream /OpenAction"),
+        )
+        for pdf in cases:
+            with self.subTest(pdf[:80]), self.assertRaises(compiler.CompileError) as caught:
+                compiler.check_pdf(pdf)
+            self.assertEqual(caught.exception.code, "regodoc.pdf.active")
+
+
 class ExternalThemeTest(unittest.TestCase):
     """Un caso per divieto: il codice, nessuna uscita, nessuna traccia del file segreto."""
 
@@ -231,6 +273,44 @@ class ExternalThemeTest(unittest.TestCase):
         self.assertEqual(error["file"], "theme.sty")
         sty = (Path(build_module.__file__).parent / "tex" / "neutral" / "theme.sty").read_text()
         self.assertEqual(error["line"], sty.count("\n"))
+
+    def test_switching_off_the_comparison_is_tampering(self) -> None:
+        # In una .sty la @ è una lettera: un tema raggiunge i controlli di regodoc.sty. La
+        # prova positiva del log lo scopre.
+        for extra in (
+            r"\def\rd@checkall{}\renewcommand\RdB[1]{#1}",
+            r"\def\rd@guarded{}\renewcommand\RdB[1]{#1}",
+        ):
+            with self.subTest(extra):
+                self.assert_refused(extra, "regodoc.theme.tampered")
+
+    def test_switching_off_the_package_hook_is_caught_by_the_recorder(self) -> None:
+        error = self.assert_refused(
+            r"\rd@inthemefalse\RequirePackage{eso-pic}", "regodoc.theme.package"
+        )
+        self.assertIn("eso-pic.sty", error["message"])
+
+    def test_active_content_in_the_pdf_is_refused(self) -> None:
+        cases = (
+            r"\csname pdfcatalog\endcsname{/OpenAction << /S /JavaScript /JS (app.alert(1)) >>}",
+            # Un nome codificato con #XX, con # di catcode 12 perché TeX non lo raddoppi.
+            r"{\catcode`\#=12 \csname pdfcatalog\endcsname{/Names << /J#61vaScript 1 0 R >>}}",
+            r"\csname pdfcatalog\endcsname{/AA << >>}",
+        )
+        for extra in cases:
+            with self.subTest(extra):
+                self.assert_refused(extra, "regodoc.pdf.active")
+
+    def test_names_inside_strings_and_streams_are_not_active(self) -> None:
+        files = example_files()
+        part = files["parts/backup.xml"].decode()
+        link = '<p><link href="https://x.example/JS/OpenAction">qui</link> /JS /AA</p>'
+        files["parts/backup.xml"] = part.replace("<small>", link + "<small>", 1).encode()
+        space = Workspace(self, files)
+        code, out, _ = run_cli(
+            "build", str(space.package), "-o", str(space.root / "o.pdf"), "--json"
+        )
+        self.assertEqual(code, 0, out)
 
     def test_neutral_theme_failure_is_an_internal_error(self) -> None:
         space = Workspace(self)

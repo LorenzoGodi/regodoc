@@ -5,7 +5,9 @@ rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre 
 problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1),
 la chiave `warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica
 che un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
-`"contract": 1`. La bozza che la precedeva, dichiarata come versione 0, non è servita da
+`"contract": 1`. Il 16/10/2026, sempre prima del primo rilascio, si aggiungono i codici
+`regodoc.theme.tampered` e `regodoc.pdf.active` (§6.4 e §6.5), con la famiglia
+`regodoc.pdf.*`, e i tetti dei pixel dei PNG (§5.1). La bozza che la precedeva, dichiarata come versione 0, non è servita da
 nessun motore: chi chiama passa `--contract 1`.
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
@@ -119,9 +121,11 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     macOS); dove mancano, `limits_active.time_seconds` vale `null`. `--max-seconds S`
     abbassa il tempo dichiarato per questa chiamata; un valore più alto è ignorato, uno
     minore di 1 è un errore d'uso. Il caso peggiore valido, cioè un pacchetto entro tutti i
-    limiti del §5.1 costruito per chiedere il massimo lavoro al lettore, si valida in circa
-    8,5 s su un processore x86-64 di classe server; la CI del motore lo misura a ogni
-    modifica su Linux e macOS e fallisce oltre due terzi del tempo dichiarato.
+    limiti del §5.1 costruito per chiedere il massimo lavoro al lettore, si è validato fra 8
+    e 10,3 s su processori x86-64 di classe server, con CPython 3.12 e 3.13 (misure di
+    ottobre 2026): chi stima il proprio margine conti fino a 12 s. La CI del motore lo misura
+    a ogni modifica su Linux e macOS e fallisce oltre 20 s, cioè due terzi del tempo
+    dichiarato.
   - **Timer di chi chiama.** Se il motore gira dentro un processo che ha già un proprio
     timer (`ITIMER_REAL`), per esempio una prova che lo chiama come funzione, quel timer è
     sospeso per la durata del comando e riparte alla fine con il tempo che gli restava. Un
@@ -348,7 +352,7 @@ Con i campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
 `regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`,
-`regodoc.header.*`, `regodoc.theme.*`, `regodoc.tex.*`; fuori dalle famiglie: `regodoc.usage`,
+`regodoc.header.*`, `regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`; fuori dalle famiglie: `regodoc.usage`,
 `regodoc.environment`, `regodoc.not_implemented`, `regodoc.interrupted`,
 `regodoc.internal`.
 
@@ -480,18 +484,20 @@ I colori dell'esempio sono inventati per questo documento e non sono quelli di n
 | `tex_packages` | i pacchetti LaTeX che `theme.sty` carica oltre a quelli di `info.tex.packages` |
 | `palette` | i colori, in esadecimale `RRGGBB`, per i ruoli di `info.theme.roles` |
 
-**Pacchetti LaTeX.** L'elenco del tema è suo: non allarga quello del motore. Il motore controlla
-solo i pacchetti che `theme.sty` **chiede direttamente**, con `\usepackage`,
-`\RequirePackage` o `\RequirePackageWithOptions`: `regodoc.sty` li registra con l'aggancio
-`package/before` di LaTeX mentre si carica `theme.sty`. Ognuno deve stare in `tex_packages`
-o in `info.tex.packages`, altrimenti `build` si ferma con il codice 2 e
-`regodoc.theme.package`. Le dipendenze che quei pacchetti caricano a loro volta (per esempio
-`pgf` sotto `tikz`, `kvoptions` sotto `hyperref`) non contano: arrivano con il pacchetto
-nell'immagine TeX. Conta solo l'estensione `.sty`; `theme.sty` non può caricare classi
-(`.cls`), e i file `.tex`, `.def`, `.cfg`, `.fd` e i caratteri non si controllano per nome:
-la lettura dei file resta limitata dall'ambiente del §2.2. Il file `.fls` di `-recorder`
-resta per chi gestisce l'immagine TeX, che confronta lo stesso elenco con i pacchetti
-installati.
+**Pacchetti LaTeX.** L'elenco del tema è suo: non allarga quello del motore. Ogni pacchetto
+che `theme.sty` usa deve stare in `tex_packages` o in `info.tex.packages`, altrimenti `build`
+si ferma con il codice 2 e `regodoc.theme.package`. Il controllo vero sta fuori da TeX, sul
+file `.fls` di `-recorder`, che il tema non può alterare (§6.5): dopo la compilazione il
+motore compila lo stesso documento una volta in più, con un tema di prova che carica solo i
+pacchetti di `tex_packages`, e ogni file `.sty` o `.cls` letto con il tema vero deve
+comparire anche in quella prova. Così contano anche le dipendenze che un pacchetto non
+dichiarato porterebbe con sé, mentre quelle dei pacchetti dichiarati (per esempio `pgf`
+sotto `tikz`) arrivano con loro; un pacchetto che un'opzione fa caricare in più (per
+esempio `colortbl` con `xcolor[table]`) va dichiarato anch'esso. I file `.def`, `.fd`,
+`.cfg`, `.tex` e i caratteri non si controllano per nome: li caricano driver e caratteri
+secondo il contenuto, e la lettura resta limitata dall'ambiente del §2.2. Un aiuto in più,
+non una barriera: `regodoc.sty` registra con l'aggancio `package/before` di LaTeX i pacchetti
+che `theme.sty` chiede direttamente, per un messaggio che nomina il pacchetto chiesto.
 
 ### 6.2 Ruoli, non vocabolario
 
@@ -548,6 +554,14 @@ all'inizio e alla fine del documento, e un comando cambiato ferma `build` con il
 `regodoc.theme.redefined`, che lo nomina. Per cambiare l'aspetto il tema ridefinisce gli
 agganci del §6.3, o i comandi del LaTeX che gli agganci usano.
 
+**È un controllo, non una barriera.** Il confronto è codice TeX, e in un file `.sty` un tema
+raggiunge anche le macro interne di `regodoc.sty`. Il motore lo rende a prova positiva:
+`document.tex` chiude il corpo con `\RdCheckContent`, che confronta i comandi e scrive nel log
+quanti ne ha confrontati, e il motore pretende quel numero. Un tema che spegne o svuota il
+confronto ferma `build` con il codice 2 e `regodoc.theme.tampered`. Un tema scritto apposta
+per ingannare il motore può imitare quella riga: il §6.4 protegge da un tema sbagliato, non
+da uno ostile. Ciò che deve reggere anche contro un tema ostile sta fuori da TeX (§6.5).
+
 | Dove | Comandi |
 |---|---|
 | preambolo | `\RdColor{ruolo}{RRGGBB}`, `\RdNames{parte}{figura}{indice}`, `\RdTitle`, `\RdSubject`, `\RdReference`, `\RdVersionLabel`, `\RdDate`, `\RdFrame{chiave}{valore}` |
@@ -570,14 +584,20 @@ Dal vocabolario ai ruoli (§6.2), nel motore:
 Un tema esterno arriva da chi chiama, ma il motore lo tratta come un ingresso non fidato. Un
 tema non può eseguire comandi, leggere file fuori dalla cartella di lavoro (il pacchetto e il
 tema) e dall'albero TeX installato, scrivere fuori dalla cartella di lavoro, ridefinire i
-comandi del §6.4, caricare pacchetti non dichiarati (§6.1) o classi. Le barriere:
+comandi del §6.4, caricare pacchetti non dichiarati (§6.1) o classi, mettere nel PDF contenuto
+attivo. Le barriere che reggono anche contro un tema ostile sono quelle che il motore applica
+fuori da TeX, cioè 3, 4 e 5: esecuzione, letture, scritture, pacchetti dal `.fls` e contenuto
+del PDF. Le altre aiutano un tema scritto in buona fede a trovare l'errore con la posizione.
 
 1. **La cartella del tema** (§3.3).
 2. **Un controllo statico di `theme.sty`**, fuori dai commenti: i comandi che leggono o
    scrivono file per nome, eseguono programmi o recuperano un primitivo (`\write18`,
    `\ShellEscape`, `\input`, `\include`, `\InputIfFileExists`, `\openin`, `\openout`,
    `\pdfobj`, `\pdfmapfile`, `\pdfmapline`, `\pdffiledump`, `\pdfmdfivesum`,
-   `\pdffilesize`, `\pdffilemoddate`, `\pdfximage`, `\pdfprimitive`, `\primitive`, e i
+   `\pdffilesize`, `\pdffilemoddate`, `\pdfximage`, `\pdfprimitive`, `\primitive`, i
+   primitivi che scrivono nel catalogo, negli attributi delle pagine, nelle annotazioni e
+   nei nomi del PDF (`\pdfcatalog`, `\pdfpageattr`, `\pdfpagesattr`, `\pdfannot`,
+   `\pdfnames`), e i
    nomi di expl3 `\tex_…:D`, `\pdftex_…:D` e le funzioni di file e di sistema) danno
    `regodoc.theme.forbidden`, con riga e colonna. È un aiuto, non la barriera: con
    `\csname` o con i catcode si aggira.
@@ -590,9 +610,18 @@ comandi del §6.4, caricare pacchetti non dichiarati (§6.1) o classi. Le barrie
    `$TEXMFCNF`, `$TEXMFSYSVAR` e `$TEXMFSYSCONFIG`, nello stesso ambiente), ogni file scritto
    nella cartella di lavoro. Serve perché alcune letture di pdfTeX non passano dal controllo
    dell'ambiente: `\pdfobj file`, `\pdfmapfile`, `\pdfmapline` e `\font` con un percorso
-   assoluto. Un `.fls` riscritto durante la compilazione è anch'esso un errore.
+   assoluto. Un `.fls` riscritto durante la compilazione è anch'esso un errore. Sullo stesso
+   `.fls` il motore controlla i pacchetti letti (§6.1).
+5. **Il PDF**, dopo la compilazione: `regodoc.sty` scrive gli oggetti senza comprimerli
+   (`\pdfobjcompresslevel=0`; pdfTeX fissa la compressione al primo oggetto, che hyperref
+   scrive prima del tema), e il motore legge ogni oggetto dalla tabella xref, saltando
+   stringhe e flussi. Un PDF con i nomi `/JavaScript`, `/JS`, `/OpenAction`, `/AA`,
+   `/Launch`, `/SubmitForm`, `/ImportData`, `/RichMedia`, `/EmbeddedFile`, `/EmbeddedFiles`,
+   `/XFA` o `/ObjStm`, anche scritti con `#XX`, oppure che non si lascia leggere così, non
+   esce dal motore: `regodoc.pdf.active`.
 
-Con una di queste barriere `build` esce con il codice 2 e **non scrive nessuna uscita**. Su
+Con una di queste barriere `build` esce con il codice 2 e **non scrive nessuna uscita**; con il
+tema neutro lo stesso caso è un difetto del motore (codice 4). Su
 quelle letture il motore garantisce che il file letto non esca dal motore, non che pdfTeX non
 lo legga.
 
@@ -695,7 +724,8 @@ tema in ordine dei byte. Nel PDF:
   `SOURCE_DATE_EPOCH` e `FORCE_SOURCE_DATE=1`;
 - niente `/ID` (`\pdftrailerid{}`) e niente chiavi `PTEX.*`, che portano nome di file e
   versione (`\pdfsuppressptexinfo=-1`); `Producer` e `Creator` valgono `regodoc`;
-- la compressione è fissata (`\pdfcompresslevel=9`, `\pdfobjcompresslevel=2`);
+- la compressione è fissata: flussi con `\pdfcompresslevel=9`, oggetti non compressi con
+  `\pdfobjcompresslevel=0`, che serve anche al controllo del contenuto attivo (§6.5);
 - i caratteri sono Latin Modern Type 1 dell'immagine TeX, e il prefisso dei sottoinsiemi di
   pdfTeX dipende solo dai glifi usati;
 - il percorso della cartella di lavoro non entra mai.
@@ -703,7 +733,15 @@ tema in ordine dei byte. Nel PDF:
 Le passate si ripetono finché `.aux`, `.toc` e `.out` di due passate consecutive sono
 uguali, da `info.passes.min` a `info.passes.max`: se all'ultima cambiano ancora, la
 compilazione fallisce. La CI del motore lo prova a ogni modifica: compila due volte lo stesso
-sorgente, in due cartelle diverse, sull'immagine TeX di riferimento, e confronta i byte.
+pacchetto, con cartelle temporanee diverse, e confronta i byte.
+
+**Dove è verificata.** Byte per byte è verificata con TeX Live 2023 di Ubuntu, nell'ambiente
+di sviluppo, e nel job TeX della CI, che usa la stessa base dell'immagine di Rego (Debian
+trixie, TeX Live 2024) fissata per digest. Le versioni dei pacchetti TeX installati con apt in
+quel job **non** sono fissate: il job le stampa con `dpkg-query -W`, ma la base sotto può
+cambiare fra due esecuzioni. La verifica sull'immagine di riferimento vera la fa chi chiama
+alla prima installazione di una versione del motore, con due compilazioni dello stesso
+pacchetto nella propria immagine.
 
 ## 11. Studio di autonomia
 
