@@ -116,6 +116,38 @@ def plain_text_problems(value: str, *, max_length: int, min_length: int = 1) -> 
     return problems
 
 
+MAX_JSON_DEPTH = 64
+"""Livelli di oggetti e array ammessi in un JSON: il limite è nostro e non dipende da quanta
+ricorsione regga la versione di Python."""
+
+
+def json_depth_exceeded(text: str) -> bool:
+    """Vero se il JSON apre più di ``MAX_JSON_DEPTH`` oggetti o array uno dentro l'altro.
+
+    Una sola passata, che salta il contenuto delle stringhe; non controlla la sintassi.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                return True
+        elif char in "]}":
+            depth -= 1
+    return False
+
+
 class JsonProblem(Exception):
     """Un JSON che si analizza ma non si accetta, con il motivo in italiano."""
 
@@ -144,6 +176,10 @@ def strict_json(text: str) -> object:
     def constant(name: str) -> object:
         raise _Refused(f"valore non ammesso «{name}»")
 
+    if json_depth_exceeded(text):
+        raise JsonProblem(
+            f"annidamento eccessivo di oggetti o array, oltre {MAX_JSON_DEPTH} livelli"
+        )
     try:
         return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
     except json.JSONDecodeError:

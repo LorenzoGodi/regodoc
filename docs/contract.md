@@ -186,8 +186,9 @@ regolare o una cartella: una FIFO o un dispositivo danno il codice 2.
 ### 3.2 L'intestazione (`--header`)
 
 Un file JSON con i dati che il pacchetto non contiene e che servono alla cornice del tema. Si
-legge con le regole del manifesto (specifica, §1.3): al massimo 64 KiB, UTF-8, nessuna chiave
-ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e nessun'altra:
+legge con le regole del manifesto (specifica, §1.3): al massimo 64 KiB e 64 livelli di
+oggetti e array, UTF-8, nessuna chiave ripetuta, niente `NaN` né `Infinity`, chiavi ammesse e
+nessun'altra:
 
 ```json
 {

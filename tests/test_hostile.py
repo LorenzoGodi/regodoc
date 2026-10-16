@@ -24,6 +24,7 @@ from unittest import mock
 
 from regodoc import declaration, parts
 from regodoc.diagnostics import Collector, Diagnostic, Severity
+from regodoc.text import MAX_JSON_DEPTH, JsonProblem, strict_json
 from regodoc.tomlfiles import MAX_KEY_SEGMENTS, long_dotted_key
 from tests.support import (
     build_zip,
@@ -303,6 +304,14 @@ class ResidualTest(unittest.TestCase):
                 self.assertIn(words, errors[0].message)
                 for english in ("Exceeds", "recursion", "limit", "digits"):
                     self.assertNotIn(english, errors[0].message)
+
+    def test_json_depth_is_ours_not_pythons(self) -> None:
+        # Il limite non dipende dalla ricorsione della versione di Python: su 3.14 json.loads
+        # regge annidamenti che su 3.12 sollevano RecursionError.
+        deep = "[" * MAX_JSON_DEPTH + '"[{\\""' + "]" * MAX_JSON_DEPTH
+        self.assertEqual(len(json.dumps(strict_json(deep))), len(deep))
+        with self.assertRaises(JsonProblem):
+            strict_json("[" + deep + "]")
 
     def test_system_errors_are_in_italian(self) -> None:
         failure = OSError(errno.ENOSPC, "No space left on device")
