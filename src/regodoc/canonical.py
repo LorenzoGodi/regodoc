@@ -24,8 +24,7 @@ from regodoc.declaration import CONTENT_LIMITS, ENGINE_NAME, PACKAGE_MIMETYPE
 from regodoc.diagnostics import Collector, Diagnostic
 from regodoc.parts import XML_DECLARATION, Comment, Node, Text
 from regodoc.readme import render_readme
-from regodoc.source import read_package
-from regodoc.validate import Validation, canonical_files
+from regodoc.validate import Validation, canonical_files, validate_package
 
 _SPACES = re.compile(r"[ \t\n\r]+")
 
@@ -411,11 +410,13 @@ _FILE_LIMITS = {"structure.toml": "structure_bytes", "variables.toml": "variable
 
 
 def output_problems(content: list[tuple[str, bytes]], data: bytes) -> list[Diagnostic]:
-    """I limiti che la forma canonica di un pacchetto valido può superare.
+    """I problemi dell'archivio canonico scritto da un pacchetto valido: vuoto se il motore
+    lo accetta.
 
-    Rientri e a capo allungano i file: una parte scritta tutta su una riga può stare nei
-    384 KiB e uscirne nella forma canonica. Si controllano le dimensioni dei file di
-    contenuto e si rilegge l'involucro dell'archivio scritto; un pacchetto che non passa
+    La forma canonica allunga i file, con rientri, a capo e le sequenze ``\\"`` e ``\\\\``
+    del TOML: una parte scritta tutta su una riga può stare nei 384 KiB e uscirne. Prima si
+    controllano le dimensioni dei file di contenuto, con un messaggio che dice perché; se
+    stanno nei limiti, l'archivio scritto si rivalida per intero. Un pacchetto con problemi
     resta senza uscita, perché il motore stesso lo rifiuterebbe.
     """
     report = Collector()
@@ -425,13 +426,14 @@ def output_problems(content: list[tuple[str, bytes]], data: bytes) -> list[Diagn
             report.error(
                 "regodoc.limit.file_size",
                 f"nella forma canonica il file è di {len(body)} byte, il massimo è "
-                f"{CONTENT_LIMITS[key]}: rientri e a capo lo allungano, va accorciato",
+                f"{CONTENT_LIMITS[key]}: la forma canonica lo allunga (rientri, a capo, "
+                'sequenze \\" e \\\\), va accorciato',
                 path,
             )
-    envelope = Collector()
-    read_package(Path("canonico.regodoc"), envelope, data)
-    problems = report.errors
-    for problem in envelope.errors:
+    if report.errors:
+        return report.errors
+    problems = []
+    for problem in validate_package(Path("canonico.regodoc"), data).report.errors:
         message = f"nell'archivio in forma canonica: {problem.message}"
         problems.append(dataclasses.replace(problem, message=message))
     return problems

@@ -149,16 +149,16 @@ def files_digest(files: list[dict[str, object]]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def validate_package(path: Path) -> Validation:
-    """Valida il pacchetto in ``path``, archivio o cartella."""
+def validate_package(path: Path, data: bytes | None = None) -> Validation:
+    """Valida il pacchetto in ``path``, archivio o cartella; con ``data``, l'archivio di
+    quei byte, già in memoria."""
     result = Validation()
-    data: bytes | None = None
-    if path.is_file():
+    if data is None and path.is_file():
         # Una sola lettura: l'impronta del rapporto è quella dei byte validati.
         data = read_archive_bytes(path)
-        if len(data) <= ENVELOPE_LIMITS["compressed_bytes"]:
-            result.input_sha256 = hashlib.sha256(data).hexdigest()
-            result.input_bytes = len(data)
+    if data is not None and len(data) <= ENVELOPE_LIMITS["compressed_bytes"]:
+        result.input_sha256 = hashlib.sha256(data).hexdigest()
+        result.input_bytes = len(data)
     # Il raccoglitore dei cicli riattraversa di continuo gli alberi delle parti, che restano
     # vivi per build: su un pacchetto al limite costava un terzo del tempo. Gli alberi non
     # hanno cicli (il parser e il costruttore si sciolgono a fine lettura), quindi il

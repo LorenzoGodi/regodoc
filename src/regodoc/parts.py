@@ -1070,7 +1070,8 @@ class PartChecker:
         elif tag == "code":
             self.check_attributes(node)
             self.check_text_only(node)
-            if not self.text_of(node):
+            # Vuoto come gli altri elementi in linea (§4.2): senza testo non bianco.
+            if not self.text_of(node).strip(" \t\n\r"):
                 self.at(node, "regodoc.xml.empty", "<code> è vuoto")
         elif tag == "address":
             self.check_attributes(node)

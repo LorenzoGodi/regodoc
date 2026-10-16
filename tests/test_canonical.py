@@ -147,6 +147,68 @@ class ExamplesTest(unittest.TestCase):
                 self.assertEqual(latex(after), latex(before))
 
 
+# Frammenti di bordo per la prova di proprietà: spazi accanto agli elementi in linea, elementi
+# vuoti o di soli spazi, a capo forzati, celle, voci con elenco annidato, commenti.
+EDGE_FRAGMENTS = (
+    "<p>a <code> x </code> b</p>",
+    "<p><code>x</code><code> y</code></p>",
+    "<p>il separatore è <code> </code></p>",
+    "<p>il separatore è <code>\n</code></p>",
+    "<p>il separatore è <code>&#32;</code></p>",
+    "<p><b> <i> x </i> </b></p>",
+    "<p><b> </b></p>",
+    "<p><i>\n</i>x</p>",
+    '<p><tone type="ok"> </tone>x</p>',
+    '<p><link href="https://example.com/"> </link></p>',
+    "<p> <break/> x</p>",
+    "<p>x <break/> <break/> y</p>",
+    "<p>x<break/></p>",
+    '<p><var name="workstations"/><var name="workstations"/> <label type="observed"/></p>',
+    '<p> <label type="decided"/> </p>',
+    "<p>&amp;&lt;&gt;]]&gt;</p>",
+    '<p>"uno" <b>"due"</b> "tre"</p>',
+    "<list><item> a <list><item>b</item></list> </item></list>",
+    "<list><item>a<!-- nota --></item></list>",
+    "<list>\n<!-- primo -->\n<item>a</item><!-- ultimo --></list>",
+    '<table columns="* *"><row><cell> </cell><cell><p> a </p></cell></row></table>',
+    '<table columns="*"><head><cell>\n</cell></head><row><cell>x</cell></row></table>',
+    "<listing>\n\n  rientro\n\n</listing>",
+    "<listing>senza a capo</listing>",
+    '<box type="note"><p> x </p><list><item> y </item></list></box>',
+    "<small>\n<p>z</p>\n</small>",
+)
+
+
+def fragment_files(body: str) -> dict[str, bytes]:
+    return with_part("    " + body)
+
+
+class EdgeFragmentsTest(unittest.TestCase):
+    def test_blank_code_is_empty(self) -> None:
+        # <code> è vuoto senza testo non bianco, come <b>, <i>, <tone> e <link> (§4.2).
+        for inner in (" ", "  ", "\n", " \n ", "\n\n", "&#32;", "&#10;", "&#32;&#10;"):
+            with self.subTest(inner=inner):
+                report = validate_bytes(
+                    build_zip(fragment_files(f"<p>il separatore è <code>{inner}</code></p>"))
+                ).report
+                self.assertIn("regodoc.xml.empty", [d.code for d in report.errors])
+
+    def test_canonical_output_of_every_valid_fragment_is_valid(self) -> None:
+        checked = 0
+        for body in EDGE_FRAGMENTS:
+            files = fragment_files(body)
+            before = validate_bytes(build_zip(files))
+            if before.report.errors:
+                continue
+            checked += 1
+            with self.subTest(body):
+                after = valid({**files, **dict(canonical.content_files(before))})
+                self.assertEqual(latex(after), latex(before))
+                again = dict(canonical.content_files(after))
+                self.assertEqual(again, dict(canonical.content_files(before)))
+        self.assertGreater(checked, 15)
+
+
 class MixedTextTest(unittest.TestCase):
     """Gli spazi del testo misto vanno dove li scrive il generatore LaTeX."""
 
