@@ -1,6 +1,7 @@
 """Le uscite dei comandi (contratto, §2.1): controlli di ``-o`` e scrittura atomica."""
 
 import hashlib
+import os
 import secrets
 from pathlib import Path
 
@@ -37,14 +38,22 @@ def temporary_name(target: Path) -> Path:
 
 
 def write_file(target: Path, data: bytes) -> None:
-    """Scrive accanto a un nome temporaneo e rinomina: l'uscita esiste solo se è completa."""
+    """Scrive accanto a un nome temporaneo e rinomina: l'uscita esiste solo se è completa.
+
+    Qualunque cosa interrompa la scrittura, anche il tempo scaduto o un SIGINT, il
+    temporaneo sparisce e l'eccezione prosegue; un permesso negato diventa ``OutputError``.
+    """
     temporary = temporary_name(target)
     try:
         with temporary.open("xb") as handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         temporary.replace(target)  # sostituisce anche un collegamento, non ciò a cui punta
-    except PermissionError as error:
+    except BaseException as error:
         temporary.unlink(missing_ok=True)
-        raise OutputError(
-            "non posso scrivere l'uscita: permesso negato", environment=True
-        ) from error
+        if isinstance(error, PermissionError):
+            raise OutputError(
+                "non posso scrivere l'uscita: permesso negato", environment=True
+            ) from error
+        raise

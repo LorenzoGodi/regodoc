@@ -110,9 +110,13 @@ def run(
         for problem in problems:
             report.error(problem.code, problem.message, problem.file, problem.line, problem.column)
         return outcome
-    if files_dir is not None:
-        _write_files(files_dir, content)
-    write_file(target, data)
+    created = _write_files(files_dir, content) if files_dir is not None else []
+    try:
+        write_file(target, data)
+    except BaseException:
+        # L'uscita esiste solo con il codice 0, anche quella di --files-dir.
+        _remove(created)
+        raise
     listed = [described(path, body) for path, body in content]
     outcome.summary = {
         **outcome.summary,
@@ -127,24 +131,42 @@ def run(
     return outcome
 
 
-def _write_files(root: Path, content: list[tuple[str, bytes]]) -> None:
-    """Scrive i file di contenuto nella cartella vuota; se non ci riesce, toglie quelli già
-    scritti, così la cartella torna com'era."""
-    written: list[Path] = []
+def _write_files(root: Path, content: list[tuple[str, bytes]]) -> list[Path]:
+    """Scrive i file di contenuto nella cartella vuota e restituisce ciò che ha creato,
+    cartelle comprese. Se qualcosa la interrompe, anche il tempo scaduto o un SIGINT, toglie
+    ciò che ha già scritto, così la cartella torna vuota; solo un errore di sistema diventa
+    ``OutputError``."""
+    created: list[Path] = []
     try:
         for path, data in content:
             destination = root / path
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            for parent in reversed(Path(path).parents[:-1]):
+                folder = root / parent
+                if not folder.exists():
+                    folder.mkdir()
+                    created.append(folder)
             temporary = temporary_name(destination)
-            written.append(temporary)
-            temporary.write_bytes(data)
+            # Tutti e due, prima di scrivere: un'interruzione durante la rinomina lascia
+            # l'uno o l'altro, e la pulizia li toglie entrambi.
+            created += [temporary, destination]
+            with temporary.open("xb") as handle:
+                handle.write(data)
             temporary.replace(destination)
-            written[-1] = destination
-    except OSError as error:
-        for path in reversed(written):
-            path.unlink(missing_ok=True)
-        for directory in sorted({p.parent for p in written}, key=lambda p: -len(p.parts)):
-            if directory != root:
-                with contextlib.suppress(OSError):
-                    directory.rmdir()
-        raise OutputError("non posso scrivere i file in --files-dir", environment=True) from error
+    except BaseException as error:
+        _remove(created)
+        if isinstance(error, OSError):
+            raise OutputError(
+                "non posso scrivere i file in --files-dir", environment=True
+            ) from error
+        raise
+    return created
+
+
+def _remove(created: list[Path]) -> None:
+    """Toglie file e cartelle creati, dall'ultimo al primo."""
+    for path in reversed(created):
+        with contextlib.suppress(OSError):
+            if path.is_dir() and not path.is_symlink():
+                path.rmdir()
+            else:
+                path.unlink(missing_ok=True)

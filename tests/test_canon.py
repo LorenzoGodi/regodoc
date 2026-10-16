@@ -1,13 +1,17 @@
 """Il comando ``canon`` (contratto, §2.1, §4.2 e §8)."""
 
+import contextlib
 import json
+import resource
 import shutil
 import tempfile
 import unittest
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
-from regodoc import __version__
+from regodoc import __version__, limits
 from regodoc.cli import ExitCode
 from regodoc.declaration import CONTENT_LIMITS
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, png_pixels, run_cli
@@ -173,6 +177,79 @@ class CanonCommandTest(unittest.TestCase):
         code, out, _ = run_cli("canon", str(package), "-o", str(package), "--json")
         self.assertEqual(code, ExitCode.USAGE)
         self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.usage")
+
+
+class NothingLeftBehindTest(unittest.TestCase):
+    """Dopo un fallimento non resta nulla, né accanto a -o né in --files-dir (contratto, §2.1
+    e §2.2): un file troppo grande per il sistema, il tempo scaduto, un SIGINT."""
+
+    def setUp(self) -> None:
+        self.folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self.package = self.folder / "in.regodoc"
+        self.package.write_bytes(build_zip(example_files()))
+        self.files = self.folder / "files"
+        self.files.mkdir()
+        self.output = self.folder / "out.regodoc"
+
+    def run_canon(self) -> int:
+        code, _, _ = run_cli(
+            "canon", str(self.package), "-o", str(self.output), "--files-dir", str(self.files)
+        )
+        return code
+
+    def assert_nothing_left(self) -> None:
+        self.assertEqual(sorted(p.name for p in self.folder.iterdir()), ["files", "in.regodoc"])
+        self.assertEqual(list(self.files.iterdir()), [])
+
+    @contextlib.contextmanager
+    def file_size_limit(self, size: int) -> Iterator[None]:
+        soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (size, hard))
+        try:
+            yield
+        finally:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (soft, hard))
+
+    def test_file_too_large_for_the_output(self) -> None:
+        # 3.000 byte bastano a ogni file di contenuto, non all'archivio: EFBIG su -o.
+        with self.file_size_limit(3000):
+            code = self.run_canon()
+        self.assertEqual(code, ExitCode.ENVIRONMENT)
+        self.assert_nothing_left()
+
+    def test_file_too_large_for_files_dir(self) -> None:
+        # 1.000 byte: i TOML passano, la prima parte no.
+        with self.file_size_limit(1000):
+            code = self.run_canon()
+        self.assertEqual(code, ExitCode.ENVIRONMENT)
+        self.assert_nothing_left()
+
+    def interrupted(self, error: BaseException, name: str) -> int:
+        original = Path.replace
+
+        def replace(path: Path, target: Path) -> Path:
+            if Path(target).name == name:
+                raise error
+            return original(path, target)
+
+        with mock.patch.object(Path, "replace", replace):
+            return self.run_canon()
+
+    def test_time_out_while_renaming_the_output(self) -> None:
+        code = self.interrupted(limits.TimeLimitExceeded(1), "out.regodoc")
+        self.assertEqual(code, ExitCode.ENVIRONMENT)
+        self.assert_nothing_left()
+
+    def test_sigint_while_renaming_a_file_of_files_dir(self) -> None:
+        code = self.interrupted(KeyboardInterrupt(), "network.xml")
+        self.assertEqual(code, ExitCode.INTERRUPTED)
+        self.assert_nothing_left()
+
+    def test_sigint_while_renaming_the_output(self) -> None:
+        code = self.interrupted(KeyboardInterrupt(), "out.regodoc")
+        self.assertEqual(code, ExitCode.INTERRUPTED)
+        self.assert_nothing_left()
 
 
 if __name__ == "__main__":
