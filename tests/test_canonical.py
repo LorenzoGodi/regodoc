@@ -374,13 +374,17 @@ class ArchiveTest(unittest.TestCase):
                 self.assertEqual(info.extra, b"")
                 self.assertEqual(info.comment, b"")
                 self.assertEqual(info.external_attr, 0o100644 << 16)
-                stored = info.filename == "mimetype"
+                stored = info.filename == "mimetype" or info.filename.startswith("images/")
                 self.assertEqual(
                     info.compress_type, zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED
                 )
             self.assertEqual(archive.comment, b"")
         report = validate_bytes(data).report
         self.assertEqual([d.code for d in report.items], [])
+
+    def test_images_are_stored(self) -> None:
+        names = [path for path, _ in self.package()]
+        self.assertIn("images/coverage.png", names)
 
     def test_the_written_archive_is_read_back(self) -> None:
         problems = canonical.output_problems([], b"PK\x03\x04 non un archivio")

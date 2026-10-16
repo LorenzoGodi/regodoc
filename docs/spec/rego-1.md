@@ -996,8 +996,10 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
 
 - **Archivio**: `mimetype` per prima, poi `manifest.json`, `README.md`, `structure.toml`,
   `variables.toml`, le parti nell'ordine di `structure.toml`, le immagini in ordine
-  alfabetico. Nessuna voce di cartella. Tutte le voci tranne `mimetype` compresse con
-  «deflate» al livello 9; data di modifica fissa, 1980-01-01 00:00; versione «creata da» 3.0
+  alfabetico. Nessuna voce di cartella. `mimetype` e le immagini memorizzate senza
+  compressione, perché un PNG piatto ricompresso supererebbe il rapporto di espansione delle
+  immagini (§7.1); tutte le altre voci compresse con «deflate» al livello 9; data di
+  modifica fissa, 1980-01-01 00:00; versione «creata da» 3.0
   Unix e «necessaria» 2.0; flag a zero; nessun campo extra; attributi esterni
   `0100644`; nessun commento d'archivio né di voce; nessun descrittore di dati.
 - **XML**: dichiarazione iniziale; rientro di due spazi per livello; un elemento per riga,

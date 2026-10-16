@@ -10,7 +10,7 @@ from pathlib import Path
 from regodoc import __version__
 from regodoc.cli import ExitCode
 from regodoc.declaration import CONTENT_LIMITS
-from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
+from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, png_pixels, run_cli
 from tests.test_limits import section, with_backup
 
 DIGEST = "sha256:" + "ab" * 32
@@ -155,6 +155,18 @@ class CanonCommandTest(unittest.TestCase):
         )
         self.assertIn("nella forma canonica", error["message"])
         self.assertFalse(output.exists())
+
+    def test_flat_image_stored_in_the_input(self) -> None:
+        # Un PNG bianco di 1200 × 800 pixel arriva memorizzato: compresso con deflate si
+        # espanderebbe più di 20 volte, e il lettore lo rifiuterebbe (specifica, §7.1).
+        files = example_files()
+        files["images/coverage.png"] = png_pixels(1200, 800, raw=(b"\x00" + b"\xff" * 1200) * 800)
+        package = self.folder / "flat.regodoc"
+        package.write_bytes(build_zip(files, stored=("images/coverage.png",)))
+        code, report, output = self.canon(package)
+        self.assertEqual(code, ExitCode.OK, report["errors"])
+        code, out, _ = run_cli("validate", str(output), "--json")
+        self.assertEqual(code, ExitCode.OK, out)
 
     def test_output_cannot_be_the_input(self) -> None:
         package = self.package()

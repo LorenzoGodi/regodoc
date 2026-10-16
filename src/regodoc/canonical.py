@@ -346,20 +346,28 @@ def _deflate(data: bytes) -> bytes:
     return compressor.compress(data) + compressor.flush()
 
 
+def _stored(name: str) -> bool:
+    return name == "mimetype" or name.startswith("images/")
+
+
 def archive(files: list[tuple[str, bytes]]) -> bytes:
-    """L'archivio ZIP canonico (§9): voci nell'ordine dato, ``mimetype`` non compressa, le
-    altre con deflate al livello 9, data e attributi fissi, nessun campo extra, commento o
-    descrittore di dati."""
+    """L'archivio ZIP canonico (§9): voci nell'ordine dato; ``mimetype`` e le immagini
+    memorizzate senza compressione, le altre con deflate al livello 9; data e attributi
+    fissi, nessun campo extra, commento o descrittore di dati.
+
+    Le immagini sono già compresse, e un PNG piatto ricompresso supererebbe il rapporto di
+    espansione che il lettore ammette per le immagini (§7.1).
+    """
     body = bytearray()
     central = bytearray()
     # Le voci si comprimono in parallelo: zlib lascia il GIL, e ogni voce è indipendente,
     # quindi i byte non dipendono dall'ordine in cui i thread finiscono.
     with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
         compressed = list(
-            pool.map(lambda item: item[1] if item[0] == "mimetype" else _deflate(item[1]), files)
+            pool.map(lambda item: item[1] if _stored(item[0]) else _deflate(item[1]), files)
         )
     for (name, data), packed in zip(files, compressed, strict=True):
-        stored = name == "mimetype"
+        stored = _stored(name)
         method = 0 if stored else 8
         crc = zlib.crc32(data) & 0xFFFFFFFF
         encoded = name.encode("utf-8")
