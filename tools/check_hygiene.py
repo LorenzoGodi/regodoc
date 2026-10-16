@@ -54,8 +54,9 @@ _BIDI_AND_INVISIBLE = frozenset(
 )
 _WORD = re.compile(r"[^\W_]+")
 _WORD_OR_NUMBER = re.compile(r"[^\W\d_]+|\d+")
-# Un lotto («L5: ») o una revisione fuori dai lotti («A11: »).
-_FIRST_LINE = re.compile(r"[LA]\d+: \S")
+# Un lotto («L5: »), una revisione fuori dai lotti («A11: ») o un testo normativo che non
+# appartiene a un lotto («contratto: », «specifica: »).
+_FIRST_LINE = re.compile(r"(?:[LA]\d+|contratto|specifica): \S")
 _CLOSING_KEYWORD = re.compile(
     r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[\s:]+([\w.-]+/[\w.-]+)?#\d+", re.IGNORECASE
 )
@@ -234,7 +235,12 @@ def check_message(where: str, message: str, terms: Terms) -> list[Problem]:
     first = lines[0] if lines else ""
     if not _FIRST_LINE.match(first):
         problems.append(
-            Problem(where, 1, "la prima riga deve cominciare con il lotto, «Ln: » o «An: »")
+            Problem(
+                where,
+                1,
+                "la prima riga deve cominciare con il lotto, «Ln: » o «An: », "
+                "o con «contratto: » o «specifica: »",
+            )
         )
     for number, line in enumerate(lines, start=1):
         if line.startswith("#"):

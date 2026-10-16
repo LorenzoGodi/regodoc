@@ -128,6 +128,12 @@ class IdentityTest(unittest.TestCase):
         self.assertEqual(len(hygiene.check_identity("c", web)), 1)
 
 
+FIRST_LINE = (
+    "la prima riga deve cominciare con il lotto, «Ln: » o «An: », "
+    "o con «contratto: » o «specifica: »"
+)
+
+
 class MessageTest(unittest.TestCase):
     def check(self, message: str) -> list[str]:
         return messages(hygiene.check_message("c", message, TERMS))
@@ -138,12 +144,15 @@ class MessageTest(unittest.TestCase):
     def test_first_line(self) -> None:
         self.assertEqual(
             self.check("impalcatura\n"),
-            ["la prima riga deve cominciare con il lotto, «Ln: » o «An: »"],
+            [FIRST_LINE],
         )
         self.assertEqual(self.check("A11: revisione\n"), [])
+        self.assertEqual(self.check("contratto: nota del §4.2\n"), [])
+        self.assertEqual(self.check("specifica: nota del §9\n"), [])
+        self.assertEqual(self.check("Contratto: nota\n"), [FIRST_LINE])
         self.assertEqual(
             self.check("B2: altro\n"),
-            ["la prima riga deve cominciare con il lotto, «Ln: » o «An: »"],
+            [FIRST_LINE],
         )
 
     def test_trailer(self) -> None:
