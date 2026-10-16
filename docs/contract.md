@@ -8,7 +8,10 @@ un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichia
 `"contract": 1`. Il 16/10/2026, sempre prima del primo rilascio, si aggiungono i codici
 `regodoc.theme.tampered` e `regodoc.pdf.active` (§6.4 e §6.5), con la famiglia
 `regodoc.pdf.*`, i tetti dei pixel dei PNG (§5.1), le chiavi `expat` ed `expat_min` di `info`
-(§5) e la ripulitura dei messaggi dai caratteri di controllo (§4.4). La bozza che la
+(§5) e la ripulitura dei messaggi dai caratteri di controllo (§4.4); poi il limite di 64
+livelli di oggetti e array nei JSON (§3.2 e specifica, §1.3), il rifiuto di `canon` e
+`upgrade` quando la forma canonica esce dai limiti (§8), il tempo dichiarato di `canon`
+portato a 60 s (§2.3) e le capacità `canon` e `upgrade` (§5.2). La bozza che la
 precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama passa
 `--contract 1`.
 

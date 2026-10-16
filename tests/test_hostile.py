@@ -313,6 +313,29 @@ class ResidualTest(unittest.TestCase):
         with self.assertRaises(JsonProblem):
             strict_json("[" + deep + "]")
 
+    def test_memory_error_while_importing(self) -> None:
+        # La memoria che finisce mentre si caricano i moduli: codice 3 e la riga fissa, senza
+        # traceback.
+        script = (
+            "import builtins, runpy\n"
+            "original = builtins.__import__\n"
+            "def failing(name, *args, **kwargs):\n"
+            "    if name == 'regodoc.cli':\n"
+            "        raise MemoryError\n"
+            "    return original(name, *args, **kwargs)\n"
+            "builtins.__import__ = failing\n"
+            "runpy.run_module('regodoc', run_name='__main__')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script, "info"],
+            capture_output=True,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            check=False,
+        )
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(result.stderr, b"regodoc: memoria esaurita\n")
+        self.assertEqual(result.stdout, b"")
+
     def test_system_errors_are_in_italian(self) -> None:
         failure = OSError(errno.ENOSPC, "No space left on device")
         with mock.patch("regodoc.cli.validate_package", side_effect=failure):

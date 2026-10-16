@@ -79,7 +79,8 @@ con un contenuto diverso, è rifiutato prima di leggere il resto.
 
 ### 1.3 `manifest.json`
 
-Un oggetto JSON in UTF-8, al massimo 64 KiB, con queste chiavi e nessun'altra:
+Un oggetto JSON in UTF-8, al massimo 64 KiB e 64 livelli di oggetti e array, con queste
+chiavi e nessun'altra:
 
 ```json
 {
