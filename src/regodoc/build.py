@@ -172,7 +172,7 @@ def _prepare(doc: Path, home: Path, text: str, theme: Theme, validation: Validat
     files: dict[str, bytes] = {"document.tex": text.encode("utf-8")}
     files["regodoc.sty"] = (TEX_DIR / "regodoc.sty").read_bytes()
     files.update(theme.files)
-    package = validation.package.files if validation.package is not None else {}
+    package = validation.current.files if validation.current is not None else {}
     for path, data in package.items():
         if path.startswith("images/"):
             files[path] = data

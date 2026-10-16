@@ -5,6 +5,7 @@ diventa un ``Diagnostic`` nel ``Collector``.
 """
 
 import contextlib
+import dataclasses
 import gc
 import hashlib
 import json
@@ -12,8 +13,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc import __version__
-from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS, GRAMMAR_CURRENT, GRAMMARS_READ
+from regodoc import __version__, grammars
+from regodoc.declaration import CONTENT_LIMITS, ENVELOPE_LIMITS, GRAMMAR_CURRENT
 from regodoc.diagnostics import Collector, TooManyProblems, clip
 from regodoc.images import check_image
 from regodoc.parts import Context, Node, PartChecker, Target, Use, parse_part
@@ -60,6 +61,15 @@ class Validation:
     input_bytes: int | None = None
     # Gli alberi delle parti lette, per id: build li usa senza rileggere i file.
     roots: dict[str, Node] = field(default_factory=dict)
+    # Per un pacchetto in una grammatica precedente: i file aggiornati in memoria, che sono
+    # quelli validati, e il punto del rapporto da cui i problemi li riguardano.
+    upgraded: PackageFiles | None = None
+    upgraded_mark: int = 0
+
+    @property
+    def current(self) -> PackageFiles | None:
+        """I file nella grammatica corrente: quelli aggiornati, oppure quelli ricevuti."""
+        return self.upgraded if self.upgraded is not None else self.package
 
     def files(self) -> list[dict[str, object]]:
         """I file di contenuto, nell'ordine canonico, con impronta e dimensione."""
@@ -161,6 +171,15 @@ def validate_package(path: Path) -> Validation:
     finally:
         if collecting:
             gc.enable()
+    if result.upgraded is not None:
+        # Le posizioni sono quelle dei file aggiornati: il messaggio lo dice.
+        items = result.report.items
+        note = f" (dopo l'aggiornamento da «{result.grammar}»)"
+        for index in range(result.upgraded_mark, len(items)):
+            if items[index].file:
+                items[index] = dataclasses.replace(
+                    items[index], message=items[index].message + note
+                )
     result.report.finish()
     return result
 
@@ -182,6 +201,16 @@ def _validate(path: Path, result: Validation, data: bytes | None) -> None:
     result.grammar = _check_manifest(package, report, result.manifest)
     if result.grammar is None:
         return
+    if result.grammar != GRAMMAR_CURRENT:
+        report.info(
+            "regodoc.grammar.upgraded",
+            f"il pacchetto è nella grammatica «{result.grammar}»: il motore l'ha aggiornato in "
+            f"memoria a «{GRAMMAR_CURRENT}»; «regodoc upgrade» scrive il pacchetto aggiornato",
+            "manifest.json",
+        )
+        package = PackageFiles(package.kind, grammars.upgrade(package.files, result.grammar))
+        result.upgraded = package
+        result.upgraded_mark = len(report.items)
     structure_data = package.get("structure.toml")
     if structure_data is None:
         report.error("regodoc.package.missing", "manca structure.toml", "structure.toml")
@@ -237,13 +266,13 @@ def _check_manifest(
         report.error("regodoc.manifest.format", "«format» deve valere «regodoc»", file)
         return None
     grammar = manifest.get("grammar")
-    match = _GRAMMAR.fullmatch(grammar) if isinstance(grammar, str) else None
-    if match is None:
-        report.error("regodoc.manifest.grammar", "«grammar» non è una grammatica valida", file)
-        return None
-    if grammar not in GRAMMARS_READ:
+    readable = grammars.readable()
+    if grammar not in readable:
+        match = _GRAMMAR.fullmatch(grammar) if isinstance(grammar, str) else None
         current = _GRAMMAR.fullmatch(GRAMMAR_CURRENT)
-        if current and int(match.group(1)) > int(current.group(1)):
+        if match is None:
+            report.error("regodoc.manifest.grammar", "«grammar» non è una grammatica valida", file)
+        elif current and int(match.group(1)) > int(current.group(1)):
             writer = ""
             generator = well_formed_generator(manifest.get("generator"))
             if generator is not None:
@@ -251,7 +280,7 @@ def _check_manifest(
             report.error(
                 "regodoc.manifest.grammar_newer",
                 f"il pacchetto usa la grammatica «{grammar}»{writer}, più nuova di quelle che "
-                f"questo motore ({__version__}) sa leggere ({', '.join(GRAMMARS_READ)}): "
+                f"questo motore ({__version__}) sa leggere ({', '.join(readable)}): "
                 "serve una versione più recente di regodoc",
                 file,
             )
@@ -260,7 +289,7 @@ def _check_manifest(
         return None
     _check_manifest_optional(manifest, report)
     keep.update(manifest)
-    return grammar
+    return str(grammar)
 
 
 def _check_manifest_optional(manifest: dict[str, object], report: Collector) -> None:

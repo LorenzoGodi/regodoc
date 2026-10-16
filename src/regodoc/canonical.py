@@ -248,10 +248,11 @@ def variables_toml(data: bytes) -> bytes | None:
 def content_files(validation: Validation) -> list[tuple[str, bytes]]:
     """I file di contenuto di un pacchetto valido in forma canonica, nell'ordine del §9:
     i TOML e le parti riscritti, le immagini così come sono."""
-    if validation.package is None or validation.report.errors:
+    package = validation.current
+    if package is None or validation.report.errors:
         raise ValueError("solo un pacchetto valido ha una forma canonica")
     out: list[tuple[str, bytes]] = []
-    for path, data in canonical_files(validation.package, validation.structure):
+    for path, data in canonical_files(package, validation.structure):
         if path == "structure.toml":
             out.append((path, structure_toml(data)))
         elif path == "variables.toml":

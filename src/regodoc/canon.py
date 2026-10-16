@@ -1,8 +1,10 @@
-"""Il comando ``canon``: il pacchetto in forma canonica (contratto, §2.1 e §8).
+"""I comandi ``canon`` e ``upgrade``: il pacchetto in forma canonica (contratto, §2.1 e §8).
 
-Valida, riscrive i file di contenuto nella forma del §9 della specifica, genera
-``README.md`` e manifesto, e scrive l'archivio in modo atomico. Con ``--files-dir`` scrive
-anche i file di contenuto canonici uno per uno.
+Validano, riscrivono i file di contenuto nella forma del §9 della specifica, generano
+``README.md`` e manifesto, e scrivono l'archivio in modo atomico. ``canon`` resta nella
+grammatica del pacchetto e rifiuta quelle precedenti, che il motore non sa più scrivere;
+``upgrade`` porta il pacchetto alla grammatica corrente. Con ``--files-dir``, ``canon``
+scrive anche i file di contenuto canonici uno per uno.
 """
 
 import contextlib
@@ -11,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from regodoc import __version__, canonical
-from regodoc.declaration import ENGINE_NAME
+from regodoc.declaration import ENGINE_NAME, GRAMMAR_CURRENT
 from regodoc.diagnostics import clip
 from regodoc.outputs import OutputError, check_output, described, temporary_name, write_file
 from regodoc.validate import Validation, files_digest, validate_package
@@ -61,8 +63,10 @@ def run(
     base_version: str | None,
     files_dir: Path | None,
     strict: bool,
+    upgrade: bool = False,
 ) -> Outcome:
-    """Esegue ``canon``. Solleva ``OutputError`` per un'uscita non valida."""
+    """Esegue ``canon``, oppure ``upgrade`` con ``upgrade``. Solleva ``OutputError`` per
+    un'uscita non valida."""
     target = Path(output)
     check_output(target, package, directory=False)
     if files_dir is not None:
@@ -70,7 +74,17 @@ def run(
     validation = validate_package(package)
     report = validation.report
     outcome = Outcome(1, validation, validation.summary())
+    if upgrade:
+        outcome.summary["grammar_in"] = validation.grammar
     if report.has_errors() or (strict and report.strict_warnings):
+        return outcome
+    if validation.upgraded is not None and not upgrade:
+        report.error(
+            "regodoc.manifest.grammar_old",
+            f"canon non scrive più la grammatica «{validation.grammar}»: «regodoc upgrade» "
+            f"porta il pacchetto a «{GRAMMAR_CURRENT}»",
+            "manifest.json",
+        )
         return outcome
     structure = validation.structure
     if structure is None:  # pragma: no cover - un pacchetto valido ha structure.toml
@@ -80,7 +94,7 @@ def run(
         document = str(manifest["document"])
     if base_version is None and isinstance(manifest.get("base_version"), str):
         base_version = str(manifest["base_version"])
-    grammar = str(validation.grammar)
+    grammar = GRAMMAR_CURRENT if upgrade else str(validation.grammar)
     content = canonical.content_files(validation)
     files = canonical.package_files(
         content,

@@ -686,7 +686,7 @@ sulle immagini, che sono già compresse e non hanno motivo di espandersi di più
 
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
-| 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value` |
+| 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value`; `regodoc.grammar.upgraded` |
 | 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2), chiavi puntate e nomi di tabella al massimo di 8 segmenti (`regodoc.toml.depth`: `tomllib` costa tempo e memoria quadratici nella lunghezza di una chiave puntata); poi `tomllib`, e un intero con troppe cifre per Python è un errore di sintassi; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
 
 ### 6.3 XML
@@ -852,6 +852,8 @@ non bloccano il pacchetto.
 | `regodoc.manifest.format` | §1.3, §6.2 passo 7 |
 | `regodoc.manifest.grammar` | §1.3, §6.2 passo 7, §10 |
 | `regodoc.manifest.grammar_newer` | §1.3, §6.2 passo 7, §10 |
+| `regodoc.manifest.grammar_old` | §10, solo per `regodoc canon` |
+| `regodoc.grammar.upgraded` | avviso informativo; §6.2 passo 7, §10 |
 | `regodoc.manifest.value` | §1.3, §6.2 passo 7 |
 | `regodoc.toml.syntax` | §6.2 passo 8 |
 | `regodoc.toml.depth` | §6.2 passo 8 |
@@ -1028,6 +1030,11 @@ Il manifesto dichiara la grammatica: `"grammar": "rego/1"`.
   grammatica corrente con una catena di aggiornatori sempre inclusa nel motore: `regodoc
   upgrade` (decisione 16bis). Chi conserva le versioni registra l'aggiornamento come
   versione nuova, tracciata, mai come riscrittura silenziosa.
+- `regodoc validate` e `regodoc build` leggono una grammatica precedente aggiornandola in
+  memoria, con l'avviso informativo `regodoc.grammar.upgraded`; gli errori trovati dopo
+  l'aggiornamento lo dicono nel messaggio. `regodoc canon` scrive solo la grammatica del
+  pacchetto: su una precedente rifiuta con `regodoc.manifest.grammar_old` e rimanda a
+  `regodoc upgrade`.
 - Un pacchetto con una grammatica più nuova di quella del motore è rifiutato
   (`regodoc.manifest.grammar_newer`), con un messaggio che indica la grammatica del pacchetto
   e quelle che il motore sa leggere.

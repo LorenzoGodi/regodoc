@@ -23,6 +23,7 @@ from regodoc import compiler
 from regodoc.text import is_allowed_char
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
 from tests.test_build import Workspace
+from tests.test_upgrade import current_files, old_files, test_grammar
 
 REQUIRE_TEX = os.environ.get("REGODOC_REQUIRE_TEX") == "1"
 PDFLATEX = compiler.find_pdflatex()
@@ -98,6 +99,24 @@ class ExamplesCompileTest(unittest.TestCase):
         regodoc = b"\\376\\377" + b"".join(b"\\000" + bytes([c]) for c in b"regodoc")
         self.assertIn(b"/Producer(" + regodoc + b")", content)
         self.assertIn(b"/CreationDate (D:20260928000000Z)", content)
+
+    def test_upgraded_package_gives_the_same_pdf(self) -> None:
+        # Andata e ritorno: il pacchetto nella grammatica di prova, aggiornato, compila nello
+        # stesso PDF del pacchetto scritto a mano nella grammatica corrente.
+        space = Workspace(self, old_files())
+        upgraded = space.root / "upgraded.regodoc"
+        with test_grammar():
+            code, out, _ = run_cli("upgrade", str(space.package), "-o", str(upgraded), "--json")
+        self.assertEqual(code, 0, out)
+        written = space.root / "written.regodoc"
+        written.write_bytes(build_zip(current_files()))
+        pdfs = []
+        for package in (upgraded, written):
+            target = space.root / f"{package.stem}.pdf"
+            code, out, _ = run_cli("build", str(package), "-o", str(target), "--json")
+            self.assertEqual(code, 0, out)
+            pdfs.append(target.read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
 
     def test_every_allowed_character_compiles(self) -> None:
         chars = [

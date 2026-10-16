@@ -230,7 +230,7 @@ def build_parser() -> ItalianArgumentParser:
     _add_package(upgrade)
     _add_output(upgrade)
     _add_json(upgrade)
-    upgrade.set_defaults(handler=_cmd_draft)
+    upgrade.set_defaults(handler=_cmd_upgrade)
 
     return parser
 
@@ -309,8 +309,9 @@ def _finish(
 
 
 def _cmd_draft(args: argparse.Namespace) -> ExitCode:
-    # Un comando non ancora implementato è un limite di questa versione del motore, cioè
-    # dell'ambiente, non del pacchetto né della riga di comando.
+    # Un comando che la dichiarazione dà come «draft» non fa ancora il suo lavoro: è un limite
+    # di questa versione del motore, cioè dell'ambiente, non del pacchetto né della riga di
+    # comando. In questa versione nessun comando lo è; il percorso resta per il contratto.
     message = f"il comando «{args.command}» non è ancora disponibile in questa versione del motore"
     if args.json:
         _write_json(
@@ -427,29 +428,43 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
 
 
 def _cmd_canon(args: argparse.Namespace) -> ExitCode:
+    return _rewrite("canon", args)
+
+
+def _cmd_upgrade(args: argparse.Namespace) -> ExitCode:
+    return _rewrite("upgrade", args)
+
+
+def _rewrite(command: str, args: argparse.Namespace) -> ExitCode:
+    """``canon`` e ``upgrade``: la stessa strada, con le opzioni di ciascuno."""
+    upgrade = command == "upgrade"
     path = Path(args.package)
-    problem = _package_problem(path, args.package) or canon.check_options(
-        args.document, args.base_version
-    )
+    problem = _package_problem(path, args.package)
+    if problem is None and upgrade and not path.is_file():
+        problem = f"«{_shown(args.package)}» è una cartella: upgrade accetta solo archivi"
+    if problem is None and not upgrade:
+        problem = canon.check_options(args.document, args.base_version)
     if problem is not None:
-        return _finish(args.json, "canon", ExitCode.USAGE, "regodoc.usage", problem)
+        return _finish(args.json, command, ExitCode.USAGE, "regodoc.usage", problem)
+    files_dir = getattr(args, "files_dir", None)
     try:
         outcome = canon.run(
             path,
             args.output,
-            document=args.document,
-            base_version=args.base_version,
-            files_dir=Path(args.files_dir) if args.files_dir is not None else None,
+            document=getattr(args, "document", None),
+            base_version=getattr(args, "base_version", None),
+            files_dir=Path(files_dir) if files_dir is not None else None,
             strict=args.strict,
+            upgrade=upgrade,
         )
     except OutputError as error:
         code = ExitCode.ENVIRONMENT if error.environment else ExitCode.USAGE
         kind = "regodoc.environment" if error.environment else "regodoc.usage"
-        return _finish(args.json, "canon", code, kind, error.message)
+        return _finish(args.json, command, code, kind, error.message)
     except PermissionError:
         return _finish(
             args.json,
-            "canon",
+            command,
             ExitCode.ENVIRONMENT,
             "regodoc.environment",
             f"non posso leggere «{_shown(args.package)}»: permesso negato",
@@ -459,7 +474,7 @@ def _cmd_canon(args: argparse.Namespace) -> ExitCode:
     collector = validation.report
     if args.json:
         payload = _payload(
-            "canon",
+            command,
             code,
             errors=[d.to_json() for d in collector.errors],
             warnings=[d.to_json() for d in collector.warnings],
@@ -594,7 +609,8 @@ def _run(argv: Sequence[str] | None) -> int:
             )
         with limits.applied(args.command, args.max_seconds) as active:
             _ACTIVE.update(active)
-            return int(args.handler(args))
+            handler = _cmd_draft if declaration.COMMANDS[args.command] == "draft" else args.handler
+            return int(handler(args))
     except UsageExit as exit_:
         # Errore della riga di comando: argparse ha già scritto uso e messaggio su stderr. Il
         # rapporto c'è anche senza comando, con «command» a null (contratto, §4.1).

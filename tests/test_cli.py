@@ -35,28 +35,34 @@ class InfoTest(unittest.TestCase):
         self.assertEqual(out.strip(), f"regodoc {__version__}")
 
 
-class DraftCommandTest(unittest.TestCase):
-    def test_draft_commands_say_so(self) -> None:
-        cases = {"upgrade": ("upgrade", "p.regodoc", "-o", "q.regodoc")}
-        for name, argv in cases.items():
-            with self.subTest(name):
-                code, out, err = run_cli(*argv)
-                self.assertEqual(code, ExitCode.ENVIRONMENT)
-                self.assertEqual(out, "")
-                self.assertIn(f"il comando «{name}» non è ancora disponibile", err)
-                self.assertNotIn("lotto", err)
+class NoDraftTest(unittest.TestCase):
+    def test_every_command_is_ready(self) -> None:
+        commands = declaration.describe()["commands"]
+        self.assertEqual(set(commands.values()), {"ready"})  # type: ignore[union-attr]
 
-    def test_strict_is_accepted(self) -> None:
-        code, _, _ = run_cli("upgrade", "p.regodoc", "-o", "q", "--strict")
+
+class DraftCommandTest(unittest.TestCase):
+    """Un comando dichiarato «draft» risponde che non è ancora disponibile (contratto, §5).
+    In questa versione nessuno lo è: le prove lo dichiarano tale per la loro durata."""
+
+    def setUp(self) -> None:
+        commands = dict(declaration.COMMANDS, upgrade="draft")
+        patch = mock.patch.object(declaration, "COMMANDS", commands)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_draft_commands_say_so(self) -> None:
+        code, out, err = run_cli("upgrade", "p.regodoc", "-o", "q.regodoc")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
+        self.assertEqual(out, "")
+        self.assertIn("il comando «upgrade» non è ancora disponibile", err)
 
     def test_draft_json_report(self) -> None:
-        code, out, err = run_cli("upgrade", "p.regodoc", "-o", "q", "--json")
+        code, out, err = run_cli("upgrade", "p.regodoc", "-o", "q", "--json", "--strict")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
         self.assertEqual(err, "")
         report = json.loads(out)
         self.assertFalse(report["ok"])
-        self.assertEqual(report["exit_code"], 3)
         self.assertEqual(report["command"], "upgrade")
         self.assertEqual(report["errors"][0]["code"], "regodoc.not_implemented")
 
