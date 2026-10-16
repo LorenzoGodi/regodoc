@@ -130,7 +130,11 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     15 s. I casi sono quelli di `tools/measure_worst.py`: parti piene di elenchi, sezioni,
     righe di tabella o elementi in linea, parti miste, 1.500 variabili e i pixel delle
     immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
-    fallisce oltre 20 s, cioè due terzi del tempo dichiarato. Con un tema esterno `build`
+    fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano e
+    poi scrivono la forma canonica e l'archivio: sugli stessi casi ci hanno messo fino a
+    15,5 s, misurati e controllati allo stesso modo, contro i 30 s di `canon` e i 60 s di
+    `upgrade`. È un tetto largo: quei casi, scritti tutti su una riga, nella forma canonica
+    escono dai limiti, e `canon` li rifiuta (§8). Con un tema esterno `build`
     compila una volta in più, per il controllo dei pacchetti del §6.1: da mezzo secondo a
     circa 1,5 s.
   - **SIGALRM e SIGINT.** Il motore usa `SIGALRM` per il tempo: un `SIGALRM` mandato da
@@ -668,6 +672,11 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
   ricevuta in `grammar_in` e quella d'uscita in `grammar` (§4.2). Chi conserva le versioni
   registra l'uscita come **versione nuova**, tracciata, mai come riscrittura della
   precedente.
+- `canon` e `upgrade` scrivono solo pacchetti che il motore stesso accetta. Rientri e a capo
+  della forma canonica allungano i file: una parte valida scritta tutta su una riga può
+  uscire dai 384 KiB. In quel caso il comando esce con il codice 1 e
+  `regodoc.limit.file_size` sul file, e non scrive nulla; lo stesso per un limite
+  dell'involucro superato dall'archivio scritto.
 - `canon` non aggiorna mai la grammatica: su una grammatica precedente scrive la forma
   canonica di quella grammatica, se il motore la sa ancora scrivere, altrimenti rifiuta con il
   codice 1 e l'errore `regodoc.manifest.grammar_old`, che rimanda a `upgrade`.

@@ -1,12 +1,16 @@
-"""Misura i tempi di ``validate`` sui casi peggiori ammessi dai limiti del contenuto.
+"""Misura i tempi di ``validate`` e ``canon`` sui casi peggiori ammessi dai limiti del
+contenuto.
 
 Ogni caso è un pacchetto **valido**, con 48 voci in ``structure.toml`` e 45 parti al limite
 di 384 KiB, ognuna piena di un solo tipo di elemento con il minimo di testo: voci d'elenco,
 sezioni, righe di tabella, elementi in linea. Sono i pacchetti che chiedono più lavoro per
 byte al lettore XML restando entro tutti i limiti, compreso quello dei caratteri.
 
+``canon`` è la validazione più la scrittura della forma canonica e dell'archivio; ``upgrade``
+su un pacchetto corrente fa lo stesso lavoro, con un tempo dichiarato più largo.
+
 Il comando stampa i tempi ed esce con 1 se un caso non è valido, o se supera il tempo che
-``info`` dichiara per ``validate`` diviso ``--margin`` (predefinito 1, cioè il tempo
+``info`` dichiara per il comando diviso ``--margin`` (predefinito 1, cioè il tempo
 dichiarato).
 
     python tools/measure_worst.py [--margin 1.5]
@@ -26,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 from tests import test_limits as builders  # noqa: E402
 from tests.support import build_zip, example_files, png_pixels, validate_bytes  # noqa: E402
 
+from regodoc import canonical  # noqa: E402
 from regodoc.declaration import CONTENT_LIMITS, RESOURCES  # noqa: E402
 
 LABELS = ("observed", "declared", "decided", "proposed", "to-verify", "critical")
@@ -126,7 +131,10 @@ def images_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
     return files, stored, len(stored)
 
 
-def measure(body_of: Callable[[int], tuple[str, int]]) -> tuple[float, int, list[str]]:
+Measure = tuple[float, float, int, list[str]]
+
+
+def measure(body_of: Callable[[int], tuple[str, int]]) -> Measure:
     files = builders.structure_with_parts(PARTS + 3)
     elements = 0
     for k in range(PARTS):
@@ -136,24 +144,41 @@ def measure(body_of: Callable[[int], tuple[str, int]]) -> tuple[float, int, list
     return timed(build_zip(files), elements)
 
 
-def timed(data: bytes, elements: int) -> tuple[float, int, list[str]]:
-    """Il tempo migliore di due validazioni, con gli errori trovati."""
-    best = float("inf")
+def timed(data: bytes, elements: int) -> Measure:
+    """I tempi migliori di due validazioni e di due ``canon``, con gli errori trovati."""
+    best = rewrite = float("inf")
     codes: list[str] = []
     for _ in range(2):
         start = time.perf_counter()
         validation = validate_bytes(data)
         best = min(best, time.perf_counter() - start)
         codes = sorted({d.code for d in validation.report.errors})
-    return best, elements, codes
+        if codes:
+            continue
+        structure = validation.structure
+        assert structure is not None  # noqa: S101 - un pacchetto valido ha structure.toml
+        start = time.perf_counter()
+        validation = validate_bytes(data)
+        files = canonical.package_files(
+            canonical.content_files(validation),
+            grammar=str(validation.grammar),
+            title=str(structure.header["title"]),
+            language=structure.language,
+            document=None,
+            base_version=None,
+        )
+        canonical.archive(files)
+        rewrite = min(rewrite, time.perf_counter() - start)
+    return best, rewrite, elements, codes
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="tempi di validate sui casi peggiori")
+    parser = argparse.ArgumentParser(description="tempi di validate e canon sui casi peggiori")
     parser.add_argument("--margin", type=float, default=1.0, help="margine sul tempo dichiarato")
     margin = parser.parse_args().margin
     allowed = RESOURCES["time_seconds"]["validate"] / margin
-    worst = 0.0
+    allowed_canon = RESOURCES["time_seconds"]["canon"] / margin
+    worst = worst_canon = 0.0
     invalid = []
     measures = {
         label: lambda body_of=body_of: measure(body_of) for label, body_of in cases().items()
@@ -161,15 +186,23 @@ def main() -> int:
     for label, build in (("variabili", variables_case), ("immagini", images_case)):
         measures[label] = lambda build=build: timed(build_zip(*build()[:2]), build()[2])
     for label, run in measures.items():
-        seconds, elements, codes = run()
+        seconds, rewrite, elements, codes = run()
         worst = max(worst, seconds)
         if codes:
             invalid.append(label)
-        print(f"{label:10s} {elements:>8} elementi  {seconds:6.2f} s  errori {codes}", flush=True)
-    print(f"caso peggiore {worst:.2f} s, ammessi {allowed:.2f} s (margine {margin})")
+        else:
+            worst_canon = max(worst_canon, rewrite)
+        print(
+            f"{label:10s} {elements:>8} elementi  validate {seconds:6.2f} s  "
+            f"canon {rewrite:6.2f} s  errori {codes}",
+            flush=True,
+        )
+    print(f"validate: caso peggiore {worst:.2f} s, ammessi {allowed:.2f} s (margine {margin})")
+    print(f"canon: caso peggiore {worst_canon:.2f} s, ammessi {allowed_canon:.2f} s")
     if invalid:
         print(f"casi non validi, quindi non ammessi dai limiti: {', '.join(invalid)}")
-    return 0 if worst <= allowed and not invalid else 1
+    passed = worst <= allowed and worst_canon <= allowed_canon
+    return 0 if passed and not invalid else 1
 
 
 if __name__ == "__main__":

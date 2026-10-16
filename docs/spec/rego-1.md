@@ -1006,16 +1006,31 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
   doppie; elementi vuoti scritti `<x/>`; nei testi, riferimenti a caratteri ridotti a `&lt;`
   e `&amp;`, più `&gt;` subito dopo `]]` (§5.4); negli attributi, anche `&quot;`; `<listing>` con il
   corpo da colonna 1, fra un a capo dopo il tag d'apertura e uno prima di quello di chiusura;
-  un commento su una riga sua, con lo stesso rientro dell'elemento che lo segue; nessuna
-  riga vuota; a capo finale.
+  un commento su una riga sua, con lo stesso rientro dell'elemento che lo segue, o dei figli
+  se è in fondo; nessuna riga vuota; a capo finale.
+- **Spazi del testo misto**, gli stessi del PDF (§5.1): ogni sequenza di spazi, tabulazioni e
+  a capo diventa uno spazio; si tolgono gli spazi all'inizio e alla fine del blocco, quelli
+  accanto a `<break/>` e quelli che seguono un altro spazio, anche oltre il confine di un
+  elemento in linea, sicché `a <b> x</b>` diventa `a <b>x</b>`. In `<code>` gli spazi in
+  testa e in coda escono dall'elemento, dove valgono uno spazio; `<address>` e il titolo di
+  `<source>` li perdono. Un `<item>` con un elenco annidato ha il testo sulla riga
+  d'apertura, l'elenco rientrato sotto e `</item>` su una riga sua; una cella senza testo è
+  `<cell/>`.
 - **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
   `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; stringhe
-  fra virgolette doppie; commenti rimossi. Un `variables.toml` senza variabili è omesso
+  fra virgolette doppie, con `\"` e `\\` come sole sequenze; intervalli come
+  `[10, 14]`; commenti rimossi. Un `variables.toml` senza variabili è omesso
   dall'archivio canonico.
 - **JSON**: chiavi in ordine alfabetico, rientro di due spazi, a capo finale.
-- Testo NFC, a capo LF, UTF-8 senza BOM.
+- Testo NFC, a capo LF, UTF-8 senza BOM. Con l'insieme di caratteri del §5.2 il testo è già
+  NFC: la forma canonica non normalizza nulla.
+
+Rientri e a capo allungano i file: una parte valida scritta tutta su una riga può superare i
+384 KiB nella forma canonica. `regodoc canon` e `regodoc upgrade` allora la rifiutano con
+`regodoc.limit.file_size` e non scrivono nulla, perché il motore stesso rifiuterebbe
+l'uscita.
 
 ---
 

@@ -9,7 +9,9 @@ from pathlib import Path
 
 from regodoc import __version__
 from regodoc.cli import ExitCode
+from regodoc.declaration import CONTENT_LIMITS
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
+from tests.test_limits import section, with_backup
 
 DIGEST = "sha256:" + "ab" * 32
 
@@ -139,6 +141,20 @@ class CanonCommandTest(unittest.TestCase):
                 self.assertEqual(code, ExitCode.USAGE)
                 self.assertIn("--files-dir", report["errors"][0]["message"])
                 self.assertFalse(output.exists())
+
+    def test_canonical_form_over_the_limits_is_refused(self) -> None:
+        # Una parte tutta su una riga, valida perché sta nei 384 KiB, che con un elemento per
+        # riga e i rientri della forma canonica ne esce.
+        items = "<item>a</item>" * (CONTENT_LIMITS["part_bytes"] // 15)
+        files = with_backup(section(f"<list>{items}</list>"))
+        code, report, output = self.canon(self.package(files))
+        self.assertEqual(code, ExitCode.REFUSED)
+        error = report["errors"][0]  # type: ignore[index]
+        self.assertEqual(
+            (error["code"], error["file"]), ("regodoc.limit.file_size", "parts/backup.xml")
+        )
+        self.assertIn("nella forma canonica", error["message"])
+        self.assertFalse(output.exists())
 
     def test_output_cannot_be_the_input(self) -> None:
         package = self.package()

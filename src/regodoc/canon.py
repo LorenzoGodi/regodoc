@@ -105,6 +105,11 @@ def run(
         base_version=base_version,
     )
     data = canonical.archive(files)
+    problems = canonical.output_problems(content, data)
+    if problems:
+        for problem in problems:
+            report.error(problem.code, problem.message, problem.file, problem.line, problem.column)
+        return outcome
     if files_dir is not None:
         _write_files(files_dir, content)
     write_file(target, data)

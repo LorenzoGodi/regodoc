@@ -320,6 +320,12 @@ class ArchiveTest(unittest.TestCase):
         report = validate_bytes(data).report
         self.assertEqual([d.code for d in report.items], [])
 
+    def test_the_written_archive_is_read_back(self) -> None:
+        problems = canonical.output_problems([], b"PK\x03\x04 non un archivio")
+        self.assertTrue(problems)
+        self.assertTrue(problems[0].message.startswith("nell'archivio in forma canonica: "))
+        self.assertEqual(canonical.output_problems([], canonical.archive(self.package())), [])
+
     def test_manifest(self) -> None:
         files = dict(self.package())
         manifest = json.loads(files["manifest.json"])

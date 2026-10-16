@@ -6,6 +6,7 @@ scriverebbe (§5.1): così la forma canonica non cambia nulla nel PDF, e una pro
 confrontando il LaTeX dei due pacchetti.
 """
 
+import dataclasses
 import datetime
 import hashlib
 import json
@@ -14,11 +15,14 @@ import struct
 import tomllib
 import zlib
 from collections.abc import Iterable
+from pathlib import Path
 
 from regodoc import __version__
-from regodoc.declaration import ENGINE_NAME, PACKAGE_MIMETYPE
+from regodoc.declaration import CONTENT_LIMITS, ENGINE_NAME, PACKAGE_MIMETYPE
+from regodoc.diagnostics import Collector, Diagnostic
 from regodoc.parts import XML_DECLARATION, Comment, Node, Text
 from regodoc.readme import render_readme
+from regodoc.source import read_package
 from regodoc.validate import Validation, canonical_files
 
 _SPACES = re.compile(r"[ \t\n\r]+")
@@ -55,11 +59,18 @@ def _attribute(value: str) -> str:
 
 
 def _open(node: Node, *, empty: bool = False) -> str:
+    attrs = node.attrs
+    close = "/>" if empty else ">"
+    if not attrs:
+        return f"<{node.tag}{close}"
+    if len(attrs) == 1:
+        ((name, value),) = attrs.items()
+        return f'<{node.tag} {name}="{_attribute(value)}"{close}'
     order = ATTRIBUTE_ORDER.get(node.tag, ())
-    names = [name for name in order if name in node.attrs]
-    names += sorted(name for name in node.attrs if name not in order)
-    attributes = "".join(f' {name}="{_attribute(node.attrs[name])}"' for name in names)
-    return f"<{node.tag}{attributes}{'/' if empty else ''}>"
+    names = [name for name in order if name in attrs]
+    names += sorted(name for name in attrs if name not in order)
+    attributes = "".join(f' {name}="{_attribute(attrs[name])}"' for name in names)
+    return f"<{node.tag}{attributes}{close}"
 
 
 def _text_of(node: Node) -> str:
@@ -91,11 +102,17 @@ class _MixedWriter:
     def children(self, children: Iterable[Node | Text | Comment]) -> None:
         for child in children:
             if isinstance(child, Text):
-                for position, word in enumerate(_SPACES.split(child.value)):
-                    if position:
-                        self.pending = True
-                    if word:
-                        self.content(_text(word))
+                # Fra due parole dello stesso testo c'è sempre uno spazio solo; gli spazi in
+                # testa e in coda restano in attesa, come nel generatore LaTeX.
+                words = _SPACES.split(child.value)
+                if words[0] == "":
+                    self.pending = len(words) > 1 or self.pending
+                    words = words[1:]
+                last = words.pop() if words and words[-1] == "" else None
+                if words:
+                    self.content(_text(" ".join(words)))
+                if last is not None:
+                    self.pending = True
             elif isinstance(child, Node):
                 self.element(child)
 
@@ -123,7 +140,10 @@ class _MixedWriter:
             self.content(_open(node, empty=True))
 
 
-def _mixed(children: Iterable[Node | Text | Comment]) -> str:
+def _mixed(children: list[Node | Text | Comment]) -> str:
+    if len(children) == 1 and isinstance(children[0], Text):
+        # Il caso più comune, un testo solo: le parole, separate da uno spazio.
+        return _text(" ".join(_SPACES.split(children[0].value.strip(" \t\n\r"))))
     writer = _MixedWriter()
     writer.children(children)
     return "".join(writer.out)
@@ -148,11 +168,18 @@ def _write(node: Node, depth: int, lines: list[str]) -> None:
         lines.append(f"{indent}{_open(node)}{_text(title)}</source>")
         return
     if node.tag == "item":
-        nested = [child for child in node.elements() if child.tag == "list"]
-        if nested:
-            position = node.children.index(nested[-1])
-            lines.append(f"{indent}<item>{_mixed(node.children[:position])}")
-            _write(nested[-1], depth + 1, lines)
+        children = node.children
+        position = next(
+            (
+                index
+                for index in range(len(children) - 1, -1, -1)
+                if isinstance(children[index], Node) and children[index].tag == "list"  # type: ignore[union-attr]
+            ),
+            None,
+        )
+        if position is not None:
+            lines.append(f"{indent}<item>{_mixed(children[:position])}")
+            _write(children[position], depth + 1, lines)  # type: ignore[arg-type]
             lines.append(f"{indent}</item>")
             return
         lines.append(f"{indent}<item>{_mixed(node.children)}</item>")
@@ -371,3 +398,33 @@ def archive(files: list[tuple[str, bytes]]) -> bytes:
         "<IHHHHIIH", 0x06054B50, 0, 0, len(files), len(files), len(central), len(body), 0
     )
     return bytes(body + central + end)
+
+
+_FILE_LIMITS = {"structure.toml": "structure_bytes", "variables.toml": "variables_bytes"}
+
+
+def output_problems(content: list[tuple[str, bytes]], data: bytes) -> list[Diagnostic]:
+    """I limiti che la forma canonica di un pacchetto valido può superare.
+
+    Rientri e a capo allungano i file: una parte scritta tutta su una riga può stare nei
+    384 KiB e uscirne nella forma canonica. Si controllano le dimensioni dei file di
+    contenuto e si rilegge l'involucro dell'archivio scritto; un pacchetto che non passa
+    resta senza uscita, perché il motore stesso lo rifiuterebbe.
+    """
+    report = Collector()
+    for path, body in content:
+        key = "part_bytes" if path.startswith("parts/") else _FILE_LIMITS.get(path)
+        if key is not None and len(body) > CONTENT_LIMITS[key]:
+            report.error(
+                "regodoc.limit.file_size",
+                f"nella forma canonica il file è di {len(body)} byte, il massimo è "
+                f"{CONTENT_LIMITS[key]}: rientri e a capo lo allungano, va accorciato",
+                path,
+            )
+    envelope = Collector()
+    read_package(Path("canonico.regodoc"), envelope, data)
+    problems = report.errors
+    for problem in envelope.errors:
+        message = f"nell'archivio in forma canonica: {problem.message}"
+        problems.append(dataclasses.replace(problem, message=message))
+    return problems
