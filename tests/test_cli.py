@@ -37,10 +37,7 @@ class InfoTest(unittest.TestCase):
 
 class DraftCommandTest(unittest.TestCase):
     def test_draft_commands_say_so(self) -> None:
-        cases = {
-            "canon": ("canon", "p.regodoc", "-o", "q.regodoc"),
-            "upgrade": ("upgrade", "p.regodoc", "-o", "q.regodoc"),
-        }
+        cases = {"upgrade": ("upgrade", "p.regodoc", "-o", "q.regodoc")}
         for name, argv in cases.items():
             with self.subTest(name):
                 code, out, err = run_cli(*argv)
@@ -50,17 +47,17 @@ class DraftCommandTest(unittest.TestCase):
                 self.assertNotIn("lotto", err)
 
     def test_strict_is_accepted(self) -> None:
-        code, _, _ = run_cli("canon", "p.regodoc", "-o", "q", "--strict")
+        code, _, _ = run_cli("upgrade", "p.regodoc", "-o", "q", "--strict")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
 
     def test_draft_json_report(self) -> None:
-        code, out, err = run_cli("canon", "p.regodoc", "-o", "q", "--json")
+        code, out, err = run_cli("upgrade", "p.regodoc", "-o", "q", "--json")
         self.assertEqual(code, ExitCode.ENVIRONMENT)
         self.assertEqual(err, "")
         report = json.loads(out)
         self.assertFalse(report["ok"])
         self.assertEqual(report["exit_code"], 3)
-        self.assertEqual(report["command"], "canon")
+        self.assertEqual(report["command"], "upgrade")
         self.assertEqual(report["errors"][0]["code"], "regodoc.not_implemented")
 
 
@@ -112,9 +109,9 @@ class ValidateCommandTest(unittest.TestCase):
                 {"time_seconds": None, "memory_bytes": None},
             ),
             (
-                ("canon", "p", "-o", "q", "--json"),
-                ExitCode.ENVIRONMENT,
-                "regodoc.not_implemented",
+                ("canon", "/nessun/percorso", "-o", "q", "--json"),
+                ExitCode.USAGE,
+                "regodoc.usage",
                 applied,
             ),
         ]

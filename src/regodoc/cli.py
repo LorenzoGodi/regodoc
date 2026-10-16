@@ -18,8 +18,9 @@ from collections.abc import Sequence
 from pathlib import Path, PurePath
 from typing import IO, NoReturn
 
-from regodoc import __version__, build, declaration, limits
+from regodoc import __version__, build, canon, declaration, limits
 from regodoc.diagnostics import Collector, Severity, clip, os_message, sanitize
+from regodoc.outputs import OutputError
 from regodoc.validate import Validation, validate_package
 
 
@@ -210,7 +211,7 @@ def build_parser() -> ItalianArgumentParser:
         "--files-dir", metavar="CARTELLA", help="scrive anche i file canonici uno per uno qui"
     )
     _add_json(canon)
-    canon.set_defaults(handler=_cmd_draft)
+    canon.set_defaults(handler=_cmd_canon)
 
     build_command = commands.add_parser("build", help="produce LaTeX o PDF da un pacchetto")
     _add_package(build_command)
@@ -382,7 +383,7 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
             contract=args.contract or declaration.CONTRACT_VERSION,
             strict=args.strict,
         )
-    except build.OutputError as error:
+    except OutputError as error:
         code = ExitCode.ENVIRONMENT if error.environment else ExitCode.USAGE
         kind = "regodoc.environment" if error.environment else "regodoc.usage"
         return _finish(args.json, "build", code, kind, error.message)
@@ -417,6 +418,59 @@ def _cmd_build(args: argparse.Namespace) -> ExitCode:
         payload["passes"] = outcome.passes
         payload["theme"] = outcome.theme
         payload["tex"] = outcome.tex
+        _write_json(payload)
+    else:
+        _print_items(collector)
+        verdict = "uscita scritta" if code is ExitCode.OK else "nessuna uscita"
+        _write(sys.stderr, f"regodoc: {verdict} (codice {int(code)})\n")
+    return code
+
+
+def _cmd_canon(args: argparse.Namespace) -> ExitCode:
+    path = Path(args.package)
+    problem = _package_problem(path, args.package) or canon.check_options(
+        args.document, args.base_version
+    )
+    if problem is not None:
+        return _finish(args.json, "canon", ExitCode.USAGE, "regodoc.usage", problem)
+    try:
+        outcome = canon.run(
+            path,
+            args.output,
+            document=args.document,
+            base_version=args.base_version,
+            files_dir=Path(args.files_dir) if args.files_dir is not None else None,
+            strict=args.strict,
+        )
+    except OutputError as error:
+        code = ExitCode.ENVIRONMENT if error.environment else ExitCode.USAGE
+        kind = "regodoc.environment" if error.environment else "regodoc.usage"
+        return _finish(args.json, "canon", code, kind, error.message)
+    except PermissionError:
+        return _finish(
+            args.json,
+            "canon",
+            ExitCode.ENVIRONMENT,
+            "regodoc.environment",
+            f"non posso leggere «{_shown(args.package)}»: permesso negato",
+        )
+    code = ExitCode(outcome.exit_code)
+    validation = outcome.validation
+    collector = validation.report
+    if args.json:
+        payload = _payload(
+            "canon",
+            code,
+            errors=[d.to_json() for d in collector.errors],
+            warnings=[d.to_json() for d in collector.warnings],
+        )
+        payload["input"] = (
+            {"sha256": validation.input_sha256, "bytes": validation.input_bytes}
+            if validation.input_sha256 is not None
+            else None
+        )
+        payload.update(outcome.summary)
+        payload["warnings_omitted"] = collector.warnings_omitted
         _write_json(payload)
     else:
         _print_items(collector)

@@ -96,7 +96,7 @@ COMMANDS: Final = MappingProxyType(
     {
         "info": "ready",
         "validate": "ready",
-        "canon": "draft",
+        "canon": "ready",
         "build": "ready",
         "upgrade": "draft",
     }

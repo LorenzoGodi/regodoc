@@ -5,9 +5,7 @@ di lavoro, compilazione e controlli, uscita atomica. Ogni esito diventa un ``Out
 codice d'uscita; il comando lo scrive nel rapporto.
 """
 
-import hashlib
 import os
-import secrets
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -21,20 +19,18 @@ from regodoc.compiler import (
     find_pdflatex,
     package_closure,
 )
-from regodoc.diagnostics import Collector, Severity, clip
+from regodoc.diagnostics import Collector, Severity
 from regodoc.header import Header, HeaderError, choose_date, read_header
+from regodoc.outputs import (
+    OutputError,
+    check_output,
+    described,
+    temporary_name,
+    write_file,
+)
 from regodoc.render import Document, render_document
 from regodoc.theme import TEX_DIR, Theme, read_theme
 from regodoc.validate import Validation, validate_package
-
-
-class OutputError(Exception):
-    """L'uscita di ``-o`` non va bene: codice 2 se è un errore d'uso, 3 d'ambiente."""
-
-    def __init__(self, message: str, *, environment: bool = False) -> None:
-        super().__init__(message)
-        self.message = message
-        self.environment = environment
 
 
 @dataclass
@@ -61,7 +57,7 @@ def run(
 ) -> Outcome:
     """Esegue ``build``. Solleva ``OutputError`` per un'uscita non valida."""
     target = Path(output)
-    _check_output(target, package, directory=output_format == "latex")
+    check_output(target, package, directory=output_format == "latex")
     validation = validate_package(package)
     report = validation.report
     outcome = Outcome(1, validation)
@@ -151,8 +147,8 @@ def _compile(
             )
             outcome.exit_code = 4
         return outcome
-    _write_file(target, result.pdf)
-    outcome.outputs = [_described(output, result.pdf)]
+    write_file(target, result.pdf)
+    outcome.outputs = [described(output, result.pdf)]
     outcome.passes = result.passes
     outcome.tex = {"version_line": result.version_line}
     outcome.exit_code = 0
@@ -186,48 +182,15 @@ def _prepare(doc: Path, home: Path, text: str, theme: Theme, validation: Validat
         destination.write_bytes(files[path])
 
 
-def _described(path: str, data: bytes) -> dict[str, object]:
-    return {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
-
-
-def _check_output(target: Path, package: Path, *, directory: bool) -> None:
-    """Le regole di ``-o`` (contratto, §2.1) che si controllano prima di lavorare."""
-    parent = target.parent
-    if not parent.is_dir():
-        raise OutputError(f"la cartella dell'uscita «{clip(str(parent))}» non esiste")
-    if target.exists() and package.exists() and target.samefile(package):
-        raise OutputError("l'uscita non può essere il pacchetto d'ingresso")
-    if not directory and target.is_dir() and not target.is_symlink():
-        raise OutputError(f"l'uscita «{clip(str(target))}» è una cartella, non un file")
-
-
-def _temporary_name(target: Path) -> Path:
-    return target.parent / f".{target.name}.regodoc-{secrets.token_hex(6)}"
-
-
-def _write_file(target: Path, data: bytes) -> None:
-    """Scrive accanto a un nome temporaneo e rinomina: l'uscita esiste solo se è completa."""
-    temporary = _temporary_name(target)
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(data)
-        temporary.replace(target)  # sostituisce anche un collegamento, non ciò a cui punta
-    except PermissionError as error:
-        temporary.unlink(missing_ok=True)
-        raise OutputError(
-            "non posso scrivere l'uscita: permesso negato", environment=True
-        ) from error
-
-
 def _write_directory(doc: Path, target: Path, output: str) -> list[dict[str, object]]:
     """Copia la cartella del LaTeX al posto di ``target``, sostituendola per intero."""
-    temporary = _temporary_name(target)
+    temporary = temporary_name(target)
     try:
         shutil.copytree(doc, temporary, symlinks=False)
         if target.is_symlink() or (target.exists() and not target.is_dir()):
             target.unlink()
         if target.is_dir():
-            old = _temporary_name(target)
+            old = temporary_name(target)
             target.rename(old)
             temporary.rename(target)
             shutil.rmtree(old, ignore_errors=True)
@@ -242,4 +205,4 @@ def _write_directory(doc: Path, target: Path, output: str) -> list[dict[str, obj
         (p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()),
         key=lambda p: p.encode("utf-8"),
     )
-    return [_described(f"{output}/{path}", (target / path).read_bytes()) for path in files]
+    return [described(f"{output}/{path}", (target / path).read_bytes()) for path in files]
