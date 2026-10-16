@@ -26,10 +26,13 @@ Uso:
 
 import argparse
 import hashlib
+import io
 import re
 import subprocess
 import sys
 import unicodedata
+import zipfile
+import zlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -197,6 +200,99 @@ def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Pro
     return problems
 
 
+# Quanto si decomprime al massimo di un blocco di testo compresso di un PNG.
+_MAX_METADATA = 1 << 20
+
+
+def _png_texts(data: bytes) -> list[tuple[str, str]]:
+    texts = []
+    position = 8
+    while position + 8 <= len(data):
+        length = int.from_bytes(data[position : position + 4], "big")
+        kind = data[position + 4 : position + 8]
+        body = data[position + 8 : position + 8 + length]
+        position += 12 + length
+        if kind == b"tEXt":
+            texts.append(("tEXt", body.decode("latin-1")))
+        elif kind == b"zTXt":
+            keyword, _, rest = body.partition(b"\0")
+            text = zlib.decompressobj().decompress(rest[1:], _MAX_METADATA)
+            texts.append(("zTXt", keyword.decode("latin-1") + "\n" + text.decode("latin-1")))
+        elif kind == b"iTXt":
+            keyword, _, rest = body.partition(b"\0")
+            compressed, rest = rest[0], rest[2:]
+            language, _, rest = rest.partition(b"\0")
+            translated, _, text = rest.partition(b"\0")
+            if compressed:
+                text = zlib.decompressobj().decompress(text, _MAX_METADATA)
+            parts = (keyword, language, translated, text)
+            texts.append(("iTXt", "\n".join(p.decode("utf-8", "replace") for p in parts)))
+        elif kind == b"eXIf":
+            texts.append(("eXIf", body.decode("latin-1")))
+    return texts
+
+
+def _jpeg_texts(data: bytes) -> list[tuple[str, str]]:
+    texts = []
+    position = 2
+    while position + 4 <= len(data) and data[position] == 0xFF:
+        marker = data[position + 1]
+        if marker == 0xDA:  # inizio dei dati compressi: i metadati sono tutti prima
+            break
+        length = int.from_bytes(data[position + 2 : position + 4], "big")
+        body = data[position + 4 : position + 2 + length]
+        if marker == 0xFE:
+            texts.append(("COM", body.decode("latin-1")))
+        elif 0xE0 <= marker <= 0xEF:
+            texts.append((f"APP{marker - 0xE0}", body.decode("latin-1")))
+        position += 2 + length
+    return texts
+
+
+def _pdf_texts(data: bytes) -> list[tuple[str, str]]:
+    # Tutto tranne il contenuto dei flussi: il dizionario Info e i metadati non compressi.
+    outside = re.sub(rb"stream\r?\n.*?endstream", b"", data, flags=re.DOTALL)
+    return [("PDF", outside.decode("latin-1"))]
+
+
+def _zip_texts(data: bytes) -> list[tuple[str, str]]:
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        texts = [("commento dell'archivio", archive.comment.decode("latin-1"))]
+        for info in archive.infolist():
+            texts.append(("nome di una voce", info.filename))
+            texts.append(("commento di una voce", info.comment.decode("latin-1")))
+    return texts
+
+
+_METADATA_READERS = {
+    ".png": _png_texts,
+    ".jpg": _jpeg_texts,
+    ".jpeg": _jpeg_texts,
+    ".pdf": _pdf_texts,
+    ".regodoc": _zip_texts,
+    ".zip": _zip_texts,
+}
+
+
+def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Problem]:
+    """Cerca i nomi vietati nei blocchi di metadati di un file binario: i blocchi di testo dei
+    PNG, i commenti e i segmenti APP dei JPEG, il PDF fuori dai flussi, i nomi e i commenti
+    delle voci di un archivio."""
+    reader = _METADATA_READERS.get(suffix)
+    if reader is None:
+        return []
+    try:
+        texts = reader(data)
+    except (ValueError, zlib.error, zipfile.BadZipFile, IndexError) as error:
+        return [Problem(where, 0, f"metadati non leggibili: {type(error).__name__}")]
+    problems = []
+    for block, text in texts:
+        printable = "".join(c if c.isprintable() or c == "\n" else "\n" for c in text)
+        if find_terms(printable, terms):
+            problems.append(Problem(where, 0, f"metadati ({block}): contengono un nome vietato"))
+    return problems
+
+
 def check_file(root: Path, relative: str, terms: Terms) -> list[Problem]:
     """Controlla percorso e contenuto di un file del repository."""
     problems = (
@@ -209,7 +305,9 @@ def check_file(root: Path, relative: str, terms: Terms) -> list[Problem]:
         return [*problems, Problem(relative, 0, "è un collegamento simbolico: non è ammesso")]
     if not path.is_file():
         return problems
-    if path.suffix.lower() in BINARY_SUFFIXES or path.name in EXACT_BYTES_NAMES:
+    if path.suffix.lower() in BINARY_SUFFIXES:
+        return problems + check_binary(relative, path.suffix.lower(), path.read_bytes(), terms)
+    if path.name in EXACT_BYTES_NAMES:
         return problems
     tabs = path.name in TAB_ALLOWED_NAMES
     return problems + check_text(relative, path.read_bytes(), terms, tabs=tabs)

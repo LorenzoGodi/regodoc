@@ -2,8 +2,11 @@
 
 import hashlib
 import importlib.util
+import io
 import tempfile
 import unittest
+import zipfile
+import zlib
 from pathlib import Path
 
 _PATH = Path(__file__).resolve().parent.parent / "tools" / "check_hygiene.py"
@@ -171,6 +174,85 @@ class MessageTest(unittest.TestCase):
 
     def test_term(self) -> None:
         self.assertEqual(self.check("L1: x\n\nparolaproibito\n"), ["contiene un nome vietato"])
+
+
+def png_with(kind: bytes, body: bytes) -> bytes:
+    """Un PNG minimo con un blocco di metadati in più, prima dei pixel."""
+
+    def chunk(name: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(name + data) & 0xFFFFFFFF
+        return len(data).to_bytes(4, "big") + name + data + crc.to_bytes(4, "big")
+
+    header = (1).to_bytes(4, "big") * 2 + bytes([8, 0, 0, 0, 0])
+    pixels = zlib.compress(b"\x00\x00")
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(kind, body)
+        + chunk(b"IDAT", pixels)
+        + chunk(b"IEND", b"")
+    )
+
+
+class BinaryMetadataTest(unittest.TestCase):
+    def found(self, name: str, data: bytes) -> list[str]:
+        return messages(hygiene.check_binary(name, Path(name).suffix, data, TERMS))
+
+    def test_png_text_blocks(self) -> None:
+        cases = {
+            b"tEXt": b"Software\0proibito 1.0",
+            b"zTXt": b"Comment\0\0" + zlib.compress(b"una frase vietata"),
+            b"iTXt": b"XML:com.adobe.xmp\0\0\0\0\0<x>proibito</x>",
+            b"eXIf": b"MM\0*proibito",
+        }
+        for kind, body in cases.items():
+            with self.subTest(kind):
+                self.assertEqual(
+                    self.found("a.png", png_with(kind, body)),
+                    [f"metadati ({kind.decode()}): contengono un nome vietato"],
+                )
+        self.assertEqual(self.found("a.png", png_with(b"tEXt", b"Software\0innocuo")), [])
+
+    def test_jpeg_comment_and_app_segments(self) -> None:
+        def segment(marker: int, body: bytes) -> bytes:
+            return bytes([0xFF, marker]) + (len(body) + 2).to_bytes(2, "big") + body
+
+        jpeg = b"\xff\xd8" + segment(0xE1, b"Exif\0\0proibito") + segment(0xFE, b"ok")
+        self.assertEqual(self.found("a.jpg", jpeg), ["metadati (APP1): contengono un nome vietato"])
+        jpeg = b"\xff\xd8" + segment(0xFE, b"frase vietata") + b"\xff\xda\x00\x02proibito"
+        self.assertEqual(self.found("a.jpeg", jpeg), ["metadati (COM): contengono un nome vietato"])
+
+    def test_pdf_outside_streams(self) -> None:
+        info = b"1 0 obj << /Producer (proibito) >> endobj\n"
+        stream = b"2 0 obj << /Length 8 >> stream\nproibito\nendstream endobj\n"
+        self.assertEqual(
+            self.found("a.pdf", b"%PDF-1.5\n" + info),
+            ["metadati (PDF): contengono un nome vietato"],
+        )
+        self.assertEqual(self.found("a.pdf", b"%PDF-1.5\n" + stream), [])
+
+    def test_archive_names_and_comments(self) -> None:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("parts/proibito.xml", b"x")
+        self.assertEqual(
+            self.found("a.regodoc", buffer.getvalue()),
+            ["metadati (nome di una voce): contengono un nome vietato"],
+        )
+
+    def test_unreadable_metadata_is_reported(self) -> None:
+        self.assertEqual(
+            self.found("a.zip", b"non un archivio"),
+            ["metadati non leggibili: BadZipFile"],
+        )
+
+    def test_repository_images_are_clean(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        for path in sorted((root / "examples").rglob("images/*")):
+            with self.subTest(path.name):
+                self.assertEqual(
+                    hygiene.check_binary(path.name, path.suffix, path.read_bytes(), TERMS), []
+                )
 
 
 if __name__ == "__main__":
