@@ -2,13 +2,15 @@
 
 Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del primo
 rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre il tetto dei
-problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1),
-la chiave `warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica
-che un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
+problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1), la
+chiave `warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica che
+un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
 `"contract": 1`. Il 16/10/2026, sempre prima del primo rilascio, si aggiungono i codici
 `regodoc.theme.tampered` e `regodoc.pdf.active` (§6.4 e §6.5), con la famiglia
-`regodoc.pdf.*`, e i tetti dei pixel dei PNG (§5.1). La bozza che la precedeva, dichiarata come versione 0, non è servita da
-nessun motore: chi chiama passa `--contract 1`.
+`regodoc.pdf.*`, i tetti dei pixel dei PNG (§5.1), le chiavi `expat` ed `expat_min` di `info`
+(§5) e la ripulitura dei messaggi dai caratteri di controllo (§4.4). La bozza che la
+precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama passa
+`--contract 1`.
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -102,10 +104,10 @@ nella cartella di lavoro; `openin_any=p`, `openout_any=p`, `shell_escape=f`; `MK
 `MKTEXPK=0`, `MKTEXTFM=0`; `LC_ALL=C.UTF-8`; `SOURCE_DATE_EPOCH` dalla data del documento e
 `FORCE_SOURCE_DATE=1`; `max_print_line`, `error_line` e `half_error_line` larghi, perché le
 righe del log, che il motore legge, non vadano a capo. pdflatex gira con `-no-shell-escape
--interaction=batchmode -halt-on-error -recorder`, **nello stesso gruppo di processi del motore**, così chi uccide il
-gruppo (§2.3) uccide anche pdflatex. L'uscita di pdflatex e di ogni altro processo figlio va
-in file della cartella di lavoro, mai su stdout o stderr del motore: su stdout c'è solo il
-rapporto.
+-interaction=batchmode -halt-on-error -recorder`, **nello stesso gruppo di processi del
+motore**, così chi uccide il gruppo (§2.3) uccide anche pdflatex. L'uscita di pdflatex e di
+ogni altro processo figlio va in file della cartella di lavoro, mai su stdout o stderr del
+motore: su stdout c'è solo il rapporto.
 
 ### 2.3 Risorse e tempo
 
@@ -122,10 +124,20 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     abbassa il tempo dichiarato per questa chiamata; un valore più alto è ignorato, uno
     minore di 1 è un errore d'uso. Il caso peggiore valido, cioè un pacchetto entro tutti i
     limiti del §5.1 costruito per chiedere il massimo lavoro al lettore, si è validato fra 8
-    e 10,3 s su processori x86-64 di classe server, con CPython 3.12 e 3.13 (misure di
-    ottobre 2026): chi stima il proprio margine conti fino a 12 s. La CI del motore lo misura
-    a ogni modifica su Linux e macOS e fallisce oltre 20 s, cioè due terzi del tempo
-    dichiarato.
+    e 14,5 s. Le misure sono di ottobre 2026, con CPython 3.12 e 3.13 su macchine virtuali
+    x86-64 a 4 vCPU condivise, e variano di quasi il doppio da un'esecuzione all'altra; una
+    rilettura indipendente ha misurato 10,3 s. Chi stima il proprio margine conti fino a
+    15 s. I casi sono quelli di `tools/measure_worst.py`: parti piene di elenchi, sezioni,
+    righe di tabella o elementi in linea, parti miste, 1.500 variabili e i pixel delle
+    immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
+    fallisce oltre 20 s, cioè due terzi del tempo dichiarato. Con un tema esterno `build`
+    compila una volta in più, per il controllo dei pacchetti del §6.1: da mezzo secondo a
+    circa 1,5 s.
+  - **SIGALRM e SIGINT.** Il motore usa `SIGALRM` per il tempo: un `SIGALRM` mandato da
+    fuori durante un comando lo ferma come un tempo scaduto, con il codice 3 e
+    `regodoc.limit.time`. Un `SIGINT` interrompe il comando con il codice 130 e il rapporto;
+    un secondo `SIGINT` mentre il motore scrive quel rapporto può chiudere il processo senza
+    rapporto, e chi chiama tratta il caso come codice 130.
   - **Timer di chi chiama.** Se il motore gira dentro un processo che ha già un proprio
     timer (`ITIMER_REAL`), per esempio una prova che lo chiama come funzione, quel timer è
     sospeso per la durata del comando e riparte alla fine con il tempo che gli restava. Un
@@ -166,7 +178,9 @@ Un file `.regodoc` secondo la specifica. All'ingresso chi chiama controlla solta
   all'offset 30 il nome `mimetype`, all'offset 38 il valore di `info.package.mimetype`.
 
 Numero di file, espansione, rapporto di compressione e tutto il resto li controlla solo il
-motore. Chi chiama non apre l'archivio. Il pacchetto passato al motore deve essere un file
+motore. Chi chiama non apre l'archivio. Il campo extra dell'intestazione locale di una voce può
+essere diverso da quello della directory centrale: il motore lo ignora, salvo rifiutare le
+estensioni ZIP64 (`regodoc.archive.zip64`). Il pacchetto passato al motore deve essere un file
 regolare o una cartella: una FIFO o un dispositivo danno il codice 2.
 
 ### 3.2 L'intestazione (`--header`)
@@ -333,12 +347,12 @@ nome temporaneo. Vale `""` anche per gli errori di una sola voce dell'archivio (
 - `info`: un fatto che non dipende da chi ha scritto il pacchetto, per esempio un ruolo che il
   tema non definisce (§6.2); `--strict` non lo conta.
 
-**Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del pacchetto
-accorciate a 80 caratteri. Nei messaggi e in `file` i caratteri di controllo (`ESC`
+**Dimensioni.** Un messaggio è lungo al massimo 500 caratteri e cita le stringhe del
+pacchetto accorciate a 80 caratteri. Nei messaggi e in `file` i caratteri di controllo (`ESC`
 compreso), i caratteri di formato e bidirezionali e i surrogati spaiati diventano `U+XXXX`,
 visibili: il rapporto resta UTF-8 valido e innocuo in un terminale. Un percorso di chi chiama
-compare nei messaggi solo con l'ultimo nome: il resto del percorso non entra nel rapporto. Il rapporto elenca al massimo 500 problemi, più al massimo una
-voce di chiusura:
+compare nei messaggi solo con l'ultimo nome: il resto del percorso non entra nel rapporto. Il
+rapporto elenca al massimo 500 problemi, più al massimo una voce di chiusura:
 
 - un **errore** che arriva quando 500 problemi sono già elencati ferma la lettura con
   l'errore `regodoc.limit.problems`, che è sempre un errore e cita nel messaggio il codice e
@@ -351,10 +365,9 @@ Con i campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
 
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
-`regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`,
-`regodoc.header.*`, `regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`; fuori dalle famiglie: `regodoc.usage`,
-`regodoc.environment`, `regodoc.not_implemented`, `regodoc.interrupted`,
-`regodoc.internal`.
+`regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`, `regodoc.header.*`,
+`regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`; fuori dalle famiglie: `regodoc.usage`,
+`regodoc.environment`, `regodoc.not_implemented`, `regodoc.interrupted`, `regodoc.internal`.
 
 Chi chiama sceglie l'azione **prima dal codice d'uscita** (§7). I codici d'errore e d'avviso
 servono a mostrare il problema; questi, e solo questi, precisano l'azione dentro lo stesso
@@ -377,6 +390,7 @@ codice d'uscita:
 | `engine` | `"regodoc"` |
 | `version` | versione del motore, PEP 440 |
 | `expat` | versione di expat dell'interprete che esegue il motore, per esempio `2.6.1`: il lettore XML delle parti la usa, e chi chiama la confronta fra un'installazione e l'altra |
+| `expat_min` | la versione minima di expat con cui il motore è provato, oggi `2.6.0`; un interprete con una versione più vecchia non è supportato |
 | `contract` | versione corrente del contratto |
 | `contracts` | le versioni del contratto supportate da `--contract` |
 | `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`), per la firma del §3.1 |

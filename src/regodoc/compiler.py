@@ -445,10 +445,12 @@ def check_pdf(pdf: bytes) -> None:
     try:
         names = _pdf_names(pdf)
     except (PdfError, ValueError, IndexError) as error:
+        # I messaggi di PdfError sono in italiano; quelli di Python no, e non si citano.
+        detail = str(error) if isinstance(error, PdfError) else "numero o offset illeggibile"
         raise CompileError(
             "regodoc.pdf.active",
             f"il PDF non ha la struttura attesa, quindi non si può escludere contenuto attivo "
-            f"({error})",
+            f"({detail})",
             file="theme.sty",
         ) from error
     found = sorted(names & ACTIVE_NAMES)

@@ -1,6 +1,7 @@
 """Errori e avvisi del motore, con codice stabile, posizione e messaggio in italiano."""
 
 import enum
+import errno
 import re
 from dataclasses import dataclass, field
 from typing import NoReturn
@@ -193,3 +194,28 @@ class Collector:
     def has_errors(self) -> bool:
         """Vero se c'è almeno un errore."""
         return any(d.severity is Severity.ERROR for d in self.items)
+
+
+_OS_ERRORS = {
+    errno.ENOENT: "file o cartella inesistente",
+    errno.EACCES: "permesso negato",
+    errno.EPERM: "operazione non permessa",
+    errno.ENOSPC: "spazio su disco esaurito",
+    errno.EROFS: "file system in sola lettura",
+    errno.EISDIR: "è una cartella",
+    errno.ENOTDIR: "non è una cartella",
+    errno.EEXIST: "esiste già",
+    errno.EMFILE: "troppi file aperti",
+    errno.ENAMETOOLONG: "nome troppo lungo",
+    errno.EIO: "errore di lettura o scrittura del dispositivo",
+    errno.EILSEQ: "nome non ammesso dal file system",
+    errno.ELOOP: "troppi collegamenti simbolici",
+}
+
+
+def os_message(error: OSError) -> str:
+    """Un errore di sistema in italiano: il testo di ``strerror`` è nella lingua del sistema."""
+    if error.errno in _OS_ERRORS:
+        return _OS_ERRORS[error.errno]
+    name = errno.errorcode.get(error.errno or 0)
+    return f"errore di sistema {name}" if name else "errore di sistema"

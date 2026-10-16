@@ -28,6 +28,10 @@ CONTRACT_VERSION: Final = 1
 # non è servita (contratto, §9).
 CONTRACTS: Final = (1,)
 
+# La versione minima di expat: dalla 2.6.0 expat limita la rianalisi dei token lunghi, che
+# prima costava tempo quadratico. La CI la controlla su ogni interprete della matrice.
+EXPAT_MIN: Final = (2, 6, 0)
+
 # Grammatica scritta dal motore e grammatiche che sa leggere, dalla più vecchia.
 GRAMMAR_CURRENT: Final = "rego/1"
 GRAMMARS_READ: Final = ("rego/1",)
@@ -187,6 +191,7 @@ def describe() -> dict[str, object]:
         # La versione di expat con cui questo interprete legge le parti: le difese del
         # lettore XML dipendono anche da lei (specifica, §6.3).
         "expat": ".".join(str(n) for n in xml.parsers.expat.version_info),
+        "expat_min": ".".join(str(n) for n in EXPAT_MIN),
         "contract": CONTRACT_VERSION,
         "contracts": list(CONTRACTS),
         "package": {"mimetype": PACKAGE_MIMETYPE, "extension": PACKAGE_EXTENSION},

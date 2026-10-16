@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 from tests import test_limits as builders  # noqa: E402
-from tests.support import build_zip, validate_bytes  # noqa: E402
+from tests.support import build_zip, example_files, png_pixels, validate_bytes  # noqa: E402
 
 from regodoc.declaration import CONTENT_LIMITS, RESOURCES  # noqa: E402
 
@@ -91,7 +91,39 @@ def cases() -> dict[str, Callable[[int], tuple[str, int]]]:
             count,
         )
 
-    return {"elenchi": items, "sezioni": sections, "tabelle": tables, "in linea": inline}
+    def mixed(k: int) -> tuple[str, int]:
+        # Metà delle parti di elenchi, metà di elementi in linea: un caso combinato.
+        return items(k) if k % 2 else inline(k)
+
+    return {
+        "elenchi": items,
+        "sezioni": sections,
+        "tabelle": tables,
+        "in linea": inline,
+        "misto": mixed,
+    }
+
+
+def variables_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
+    """1.500 variabili di testo che riempiono variables.toml fino al suo limite."""
+    files = example_files()
+    count = int(CONTENT_LIMITS["variables"])
+    size = int(CONTENT_LIMITS["variables_bytes"]) - len(files["variables.toml"]) - 64
+    each = size // count - len('v0000 = { text = "" }\n')
+    lines = [f'v{n:04d} = {{ text = "{"a" * each}" }}\n' for n in range(count - 8)]
+    files["variables.toml"] += "".join(lines).encode()
+    return files, (), count
+
+
+def images_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
+    """Immagini PNG con i pixel al tetto di tutto il pacchetto, da decomprimere."""
+    files = example_files()
+    big = png_pixels(6000, 6000, color=6)
+    for number in range(4):
+        files[f"images/big{number}.png"] = big
+    files["images/coverage.png"] = png_pixels(6000, 1000, color=6)
+    stored = tuple(path for path in files if path.startswith("images/"))
+    return files, stored, len(stored)
 
 
 def measure(body_of: Callable[[int], tuple[str, int]]) -> tuple[float, int, list[str]]:
@@ -101,7 +133,11 @@ def measure(body_of: Callable[[int], tuple[str, int]]) -> tuple[float, int, list
         body, count = body_of(k)
         elements += count
         files[f"parts/extra{k}.xml"] = builders.part(body)
-    data = build_zip(files)
+    return timed(build_zip(files), elements)
+
+
+def timed(data: bytes, elements: int) -> tuple[float, int, list[str]]:
+    """Il tempo migliore di due validazioni, con gli errori trovati."""
     best = float("inf")
     codes: list[str] = []
     for _ in range(2):
@@ -119,8 +155,13 @@ def main() -> int:
     allowed = RESOURCES["time_seconds"]["validate"] / margin
     worst = 0.0
     invalid = []
-    for label, body_of in cases().items():
-        seconds, elements, codes = measure(body_of)
+    measures = {
+        label: lambda body_of=body_of: measure(body_of) for label, body_of in cases().items()
+    }
+    for label, build in (("variabili", variables_case), ("immagini", images_case)):
+        measures[label] = lambda build=build: timed(build_zip(*build()[:2]), build()[2])
+    for label, run in measures.items():
+        seconds, elements, codes = run()
         worst = max(worst, seconds)
         if codes:
             invalid.append(label)

@@ -19,7 +19,7 @@ from pathlib import Path, PurePath
 from typing import IO, NoReturn
 
 from regodoc import __version__, build, declaration, limits
-from regodoc.diagnostics import Collector, Severity, clip, sanitize
+from regodoc.diagnostics import Collector, Severity, clip, os_message, sanitize
 from regodoc.validate import Validation, validate_package
 
 
@@ -478,7 +478,33 @@ def _cmd_validate(args: argparse.Namespace) -> ExitCode:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Esegue il comando e restituisce il codice d'uscita."""
+    """Esegue il comando e restituisce il codice d'uscita.
+
+    La memoria può finire anche fuori dal comando, o mentre si scrive il rapporto di un'altra
+    uscita: anche allora niente traceback, ma il codice d'ambiente con regodoc.limit.memory.
+    """
+    try:
+        return _run(argv)
+    except MemoryError:
+        wants_json = "--json" in (sys.argv[1:] if argv is None else argv)
+        try:
+            return int(
+                _finish(
+                    wants_json,
+                    None,
+                    ExitCode.ENVIRONMENT,
+                    "regodoc.limit.memory",
+                    "memoria esaurita; non ritentare con lo stesso pacchetto",
+                )
+            )
+        except MemoryError:
+            # Non resta memoria nemmeno per il rapporto: una riga fissa, scritta direttamente.
+            with contextlib.suppress(OSError):
+                os.write(2, b"regodoc: memoria esaurita\n")
+            return int(ExitCode.ENVIRONMENT)
+
+
+def _run(argv: Sequence[str] | None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     _ACTIVE.update(time_seconds=None, memory_bytes=None)
     if sys.stdout is None:
@@ -571,7 +597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 command,
                 ExitCode.ENVIRONMENT,
                 "regodoc.environment",
-                f"errore d'ambiente: {error.strerror or type(error).__name__}",
+                f"errore d'ambiente: {os_message(error)}",
             )
         )
     except Exception as error:

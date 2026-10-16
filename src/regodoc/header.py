@@ -11,7 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from regodoc.diagnostics import Collector, clip
-from regodoc.text import bad_char_message, find_bad_chars, plain_text_problems
+from regodoc.text import (
+    JsonProblem,
+    bad_char_message,
+    find_bad_chars,
+    plain_text_problems,
+    strict_json,
+)
 
 HEADER_BYTES = 64 * 1024
 _KEYS = ("contract", "document_created", "frame")
@@ -51,18 +57,8 @@ def read_header(path: Path, contract: int, report: Collector) -> Header | None:
         report.error("regodoc.header.syntax", "l'intestazione supera 64 KiB")
         return None
 
-    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
-        keys = [key for key, _ in items]
-        repeated = sorted({key for key in keys if keys.count(key) > 1})
-        if repeated:
-            raise ValueError(f"chiave ripetuta «{repeated[0]}»")
-        return dict(items)
-
-    def constant(name: str) -> object:
-        raise ValueError(f"valore non ammesso «{name}»")
-
     try:
-        value = json.loads(data.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant)
+        value = strict_json(data.decode("utf-8"))
     except UnicodeDecodeError:
         report.error("regodoc.header.syntax", "l'intestazione non è UTF-8 valido")
         return None
@@ -75,7 +71,7 @@ def read_header(path: Path, contract: int, report: Collector) -> Header | None:
             error.colno,
         )
         return None
-    except (ValueError, RecursionError) as error:
+    except JsonProblem as error:
         report.error("regodoc.header.syntax", f"intestazione: {error}")
         return None
     if not isinstance(value, dict):

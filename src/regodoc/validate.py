@@ -25,7 +25,7 @@ from regodoc.source import (
     read_archive_bytes,
     read_package,
 )
-from regodoc.text import find_bad_chars
+from regodoc.text import JsonProblem, find_bad_chars, strict_json
 from regodoc.tomlfiles import (
     NUMERIC_TYPES,
     Structure,
@@ -210,20 +210,8 @@ def _check_manifest(
         report.error("regodoc.limit.file_size", "manifest.json supera 64 KiB", file)
         return None
 
-    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
-        keys = [key for key, _ in items]
-        duplicates = {key for key in keys if keys.count(key) > 1}
-        if duplicates:
-            raise ValueError(f"chiave ripetuta «{sorted(duplicates)[0]}»")
-        return dict(items)
-
-    def constant(name: str) -> object:
-        raise ValueError(f"valore non ammesso «{name}»")
-
     try:
-        manifest = json.loads(
-            data.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant
-        )
+        manifest = strict_json(data.decode("utf-8"))
     except UnicodeDecodeError:
         report.error("regodoc.text.encoding", "manifest.json non è UTF-8 valido", file)
         return None
@@ -236,7 +224,7 @@ def _check_manifest(
             error.colno,
         )
         return None
-    except (ValueError, RecursionError) as error:
+    except JsonProblem as error:
         report.error("regodoc.manifest.syntax", f"manifest.json: {error}", file)
         return None
     if not isinstance(manifest, dict):

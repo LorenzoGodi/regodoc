@@ -22,6 +22,10 @@ e TeX Live.
   `texlive-latex-base`, `texlive-latex-recommended`, `texlive-latex-extra`,
   `texlive-fonts-recommended`, `texlive-fonts-extra`, `texlive-lang-italian` e
   `texlive-science`. Il motore non usa pacchetti LaTeX fuori da questo insieme.
+- La riproducibilità dei PDF byte per byte è provata con TeX Live 2023 di Ubuntu e nella CI su
+  Debian trixie con TeX Live 2024, le cui versioni apt però non sono fissate: chi usa il
+  motore la verifica sulla propria immagine TeX, con due compilazioni dello stesso pacchetto
+  ([contratto](docs/contract.md), §10).
 
 ## Installazione
 

@@ -1,6 +1,7 @@
 """Lettura e validazione di ``structure.toml`` e ``variables.toml`` (specifica §2, §3, §6.3)."""
 
 import datetime
+import functools
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -247,8 +248,25 @@ def _shown(value: object) -> str:
 
 
 def _line_of_key(text: str, key: str) -> int:
-    match = re.search(rf"(?m)^[ \t]*{re.escape(key)}[ \t]*=", text)
-    return text.count("\n", 0, match.start()) + 1 if match else 0
+    """La riga della prima assegnazione ``key = …``, o 0."""
+    return _key_lines(text).get(key, 0)
+
+
+_ASSIGNMENT = re.compile(r"(?m)^[ \t]*([A-Za-z0-9_-]+)[ \t]*=")
+
+
+@functools.lru_cache(maxsize=4)
+def _key_lines(text: str) -> dict[str, int]:
+    """Le righe delle assegnazioni del file, in un solo passaggio: cercarle una per una
+    costava un passaggio sul file per ogni chiave, quadratico con 1.500 variabili."""
+    lines: dict[str, int] = {}
+    line = 1
+    position = 0
+    for match in _ASSIGNMENT.finditer(text):
+        line += text.count("\n", position, match.start())
+        position = match.start()
+        lines.setdefault(match.group(1), line)
+    return lines
 
 
 def _is_int(value: object) -> bool:

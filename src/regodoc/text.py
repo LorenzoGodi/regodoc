@@ -1,5 +1,6 @@
 """Regole sul testo della specifica (§5): insieme di caratteri, tipografia, posizioni."""
 
+import json
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -113,3 +114,45 @@ def plain_text_problems(value: str, *, max_length: int, min_length: int = 1) -> 
     if triple_hyphen(value) is not None:
         problems.append("tre o più trattini di fila: scrivi la lineetta — direttamente")
     return problems
+
+
+class JsonProblem(Exception):
+    """Un JSON che si analizza ma non si accetta, con il motivo in italiano."""
+
+
+class _Refused(ValueError):
+    """Rifiuto dei ganci di ``strict_json``: il messaggio è già in italiano."""
+
+
+def strict_json(text: str) -> object:
+    """Analizza un JSON con le regole del manifesto (specifica, §1.3): nessuna chiave ripetuta,
+    niente ``NaN`` né ``Infinity``.
+
+    Un errore di sintassi esce come ``json.JSONDecodeError``, con la posizione; ogni altro
+    rifiuto come ``JsonProblem``, con un messaggio in italiano e mai il testo di un'eccezione
+    di Python, che sarebbe in inglese.
+    """
+
+    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
+        seen: set[str] = set()
+        for key, _ in items:
+            if key in seen:
+                raise _Refused(f"chiave ripetuta «{key}»")
+            seen.add(key)
+        return dict(items)
+
+    def constant(name: str) -> object:
+        raise _Refused(f"valore non ammesso «{name}»")
+
+    try:
+        return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    except json.JSONDecodeError:
+        raise
+    except _Refused as error:
+        raise JsonProblem(str(error)) from error
+    except RecursionError as error:
+        raise JsonProblem("annidamento eccessivo di oggetti o array") from error
+    except ValueError as error:
+        # L'unico altro rifiuto di json.loads: un intero con più cifre di quante Python ne
+        # converta.
+        raise JsonProblem("numero intero con troppe cifre") from error

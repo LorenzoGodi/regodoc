@@ -145,6 +145,9 @@ def _check_png(data: bytes, budget: int | None) -> tuple[list[str], int]:
         elif kind == b"IHDR":
             raise _Bad("IHDR ripetuto")
         elif kind == b"PLTE":
+            # Il PNG vieta la tavolozza nelle immagini in grigio, con o senza alfa (§11.2.3).
+            if header[3] in (0, 4):
+                raise _Bad("blocco PLTE in un'immagine in grigio, che non ammette tavolozza")
             seen_palette = True
         elif kind == b"IDAT":
             if header[3] == 3 and not seen_palette:

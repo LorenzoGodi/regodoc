@@ -5,6 +5,7 @@ codice di prima falliva, e il motore ne usciva con un errore interno, con un rap
 sbagliato o con troppa memoria.
 """
 
+import errno
 import gc
 import json
 import os
@@ -281,6 +282,87 @@ class CommandTest(unittest.TestCase):
             declaration.describe()["expat"],
             ".".join(str(n) for n in xml.parsers.expat.version_info),
         )
+
+
+class ResidualTest(unittest.TestCase):
+    """I punti rimasti scoperti dopo la prima correzione."""
+
+    def test_python_messages_never_reach_the_report(self) -> None:
+        cases = {
+            b'{"format": "regodoc", "grammar": "rego/1", "x": '
+            + b"9" * 5000
+            + b"}": "troppe cifre",
+            b'{"format": "regodoc", "x": ' + b"[" * 30_000 + b"]" * 30_000 + b"}": "annidamento",
+        }
+        for manifest, words in cases.items():
+            with self.subTest(words):
+                errors = validate_bytes(
+                    build_zip(with_file("manifest.json", manifest))
+                ).report.errors
+                self.assertEqual([d.code for d in errors], ["regodoc.manifest.syntax"])
+                self.assertIn(words, errors[0].message)
+                for english in ("Exceeds", "recursion", "limit", "digits"):
+                    self.assertNotIn(english, errors[0].message)
+
+    def test_system_errors_are_in_italian(self) -> None:
+        failure = OSError(errno.ENOSPC, "No space left on device")
+        with mock.patch("regodoc.cli.validate_package", side_effect=failure):
+            code, out, _ = run_cli("validate", str(ROOT / "examples" / "colle-rovere"), "--json")
+        self.assertEqual(code, 3)
+        message = json.loads(out)["errors"][0]["message"]
+        self.assertIn("spazio su disco esaurito", message)
+        self.assertNotIn("No space", message)
+
+    def test_grey_images_cannot_carry_a_palette(self) -> None:
+        def with_palette(image: bytes) -> bytes:
+            body = bytes(3)
+            crc = zlib.crc32(b"PLTE" + body) & 0xFFFFFFFF
+            chunk = len(body).to_bytes(4, "big") + b"PLTE" + body + crc.to_bytes(4, "big")
+            return image[:33] + chunk + image[33:]  # subito dopo IHDR
+
+        for color in (0, 4):
+            with self.subTest(color):
+                image = with_palette(png_pixels(4, 4, color=color))
+                files = with_file("images/coverage.png", image)
+                errors = [d.code for d in validate_bytes(build_zip(files)).report.errors]
+                self.assertEqual(errors, ["regodoc.image.structure"])
+        # Nelle immagini a colori la tavolozza è un suggerimento ammesso.
+        image = with_palette(png_pixels(4, 4, color=2))
+        self.assertEqual(codes(with_file("images/coverage.png", image)), [])
+
+    def test_many_variables_are_read_in_linear_time(self) -> None:
+        files = example_files()
+        lines = "".join(f'v{n:04d} = {{ text = "{"a" * 200}" }}\n' for n in range(1490))
+        files["variables.toml"] += lines.encode()
+        start = time.perf_counter()
+        validation = validate_bytes(build_zip(files))
+        self.assertLess(time.perf_counter() - start, 3)
+        unused = [d for d in validation.report.warnings if d.code == "regodoc.toml.unused_variable"]
+        first = (
+            files["variables.toml"].split(b"\n").index(b'v0000 = { text = "' + b"a" * 200 + b'" }')
+        )
+        self.assertEqual(unused[0].line, first + 1)
+
+    def test_memory_error_at_the_entry_point(self) -> None:
+        with mock.patch("regodoc.cli.build_parser", side_effect=MemoryError):
+            code, out, err = run_cli("validate", "x", "--json")
+        self.assertEqual(code, 3)
+        self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.limit.memory")
+        self.assertNotIn("Traceback", err)
+        # Nemmeno la memoria per il rapporto: una riga fissa su stderr e il codice 3.
+        with (
+            mock.patch("regodoc.cli.build_parser", side_effect=MemoryError),
+            mock.patch("regodoc.cli._write_json", side_effect=MemoryError),
+            mock.patch("regodoc.cli._note", side_effect=MemoryError),
+            mock.patch("os.write") as raw,
+        ):
+            code, _, _ = run_cli("validate", "x", "--json")
+        self.assertEqual(code, 3)
+        raw.assert_called_once_with(2, b"regodoc: memoria esaurita\n")
+
+    def test_expat_is_at_least_the_declared_minimum(self) -> None:
+        self.assertGreaterEqual(xml.parsers.expat.version_info, declaration.EXPAT_MIN)
+        self.assertEqual(declaration.describe()["expat_min"], "2.6.0")
 
 
 if __name__ == "__main__":

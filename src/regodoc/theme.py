@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Final
 
 from regodoc.declaration import THEME_CONTRACTS, THEME_LIMITS, THEME_ROLES
-from regodoc.diagnostics import Collector, clip
+from regodoc.diagnostics import Collector, clip, os_message
 from regodoc.text import bad_char_message, find_bad_chars, plain_text_problems, position_in
 
 # Il tema neutro, dentro il pacchetto Python del motore.
@@ -131,7 +131,7 @@ def _read_files(theme: Theme, report: Collector) -> bool:
         except OSError as error:
             report.error(
                 "regodoc.theme.layout",
-                f"non posso leggere la cartella del tema: {error.strerror}",
+                f"non posso leggere la cartella del tema: {os_message(error)}",
                 prefix,
             )
             return False
