@@ -63,7 +63,9 @@ Controlli, tutti verdi per ogni commit:
 - Un solo ramo di lavoro, `lavoro`, nato da `main`: ogni commit nuovo, correzioni comprese, va
   in cima a `lavoro`; nessun ramo a parte.
 - Storia lineare: nessun rebase, nessun amend, nessun push forzato, nessun merge.
-- Una pull request in bozza per lotto, da `lavoro` verso `main`; la sessione non la unisce mai:
+- Una pull request in bozza aperta da `lavoro` verso `main`: raccoglie i lotti fino al
+  fast-forward di `main` e porta la consegna di ciascuno come commento; dopo ogni avanzamento
+  di `main` se ne apre una nuova per il lotto successivo. La sessione non la unisce mai:
   risulta unita da sola quando `main` avanza in fast-forward.
 - La sessione non spinge su `main`, non crea tag né release e non cancella rami. `main`
   avanza solo in fast-forward, lo fa il capo progetto dopo il suo verde e con la CI verde su
@@ -90,7 +92,7 @@ Controlli, tutti verdi per ogni commit:
 ## Consegne, domande e ricevute
 
 - Tutto ciò che la sessione scrive qui è pubblico: solo codici, SHA, esiti e testi tecnici.
-- Consegna: un commento sulla pull request in bozza del lotto con che cosa è fatto, gli SHA,
+- Consegna: un commento sulla pull request in bozza aperta con che cosa è fatto, gli SHA,
   le prove per versione di Python e ciò che resta da decidere; in fondo il blocco:
 
 ```text
@@ -104,7 +106,8 @@ esito: verde
 ```
 
 - `codice`: il testo [CP-n] eseguito, o `nessuno`; `lotto`: il lotto o la revisione del primo
-  campo dei commit; `commit`: gli SHA brevi a 7 caratteri, nell'ordine del ramo; `esito`:
+  campo dei commit; `commit`: gli SHA brevi a 7 caratteri, nell'ordine del ramo, o `nessuno`
+  se il testo non chiede commit; `esito`:
   `verde` se tutti i controlli passano, altrimenti `rosso`, con il motivo nel commento.
 - Domande e ricevute vanno nella issue di canale di regodoc, con l'etichetta `canale`, che
   apre il capo progetto; la sessione non apre issue e non tocca quelle che non sono sue.
