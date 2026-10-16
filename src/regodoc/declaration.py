@@ -91,7 +91,7 @@ CONTENT_LIMITS: Final = MappingProxyType(
 )
 
 # Stato dei comandi: "draft" vuol dire che il comando esiste ma non fa ancora il suo lavoro
-# ed esce con il codice d'ambiente 3; sparisce entro la versione 0.1.0.
+# ed esce con il codice d'ambiente 3. Dalla versione 0.1.0 tutti i comandi sono pronti.
 COMMANDS: Final = MappingProxyType(
     {
         "info": "ready",
