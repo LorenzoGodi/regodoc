@@ -677,11 +677,12 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
   ricevuta in `grammar_in` e quella d'uscita in `grammar` (§4.2). Chi conserva le versioni
   registra l'uscita come **versione nuova**, tracciata, mai come riscrittura della
   precedente.
-- `canon` e `upgrade` scrivono solo pacchetti che il motore stesso accetta. Rientri e a capo
-  della forma canonica allungano i file: una parte valida scritta tutta su una riga può
-  uscire dai 384 KiB. In quel caso il comando esce con il codice 1 e
-  `regodoc.limit.file_size` sul file, e non scrive nulla; lo stesso per un limite
-  dell'involucro superato dall'archivio scritto.
+- `canon` e `upgrade` scrivono solo pacchetti che il motore stesso accetta. La forma
+  canonica allunga i file (rientri, a capo, sequenze `\"` e `\\` del TOML): una parte valida
+  scritta tutta su una riga può uscire dai 384 KiB. In quel caso il comando esce con il
+  codice 1 e `regodoc.limit.file_size` sul file, e non scrive nulla. Se i file stanno nei
+  limiti, l'archivio scritto si rivalida per intero prima del codice 0, e un problema lo
+  rifiuta allo stesso modo.
 - `canon` non aggiorna mai la grammatica: su una grammatica precedente scrive la forma
   canonica di quella grammatica, se il motore la sa ancora scrivere, altrimenti rifiuta con il
   codice 1 e l'errore `regodoc.manifest.grammar_old`, che rimanda a `upgrade`.

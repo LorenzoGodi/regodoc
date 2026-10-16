@@ -41,6 +41,9 @@ def chain(grammar: str) -> list[Step]:
     """I passi da ``grammar`` alla grammatica corrente, in ordine."""
     steps: list[Step] = []
     while grammar != GRAMMAR_CURRENT:
+        # Un passo per grammatica: più passi di quante grammatiche ci sono vuol dire un ciclo.
+        if grammar not in STEPS or len(steps) == len(STEPS):
+            raise ValueError(f"catena delle grammatiche interrotta a «{grammar}»")
         step = STEPS[grammar]
         steps.append(step)
         grammar = step.target

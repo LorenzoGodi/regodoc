@@ -1015,23 +1015,26 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
   a capo diventa uno spazio; si tolgono gli spazi all'inizio e alla fine del blocco, quelli
   accanto a `<break/>` e quelli che seguono un altro spazio, anche oltre il confine di un
   elemento in linea, sicché `a <b> x</b>` diventa `a <b>x</b>`. In `<code>` gli spazi in
-  testa e in coda escono dall'elemento, dove valgono uno spazio; `<address>` e il titolo di
-  `<source>` li perdono. Un `<item>` con un elenco annidato ha il testo sulla riga
+  testa e in coda escono dall'elemento, dove valgono uno spazio; il titolo di `<source>` li
+  perde (in `<address>` uno spazio è un errore). Un `<item>` con un elenco annidato ha il
+  testo sulla riga
   d'apertura, l'elenco rientrato sotto e `</item>` su una riga sua; una cella senza testo è
   `<cell/>`.
 - **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
   `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; stringhe
-  fra virgolette doppie, con `\"` e `\\` come sole sequenze; intervalli come
+  fra virgolette doppie, con `\"` e `\\` (gli altri caratteri di controllo, che un pacchetto
+  valido non contiene, si scriverebbero `\b`, `\t`, `\n`, `\f` o `\uXXXX`); intervalli come
   `[10, 14]`; commenti rimossi. Un `variables.toml` senza variabili è omesso
   dall'archivio canonico.
 - **JSON**: chiavi in ordine alfabetico, rientro di due spazi, a capo finale.
 - Testo NFC, a capo LF, UTF-8 senza BOM. Con l'insieme di caratteri del §5.2 il testo è già
   NFC: la forma canonica non normalizza nulla.
 
-Rientri e a capo allungano i file: una parte valida scritta tutta su una riga può superare i
-384 KiB nella forma canonica. `regodoc canon` e `regodoc upgrade` allora la rifiutano con
+La forma canonica allunga i file, con rientri, a capo e le sequenze `\"` e `\\` del TOML:
+una parte valida scritta tutta su una riga può superare i 384 KiB nella forma canonica, un
+`variables.toml` pieno di virgolette i suoi 384 KiB. `regodoc canon` e `regodoc upgrade` allora la rifiutano con
 `regodoc.limit.file_size` e non scrivono nulla, perché il motore stesso rifiuterebbe
 l'uscita.
 

@@ -40,10 +40,13 @@ def upgrade_test_grammar(files: Mapping[str, bytes]) -> dict[str, bytes]:
     return result
 
 
+def test_step() -> grammars.Step:
+    return grammars.Step(TEST_GRAMMAR, declaration.GRAMMAR_CURRENT, upgrade_test_grammar)
+
+
 @contextlib.contextmanager
 def test_grammar() -> Iterator[None]:
-    step = grammars.Step(TEST_GRAMMAR, declaration.GRAMMAR_CURRENT, upgrade_test_grammar)
-    with mock.patch.dict(grammars.STEPS, {TEST_GRAMMAR: step}):
+    with mock.patch.dict(grammars.STEPS, {TEST_GRAMMAR: test_step()}):
         yield
 
 
@@ -91,6 +94,28 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(grammars.readable(), declaration.GRAMMARS_READ)
         read = declaration.describe()["grammars"]["read"]  # type: ignore[index]
         self.assertNotIn(TEST_GRAMMAR, read)
+
+    def test_every_step_reaches_the_current_grammar(self) -> None:
+        for steps in ({}, {TEST_GRAMMAR: test_step()}):
+            with mock.patch.dict(grammars.STEPS, steps, clear=True):
+                for grammar in grammars.readable():
+                    with self.subTest(grammar):
+                        chain = grammars.chain(grammar)
+                        self.assertLessEqual(len(chain), len(grammars.STEPS))
+                        self.assertEqual(
+                            chain[-1].target if chain else grammar, declaration.GRAMMAR_CURRENT
+                        )
+
+    def test_a_broken_chain_is_caught(self) -> None:
+        loop = {
+            "rego/0-a": grammars.Step("rego/0-a", "rego/0-b", upgrade_test_grammar),
+            "rego/0-b": grammars.Step("rego/0-b", "rego/0-a", upgrade_test_grammar),
+            "rego/0-c": grammars.Step("rego/0-c", "rego/0-x", upgrade_test_grammar),
+        }
+        with mock.patch.dict(grammars.STEPS, loop):
+            for grammar in ("rego/0-a", "rego/0-c"):
+                with self.subTest(grammar), self.assertRaises(ValueError):
+                    grammars.chain(grammar)
 
     def test_the_fixture_differs_where_it_should(self) -> None:
         old, new = old_files(), current_files()

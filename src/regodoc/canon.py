@@ -8,7 +8,6 @@ scrive anche i file di contenuto canonici uno per uno.
 """
 
 import contextlib
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,10 +15,7 @@ from regodoc import __version__, canonical
 from regodoc.declaration import ENGINE_NAME, GRAMMAR_CURRENT
 from regodoc.diagnostics import clip
 from regodoc.outputs import OutputError, check_output, described, temporary_name, write_file
-from regodoc.validate import Validation, files_digest, validate_package
-
-DOCUMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
-DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+from regodoc.validate import DIGEST, DOCUMENT, Validation, files_digest, validate_package
 
 
 @dataclass

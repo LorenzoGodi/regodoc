@@ -35,8 +35,9 @@ from regodoc.tomlfiles import (
     read_variables,
 )
 
-_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
-_DOCUMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+# Le forme di «document» e «base_version» del manifesto (specifica, §1.3).
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+DOCUMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _GRAMMAR = re.compile(r"rego/([1-9][0-9]{0,3})")
 _MANIFEST_KEYS = ("format", "grammar", "document", "base_version", "files", "generator")
 
@@ -96,8 +97,8 @@ class Validation:
         return {
             "grammar": self.grammar,
             "generator": well_formed_generator(self.manifest.get("generator")),
-            "document": _valid_or_none(self.manifest.get("document"), _DOCUMENT),
-            "base_version": _valid_or_none(self.manifest.get("base_version"), _DIGEST),
+            "document": _valid_or_none(self.manifest.get("document"), DOCUMENT),
+            "base_version": _valid_or_none(self.manifest.get("base_version"), DIGEST),
             "files": files if self.package is not None else None,
             "files_sha256": files_digest(files) if self.package is not None else None,
             "package_header": header,
@@ -295,10 +296,10 @@ def _check_manifest(
 def _check_manifest_optional(manifest: dict[str, object], report: Collector) -> None:
     file = "manifest.json"
     document = manifest.get("document")
-    if document is not None and not (isinstance(document, str) and _DOCUMENT.fullmatch(document)):
+    if document is not None and not (isinstance(document, str) and DOCUMENT.fullmatch(document)):
         report.error("regodoc.manifest.value", "«document» non è un identificatore valido", file)
     base = manifest.get("base_version")
-    if base is not None and not (isinstance(base, str) and _DIGEST.fullmatch(base)):
+    if base is not None and not (isinstance(base, str) and DIGEST.fullmatch(base)):
         report.error(
             "regodoc.manifest.value", "«base_version» deve essere sha256: e 64 cifre", file
         )
@@ -312,7 +313,7 @@ def _check_manifest_optional(manifest: dict[str, object], report: Collector) -> 
                     report.error(
                         "regodoc.manifest.value", f"«files»: percorso non ammesso «{path}»", file
                     )
-                elif not (isinstance(digest, str) and _DIGEST.fullmatch(digest)):
+                elif not (isinstance(digest, str) and DIGEST.fullmatch(digest)):
                     report.error(
                         "regodoc.manifest.value",
                         f"«files»: impronta non valida per «{path}»",
