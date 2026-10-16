@@ -13,6 +13,7 @@ import contextlib
 import json
 import re
 import shutil
+import signal
 import tempfile
 import unittest
 import zipfile
@@ -38,6 +39,26 @@ def upgrade_test_grammar(files: Mapping[str, bytes]) -> dict[str, bytes]:
             data = re.sub(rb"(?m)^lang(\s*=)", rb"language\1", data)  # noqa: PLW2901
         result[path] = data
     return result
+
+
+@contextlib.contextmanager
+def at_most(seconds: int) -> Iterator[None]:
+    """Un tetto di tempo per una chiamata che, guasta, girerebbe in tondo: la prova fallisce
+    invece di bloccarsi. Senza SIGALRM il tetto non c'è."""
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def expired(_signum: int, _frame: object) -> None:
+        raise AssertionError(f"oltre {seconds} s: la catena gira in tondo")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def test_step() -> grammars.Step:
@@ -114,7 +135,7 @@ class RegistryTest(unittest.TestCase):
         }
         with mock.patch.dict(grammars.STEPS, loop):
             for grammar in ("rego/0-a", "rego/0-c"):
-                with self.subTest(grammar), self.assertRaises(ValueError):
+                with self.subTest(grammar), self.assertRaises(ValueError), at_most(2):
                     grammars.chain(grammar)
 
     def test_the_fixture_differs_where_it_should(self) -> None:

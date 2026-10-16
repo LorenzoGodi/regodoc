@@ -335,6 +335,14 @@ class ResidualTest(unittest.TestCase):
         self.assertEqual(result.returncode, 3)
         self.assertEqual(result.stderr, b"regodoc: memoria esaurita\n")
         self.assertEqual(result.stdout, b"")
+        # Con stderr chiuso il codice resta 3.
+        closed = subprocess.run(
+            [sys.executable, "-c", f"import os; os.close(2)\n{script}", "info"],
+            capture_output=True,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            check=False,
+        )
+        self.assertEqual(closed.returncode, 3)
 
     def test_system_errors_are_in_italian(self) -> None:
         failure = OSError(errno.ENOSPC, "No space left on device")
