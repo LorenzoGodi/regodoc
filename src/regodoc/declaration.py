@@ -150,9 +150,11 @@ THEME_LIMITS: Final = MappingProxyType({"files": 200, "bytes": 8 * _MIB})
 CAPABILITIES: Final = (
     "validate",
     "validate.directory",
+    "canon",
     "build.pdf",
     "build.latex",
     "build.theme",
+    "upgrade",
 )
 
 LANGUAGES: Final = ("it", "en")

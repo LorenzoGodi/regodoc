@@ -75,9 +75,24 @@ class DeclarationContractTest(unittest.TestCase):
         }
         self.assertEqual(documented, declared)
 
-    def test_capabilities_are_documented(self) -> None:
-        for capability in declaration.CAPABILITIES:
-            self.assertIn(f"`{capability}`", section("5.2"))
+    def test_capabilities_match_section_5_2(self) -> None:
+        # Uguaglianza, non inclusione: una capacità documentata e non dichiarata farebbe
+        # nascondere a Rego una funzione che il motore ha.
+        documented = set()
+        for cell in re.findall(r"^\| (`[^|]+) \|", section("5.2"), re.M):
+            documented |= set(re.findall(r"`([a-z.]+)`", cell))
+        self.assertEqual(documented, set(declaration.CAPABILITIES))
+
+    def test_every_ready_command_has_its_capability(self) -> None:
+        for command, state in declaration.COMMANDS.items():
+            if command != "info" and state == "ready":
+                with self.subTest(command):
+                    self.assertTrue(
+                        any(
+                            c == command or c.startswith(f"{command}.")
+                            for c in declaration.CAPABILITIES
+                        )
+                    )
 
     def test_exit_codes_match_section_7(self) -> None:
         documented = [int(n) for n in re.findall(r"^\| (\d+) \|", section("7"), re.M)]
