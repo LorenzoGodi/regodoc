@@ -135,13 +135,13 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     righe di tabella o elementi in linea, parti miste, 1.500 variabili e i pixel delle
     immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
     fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano,
-    scrivono la forma canonica e l'archivio, compresso su al massimo quattro thread, e, se i
-    file stanno nei limiti, rivalidano per intero l'archivio scritto (§8): con il comando vero,
-    limiti di tempo e di memoria compresi, sul caso peggiore che scrivono ci hanno messo da
-    21,0 a 21,3 s in tre giri con carico 1 su una macchina a 4 vCPU, e una rilettura
-    indipendente fino a 29,3 s con carico da 1,5 a 4; chi stima conti fino a 35 s. Per questo
-    `canon` dichiara 60 s, come `upgrade`, e la CI fallisce oltre 40 s, i due terzi. Scritti su
-    una riga, i casi delle parti escono dai 384 KiB nella forma canonica e `canon` li rifiuta;
+    scrivono la forma canonica e l'archivio e, se i file stanno nei limiti, rivalidano per
+    intero l'archivio scritto (§8): con il comando vero, limiti di tempo e di memoria compresi,
+    sul caso peggiore che scrivono ci hanno messo da 20,1 a 22,9 s in tre giri, uno per
+    versione di Python, con carico 1 su una macchina a 4 vCPU, e una rilettura indipendente
+    fino a 29,3 s con carico da 1,5 a 4; chi stima conti fino a 35 s. Per questo `canon`
+    dichiara 60 s, come `upgrade`, e la CI fallisce oltre 40 s, i due terzi. Scritti su una
+    riga, i casi delle parti escono dai 384 KiB nella forma canonica e `canon` li rifiuta;
     ognuno ha una variante più corta che sta nei limiti e passa per intero, e si misura anche
     quella. Con un tema esterno `build` compila una volta in più, per il controllo dei
     pacchetti del §6.1: da mezzo secondo a circa 1,5 s.
