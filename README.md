@@ -34,6 +34,10 @@ python3 -m venv .venv
 .venv/bin/regodoc --version
 ```
 
+Chi usa il motore da un altro programma installa invece il wheel di una release con la sua
+impronta (`pip install --require-hashes`): costruzione, rilascio e versione fissata sono in
+[`docs/release.md`](docs/release.md).
+
 ## Comandi
 
 | Comando | Che cosa fa | Stato |
@@ -85,7 +89,10 @@ nella CI, un pdflatex mancante diventa un errore.
 ### CI
 
 La CI usa GitHub Actions ed esegue ruff, il controllo d'igiene e le prove su Linux e macOS
-con Python 3.12, 3.13 e 3.14. Verifica anche l'installazione in un venv pulito. Un job TeX compila
+con Python 3.12, 3.13 e 3.14. Costruisce due volte wheel e archivio sorgente, che devono
+essere identici byte per byte, li installa con le impronte in un venv pulito e li conserva
+come artefatto del commit, con `SHA256SUMS`. Ogni strumento che la CI installa con pip è
+fissato con le impronte in `tools/requirements/`. Un job TeX compila
 due volte lo stesso sorgente sulla stessa base dell'immagine di produzione di Rego
 (`python:3.12-slim` su Debian trixie, fissata per digest) con i pacchetti TeX Live elencati
 sopra, e confronta i PDF byte per byte.
