@@ -1,6 +1,10 @@
 """Il pacchetto Python di regodoc: metadati, licenza e strumenti di costruzione."""
 
+import importlib.util
 import re
+import subprocess
+import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -39,10 +43,45 @@ class LicenseTest(unittest.TestCase):
 
 
 class PinnedToolsTest(unittest.TestCase):
+    def test_every_pip_install_in_the_ci_requires_hashes(self) -> None:
+        installs = [line for line in CI.splitlines() if "pip install" in line]
+        self.assertGreaterEqual(len(installs), 3)
+        for line in installs:
+            with self.subTest(line.strip()):
+                self.assertIn("--require-hashes", line)
+                self.assertIn("--no-deps", line)
+
+    def test_build_backend_is_pinned_within_the_declared_range(self) -> None:
+        version, hashes = pinned(REQUIREMENTS / "build.txt")["flit_core"]
+        major, minor = (int(n) for n in version.split(".")[:2])
+        self.assertEqual(major, 3)
+        self.assertGreaterEqual(minor, 12)
+        self.assertTrue(hashes)
+
     def test_ruff_matches_the_ci_version(self) -> None:
         version = re.search(r'RUFF_VERSION: "([^"]+)"', CI)
         assert version is not None
         self.assertEqual(pinned(REQUIREMENTS / "lint.txt")["ruff"][0], version.group(1))
+
+
+@unittest.skipUnless(importlib.util.find_spec("flit_core"), "flit_core non installato")
+class ReproducibleBuildTest(unittest.TestCase):
+    """La costruzione che fa il job del pacchetto nella CI, dove flit_core c'è sempre."""
+
+    def test_two_builds_give_the_same_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            tool = str(ROOT / "tools" / "build_release.py")
+            result = subprocess.run(
+                [sys.executable, tool, "--out", folder, "--check"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            sums = (Path(folder) / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(sums), 2)
+        self.assertTrue(sums[0].endswith("-py3-none-any.whl"))
+        self.assertTrue(sums[1].endswith(".tar.gz"))
 
 
 if __name__ == "__main__":

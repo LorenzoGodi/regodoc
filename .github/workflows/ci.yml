@@ -66,8 +66,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e .
+      # Dal sorgente, senza installare: l'installazione la prova il job del pacchetto, con
+      # le impronte.
       - run: python -m unittest discover -s tests -t . -v
+        env:
+          PYTHONPATH: src
 
   worst:
     name: tempi del caso peggiore (${{ matrix.os }})
@@ -88,8 +91,8 @@ jobs:
       # canon, o se canon, con i limiti del comando vero, rifiuta un caso che dovrebbe scrivere.
       - run: python tools/measure_worst.py --margin 1.5
 
-  install:
-    name: installazione in un venv pulito
+  package:
+    name: pacchetto riproducibile e installazione con le impronte
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -99,15 +102,27 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: pip install . e comando
+      - run: python -m pip install --require-hashes --no-deps -r tools/requirements/build.txt
+      # Due costruzioni con umask diverse, stessi byte; versione e licenza nei metadati.
+      - run: python tools/build_release.py --out dist --check
+      - name: Installazione del wheel con la sua impronta, in un ambiente pulito
         run: |
+          wheel="$(ls dist/*.whl)"
+          digest="$(sha256sum "$wheel" | cut -d ' ' -f 1)"
+          echo "regodoc @ file://$PWD/$wheel --hash=sha256:$digest" > "$RUNNER_TEMP/pin.txt"
           python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/python" -m pip install .
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --require-hashes --no-deps -r "$RUNNER_TEMP/pin.txt"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/venv/bin/regodoc" --version
           "$RUNNER_TEMP/venv/bin/regodoc" info
           "$RUNNER_TEMP/venv/bin/python" -m regodoc info > /dev/null
           test -z "$("$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze | grep -v -E '^(pip|regodoc)==')"
+      # I file che la release di questo commit pubblica, con SHA256SUMS.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: regodoc-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
 
   tex:
     name: TeX sull'immagine di riferimento
