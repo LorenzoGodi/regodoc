@@ -10,13 +10,11 @@ import dataclasses
 import datetime
 import hashlib
 import json
-import os
 import re
 import struct
 import tomllib
 import zlib
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from regodoc import __version__
@@ -360,12 +358,11 @@ def archive(files: list[tuple[str, bytes]]) -> bytes:
     """
     body = bytearray()
     central = bytearray()
-    # Le voci si comprimono in parallelo: zlib lascia il GIL, e ogni voce è indipendente,
-    # quindi i byte non dipendono dall'ordine in cui i thread finiscono.
-    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
-        compressed = list(
-            pool.map(lambda item: item[1] if _stored(item[0]) else _deflate(item[1]), files)
-        )
+    # Le voci si comprimono una dopo l'altra, nel thread principale. In parallelo ci voleva
+    # meno tempo, ma ogni thread apre un'arena di malloc che tiene spazio d'indirizzi anche dopo
+    # la fine del thread, e la rivalidazione dell'uscita andava oltre il limite di memoria del
+    # comando, che conta proprio lo spazio d'indirizzi.
+    compressed = [data if _stored(name) else _deflate(data) for name, data in files]
     for (name, data), packed in zip(files, compressed, strict=True):
         stored = _stored(name)
         method = 0 if stored else 8
