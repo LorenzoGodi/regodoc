@@ -1,11 +1,28 @@
 """Il pacchetto Python di regodoc: metadati, licenza e strumenti di costruzione."""
 
+import re
 import tomllib
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+REQUIREMENTS = ROOT / "tools" / "requirements"
+
+
+def pinned(path: Path) -> dict[str, tuple[str, list[str]]]:
+    """I requisiti di un file con le impronte: nome, versione esatta e impronte."""
+    text = path.read_text(encoding="utf-8").replace("\\\n", " ")
+    found = {}
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()  # noqa: PLW2901
+        if not line:
+            continue
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==(\S+)((?:\s+--hash=sha256:[0-9a-f]{64})+)", line)
+        assert match, f"{path.name}: requisito senza versione esatta o senza impronte: {line}"
+        found[match.group(1)] = (match.group(2), re.findall(r"[0-9a-f]{64}", match.group(3)))
+    return found
 
 
 class LicenseTest(unittest.TestCase):
@@ -19,6 +36,13 @@ class LicenseTest(unittest.TestCase):
 
     def test_build_backend_supports_it(self) -> None:
         self.assertEqual(PYPROJECT["build-system"]["requires"], ["flit_core>=3.12,<4"])
+
+
+class PinnedToolsTest(unittest.TestCase):
+    def test_ruff_matches_the_ci_version(self) -> None:
+        version = re.search(r'RUFF_VERSION: "([^"]+)"', CI)
+        assert version is not None
+        self.assertEqual(pinned(REQUIREMENTS / "lint.txt")["ruff"][0], version.group(1))
 
 
 if __name__ == "__main__":
