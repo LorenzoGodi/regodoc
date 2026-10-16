@@ -11,7 +11,8 @@ un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichia
 (§5) e la ripulitura dei messaggi dai caratteri di controllo (§4.4); poi il limite di 64
 livelli di oggetti e array nei JSON (§3.2 e specifica, §1.3), il rifiuto di `canon` e
 `upgrade` quando la forma canonica esce dai limiti (§8), il tempo dichiarato di `canon`
-portato a 60 s (§2.3) e le capacità `canon` e `upgrade` (§5.2). La bozza che la
+portato a 60 s (§2.3), le capacità `canon` e `upgrade` (§5.2) e la nota sui valori
+sentinella dei candidati di Rego (§4.2). La bozza che la
 precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama passa
 `--contract 1`.
 
@@ -324,6 +325,15 @@ in decimale, uno spazio, il percorso, un a capo. Due pacchetti con gli stessi fi
 contenuto hanno lo stesso `files_sha256`, qualunque sia il resto dell'archivio. Chi conserva
 le versioni la usa come impronta della versione e la scrive in `base_version` come
 `"sha256:"` seguito dall'impronta, con `canon --base-version`.
+
+**Valori sentinella dei candidati.** Finché un candidato è registrato da un `INSERT` che non
+scrive ancora le due colonne `generatore_pdf` e `impronta_contenuto`, Rego vi mette due
+sentinelle che significano «non ancora generato»: `generatore_pdf` vale `["ignoto"]` e
+`impronta_contenuto` vale sessantaquattro zeri. Nessuna versione del motore né del renderer
+di Rego si chiama `ignoto`, e sessantaquattro zeri non sono mai un `files_sha256` valido:
+Rego rifiuta una versione di pacchetto con quell'impronta. Un candidato con una sentinella
+non si emette. Il vincolo corrispondente sta nello schema di Rego, non nel motore, che non
+cambia: il paragrafo non cambia la versione del contratto.
 
 ### 4.3 Che cosa aggiunge `build`
 
