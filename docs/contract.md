@@ -1,20 +1,20 @@
 # Contratto del motore regodoc
 
-Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del primo
-rilascio: §2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre il tetto dei
-problemi.** Lo stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1), la
-chiave `warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica che
-un `<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
+Stato: **versione 1, approvata il 14/10/2026; emendata il 15/10/2026 prima del primo rilascio:
+§2.1 e §2.3 limiti applicati dal motore, §4.4 e §5.1 avvisi oltre il tetto dei problemi.** Lo
+stesso emendamento aggiunge `limits_active` con i valori applicati (§4.1), la chiave
+`warnings_omitted` e i testi puri di `generator` (§4.2), e precisa nella specifica che un
+`<link>` dentro un `<link>` è un elemento fuori posto. `regodoc info` dichiara
 `"contract": 1`. Il 16/10/2026, sempre prima del primo rilascio, si aggiungono i codici
 `regodoc.theme.tampered` e `regodoc.pdf.active` (§6.4 e §6.5), con la famiglia
 `regodoc.pdf.*`, i tetti dei pixel dei PNG (§5.1), le chiavi `expat` ed `expat_min` di `info`
 (§5) e la ripulitura dei messaggi dai caratteri di controllo (§4.4); poi il limite di 64
 livelli di oggetti e array nei JSON (§3.2 e specifica, §1.3), il rifiuto di `canon` e
 `upgrade` quando la forma canonica esce dai limiti (§8), il tempo dichiarato di `canon`
-portato a 60 s (§2.3), le capacità `canon` e `upgrade` (§5.2) e la nota sui valori
-sentinella dei candidati di Rego (§4.2). La bozza che la
-precedeva, dichiarata come versione 0, non è servita da nessun motore: chi chiama passa
-`--contract 1`.
+portato a 60 s (§2.3), le capacità `canon` e `upgrade` (§5.2), la nota sui valori sentinella
+dei candidati di Rego (§4.2) e, nella specifica, le regole della forma canonica (§9): gli
+spazi del testo misto e le immagini memorizzate senza compressione. La bozza che la precedeva,
+dichiarata come versione 0, non è servita da nessun motore: chi chiama passa `--contract 1`.
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -136,8 +136,10 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
     fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano,
     scrivono la forma canonica e l'archivio, compresso su al massimo quattro thread, e, se i
-    file stanno nei limiti, rivalidano per intero l'archivio scritto (§8): sul comando vero e
-    sugli stessi casi ci hanno messo da 10,5 a 23 s; chi stima conti fino a 25 s. Per questo
+    file stanno nei limiti, rivalidano per intero l'archivio scritto (§8): con il comando vero,
+    limiti di tempo e di memoria compresi, sul caso peggiore che scrivono ci hanno messo da
+    21,0 a 21,3 s in tre giri con carico 1 su una macchina a 4 vCPU, e una rilettura
+    indipendente fino a 29,3 s con carico da 1,5 a 4; chi stima conti fino a 35 s. Per questo
     `canon` dichiara 60 s, come `upgrade`, e la CI fallisce oltre 40 s, i due terzi. Scritti su
     una riga, i casi delle parti escono dai 384 KiB nella forma canonica e `canon` li rifiuta;
     ognuno ha una variante più corta che sta nei limiti e passa per intero, e si misura anche
