@@ -924,7 +924,7 @@ non bloccano il pacchetto.
 | `regodoc.image.structure` | §6.4 passo 10 |
 | `regodoc.image.metadata` | avviso; §6.4 passo 10 |
 | `regodoc.image.unused` | avviso; §6.4 passo 11 |
-| `regodoc.limit.file_size` | §7.2 |
+| `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
 | `regodoc.limit.variables` | §7.2 |
 | `regodoc.limit.characters` | §7.2 |
@@ -1011,15 +1011,14 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
   corpo da colonna 1, fra un a capo dopo il tag d'apertura e uno prima di quello di chiusura;
   un commento su una riga sua, con lo stesso rientro dell'elemento che lo segue, o dei figli
   se è in fondo; nessuna riga vuota; a capo finale.
-- **Spazi del testo misto**, gli stessi del PDF (§5.1): ogni sequenza di spazi, tabulazioni e
-  a capo diventa uno spazio; si tolgono gli spazi all'inizio e alla fine del blocco, quelli
+- **Spazi del testo misto**, gli stessi del PDF (§5.1): ogni sequenza di spazi, tabulazioni e a
+  capo diventa uno spazio; si tolgono gli spazi all'inizio e alla fine del blocco, quelli
   accanto a `<break/>` e quelli che seguono un altro spazio, anche oltre il confine di un
-  elemento in linea, sicché `a <b> x</b>` diventa `a <b>x</b>`. In `<code>` gli spazi in
-  testa e in coda escono dall'elemento, dove valgono uno spazio; il titolo di `<source>` li
-  perde (in `<address>` uno spazio è un errore). Un `<item>` con un elenco annidato ha il
-  testo sulla riga
-  d'apertura, l'elenco rientrato sotto e `</item>` su una riga sua; una cella senza testo è
-  `<cell/>`.
+  elemento in linea, sicché `a <b> x</b>` diventa `a <b>x</b>`. In `<code>` gli spazi in testa
+  e in coda escono dall'elemento, dove valgono uno spazio; il titolo di `<source>` li perde (in
+  `<address>` uno spazio è un errore). Un `<item>` con un elenco annidato ha il testo sulla
+  riga d'apertura, l'elenco rientrato sotto e `</item>` su una riga sua; una cella senza testo
+  è `<cell/>`.
 - **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
@@ -1032,11 +1031,11 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
 - Testo NFC, a capo LF, UTF-8 senza BOM. Con l'insieme di caratteri del §5.2 il testo è già
   NFC: la forma canonica non normalizza nulla.
 
-La forma canonica allunga i file, con rientri, a capo e le sequenze `\"` e `\\` del TOML:
-una parte valida scritta tutta su una riga può superare i 384 KiB nella forma canonica, un
-`variables.toml` pieno di virgolette i suoi 384 KiB. `regodoc canon` e `regodoc upgrade` allora la rifiutano con
-`regodoc.limit.file_size` e non scrivono nulla, perché il motore stesso rifiuterebbe
-l'uscita.
+La forma canonica allunga i file, con rientri, a capo e le sequenze `\"` e `\\` del TOML: una
+parte valida scritta tutta su una riga può superare i 384 KiB nella forma canonica, un
+`variables.toml` pieno di virgolette i suoi 384 KiB. `regodoc canon` e `regodoc upgrade` allora
+la rifiutano con `regodoc.limit.file_size` e non scrivono nulla, perché il motore stesso
+rifiuterebbe l'uscita.
 
 ---
 
