@@ -6,12 +6,17 @@ di 384 KiB, ognuna piena di un solo tipo di elemento con il minimo di testo: voc
 sezioni, righe di tabella, elementi in linea. Sono i pacchetti che chiedono più lavoro per
 byte al lettore XML restando entro tutti i limiti, compreso quello dei caratteri.
 
-``canon`` è la validazione più la scrittura della forma canonica e dell'archivio; ``upgrade``
-su un pacchetto corrente fa lo stesso lavoro, con un tempo dichiarato più largo.
+``canon`` si misura sul percorso vero, ``canon.run`` verso un file temporaneo: validazione,
+forma canonica, archivio, controlli dell'uscita e, se passano, rivalidazione dell'archivio
+scritto. ``upgrade`` su un pacchetto corrente fa lo stesso lavoro, con un tempo dichiarato
+più largo. Scritti su una riga, i casi delle parti escono dai 384 KiB nella forma canonica e
+``canon`` li rifiuta con ``regodoc.limit.file_size``; per questo ogni caso delle parti ha
+anche una variante più corta, che nella forma canonica sta nei limiti e passa per intero.
 
-Il comando stampa i tempi ed esce con 1 se un caso non è valido, o se supera il tempo che
-``info`` dichiara per il comando diviso ``--margin`` (predefinito 1, cioè il tempo
-dichiarato).
+Il comando stampa i tempi ed esce con 1 se un caso non è valido, se ``canon`` rifiuta un
+caso con un codice diverso da ``regodoc.limit.file_size`` o rifiuta una variante canonica, o
+se un tempo supera quello che ``info`` dichiara per il comando diviso ``--margin``
+(predefinito 1, cioè il tempo dichiarato).
 
     python tools/measure_worst.py [--margin 1.5]
 """
@@ -19,6 +24,7 @@ dichiarato).
 import argparse
 import random
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -30,7 +36,7 @@ sys.path.insert(0, str(ROOT))
 from tests import test_limits as builders  # noqa: E402
 from tests.support import build_zip, example_files, png_pixels, validate_bytes  # noqa: E402
 
-from regodoc import canonical  # noqa: E402
+from regodoc import canon, canonical  # noqa: E402
 from regodoc.declaration import CONTENT_LIMITS, RESOURCES  # noqa: E402
 
 LABELS = ("observed", "declared", "decided", "proposed", "to-verify", "critical")
@@ -38,8 +44,13 @@ PARTS = 45
 BUDGET = int(CONTENT_LIMITS["part_bytes"]) - 300
 
 
-def fill(make: Callable[[int], str], budget: int = BUDGET) -> tuple[str, int]:
+# Il budget di byte per parte in vigore: BUDGET, oppure meno per le varianti canoniche.
+_BUDGET = [BUDGET]
+
+
+def fill(make: Callable[[int], str], budget: int | None = None) -> tuple[str, int]:
     """Ripete ``make`` finché il testo sta nel budget di byte; restituisce testo e numero."""
+    budget = _BUDGET[0] if budget is None else budget
     pieces: list[str] = []
     size = 0
     while True:
@@ -131,45 +142,59 @@ def images_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
     return files, stored, len(stored)
 
 
-Measure = tuple[float, float, int, list[str]]
-
-
-def measure(body_of: Callable[[int], tuple[str, int]]) -> Measure:
+def part_package(body_of: Callable[[int], tuple[str, int]]) -> tuple[bytes, int]:
     files = builders.structure_with_parts(PARTS + 3)
     elements = 0
     for k in range(PARTS):
         body, count = body_of(k)
         elements += count
         files[f"parts/extra{k}.xml"] = builders.part(body)
-    return timed(build_zip(files), elements)
+    return build_zip(files), elements
 
 
-def timed(data: bytes, elements: int) -> Measure:
-    """I tempi migliori di due validazioni e di due ``canon``, con gli errori trovati."""
-    best = rewrite = float("inf")
+def time_validate(data: bytes) -> tuple[float, list[str]]:
+    """Il tempo migliore di due validazioni, con gli errori trovati."""
+    best = float("inf")
     codes: list[str] = []
     for _ in range(2):
         start = time.perf_counter()
         validation = validate_bytes(data)
         best = min(best, time.perf_counter() - start)
         codes = sorted({d.code for d in validation.report.errors})
-        if codes:
-            continue
-        structure = validation.structure
-        assert structure is not None  # noqa: S101 - un pacchetto valido ha structure.toml
-        start = time.perf_counter()
-        validation = validate_bytes(data)
-        files = canonical.package_files(
-            canonical.content_files(validation),
-            grammar=str(validation.grammar),
-            title=str(structure.header["title"]),
-            language=structure.language,
-            document=None,
-            base_version=None,
-        )
-        canonical.archive(files)
-        rewrite = min(rewrite, time.perf_counter() - start)
-    return best, rewrite, elements, codes
+    return best, codes
+
+
+def time_canon(data: bytes) -> tuple[float, list[str]]:
+    """Il tempo migliore di due ``canon`` verso un file, con i codici di rifiuto."""
+    best = float("inf")
+    codes: list[str] = []
+    with tempfile.TemporaryDirectory() as folder:
+        package = Path(folder) / "in.regodoc"
+        package.write_bytes(data)
+        for _ in range(2):
+            start = time.perf_counter()
+            outcome = canon.run(
+                package,
+                str(Path(folder) / "out.regodoc"),
+                document=None,
+                base_version=None,
+                files_dir=None,
+                strict=False,
+            )
+            best = min(best, time.perf_counter() - start)
+            codes = sorted({d.code for d in outcome.validation.report.errors})
+    return best, codes
+
+
+def growth(data: bytes) -> float:
+    """Quanto la forma canonica allunga la parte che cresce di più."""
+    validation = validate_bytes(data)
+    assert validation.package is not None  # noqa: S101 - il caso è valido
+    return max(
+        len(body) / len(validation.package.files[path])
+        for path, body in canonical.content_files(validation)
+        if path.startswith("parts/extra")
+    )
 
 
 def main() -> int:
@@ -179,30 +204,51 @@ def main() -> int:
     allowed = RESOURCES["time_seconds"]["validate"] / margin
     allowed_canon = RESOURCES["time_seconds"]["canon"] / margin
     worst = worst_canon = 0.0
-    invalid = []
-    measures = {
-        label: lambda body_of=body_of: measure(body_of) for label, body_of in cases().items()
-    }
+    problems = []
+    runs: list[tuple[str, Callable[[], tuple[bytes, int]], bool]] = []
+    for label, body_of in cases().items():
+        runs.append((label, lambda body_of=body_of: part_package(body_of), True))
     for label, build in (("variabili", variables_case), ("immagini", images_case)):
-        measures[label] = lambda build=build: timed(build_zip(*build()[:2]), build()[2])
-    for label, run in measures.items():
-        seconds, rewrite, elements, codes = run()
-        worst = max(worst, seconds)
+        runs.append((label, lambda build=build: _zip(build()), False))
+    for label, make, scalable in runs:
+        _BUDGET[0] = BUDGET
+        data, elements = make()
+        seconds, codes = time_validate(data)
+        rewrite, refused = time_canon(data)
+        worst, worst_canon = max(worst, seconds), max(worst_canon, rewrite)
         if codes:
-            invalid.append(label)
-        else:
-            worst_canon = max(worst_canon, rewrite)
+            problems.append(f"{label}: non valido {codes}")
+        if set(refused) - {"regodoc.limit.file_size"}:
+            problems.append(f"{label}: canon rifiuta con {refused}")
         print(
             f"{label:10s} {elements:>8} elementi  validate {seconds:6.2f} s  "
-            f"canon {rewrite:6.2f} s  errori {codes}",
+            f"canon {rewrite:6.2f} s {refused or 'scritto'}",
             flush=True,
         )
+        if scalable and refused:
+            _BUDGET[0] = int(BUDGET / growth(data) * 0.99)
+            data, elements = make()
+            rewrite, refused = time_canon(data)
+            worst_canon = max(worst_canon, rewrite)
+            if refused:
+                problems.append(f"{label} canonico: canon rifiuta con {refused}")
+            print(
+                f"{'  canonico':10s} {elements:>8} elementi  {'':17s}"
+                f"canon {rewrite:6.2f} s {refused or 'scritto'}",
+                flush=True,
+            )
+    _BUDGET[0] = BUDGET
     print(f"validate: caso peggiore {worst:.2f} s, ammessi {allowed:.2f} s (margine {margin})")
     print(f"canon: caso peggiore {worst_canon:.2f} s, ammessi {allowed_canon:.2f} s")
-    if invalid:
-        print(f"casi non validi, quindi non ammessi dai limiti: {', '.join(invalid)}")
+    for problem in problems:
+        print(problem)
     passed = worst <= allowed and worst_canon <= allowed_canon
-    return 0 if passed and not invalid else 1
+    return 0 if passed and not problems else 1
+
+
+def _zip(case: tuple[dict[str, bytes], tuple[str, ...], int]) -> tuple[bytes, int]:
+    files, stored, elements = case
+    return build_zip(files, stored), elements
 
 
 if __name__ == "__main__":

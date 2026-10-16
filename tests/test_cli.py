@@ -118,7 +118,7 @@ class ValidateCommandTest(unittest.TestCase):
                 ("canon", "/nessun/percorso", "-o", "q", "--json"),
                 ExitCode.USAGE,
                 "regodoc.usage",
-                applied,
+                {**applied, "time_seconds": 60},
             ),
         ]
         for argv, exit_code, code, active in cases:

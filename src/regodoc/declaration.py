@@ -107,7 +107,7 @@ COMMANDS: Final = MappingProxyType(
 RESOURCES: Final = MappingProxyType(
     {
         "time_seconds": MappingProxyType(
-            {"info": 5, "validate": 30, "canon": 30, "build": 300, "upgrade": 60}
+            {"info": 5, "validate": 30, "canon": 60, "build": 300, "upgrade": 60}
         ),
         "memory_bytes": 1024 * _MIB,
         # I sistemi dove il motore limita da sé la memoria, con RLIMIT_AS: altrove il

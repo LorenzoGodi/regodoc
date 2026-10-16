@@ -130,13 +130,15 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     15 s. I casi sono quelli di `tools/measure_worst.py`: parti piene di elenchi, sezioni,
     righe di tabella o elementi in linea, parti miste, 1.500 variabili e i pixel delle
     immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
-    fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano e
-    poi scrivono la forma canonica e l'archivio, compresso su al massimo quattro thread: sugli
-    stessi casi ci hanno messo da 10,5 a 13,5 s, misurati e controllati allo stesso modo, contro
-    i 30 s di `canon` e i 60 s di `upgrade`. È un tetto largo: quei casi, scritti tutti su una riga, nella forma canonica
-    escono dai limiti, e `canon` li rifiuta (§8). Con un tema esterno `build`
-    compila una volta in più, per il controllo dei pacchetti del §6.1: da mezzo secondo a
-    circa 1,5 s.
+    fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano,
+    scrivono la forma canonica e l'archivio, compresso su al massimo quattro thread, e, se i
+    file stanno nei limiti, rivalidano per intero l'archivio scritto (§8): sul comando vero e
+    sugli stessi casi ci hanno messo da 10,5 a 23 s; chi stima conti fino a 25 s. Per questo
+    `canon` dichiara 60 s, come `upgrade`, e la CI fallisce oltre 40 s, i due terzi. Scritti su
+    una riga, i casi delle parti escono dai 384 KiB nella forma canonica e `canon` li rifiuta;
+    ognuno ha una variante più corta che sta nei limiti e passa per intero, e si misura anche
+    quella. Con un tema esterno `build` compila una volta in più, per il controllo dei
+    pacchetti del §6.1: da mezzo secondo a circa 1,5 s.
   - **SIGALRM e SIGINT.** Il motore usa `SIGALRM` per il tempo: un `SIGALRM` mandato da
     fuori durante un comando lo ferma come un tempo scaduto, con il codice 3 e
     `regodoc.limit.time`. Un `SIGINT` interrompe il comando con il codice 130 e il rapporto;
