@@ -11,7 +11,7 @@ import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc import __version__, canonical
+from regodoc import __version__, canonical, limits
 from regodoc.declaration import ENGINE_NAME, GRAMMAR_CURRENT
 from regodoc.diagnostics import clip
 from regodoc.outputs import OutputError, check_output, described, temporary_name, write_file
@@ -101,11 +101,23 @@ def run(
         base_version=base_version,
     )
     data = canonical.archive(files)
+    # Gli alberi delle parti d'ingresso non servono più, e la rivalidazione costruisce quelli
+    # dell'uscita: tenerli vivi tutti e due raddoppiava il picco di memoria, oltre il limite
+    # del comando sui pacchetti più grandi. Gli alberi non hanno cicli: basta il conteggio dei
+    # riferimenti. Il rapporto usa il riassunto già calcolato, i problemi e input_*.
+    del files
+    validation.roots = {}
+    validation.package = None
+    validation.upgraded = None
     problems = canonical.output_problems(content, data)
     if problems:
         for problem in problems:
             report.error(problem.code, problem.message, problem.file, problem.line, problem.column)
         return outcome
+    # Tutto ciò che dice il rapporto si calcola prima di scrivere: dopo la scrittura resta
+    # solo da fermare il timer.
+    listed = [described(path, body) for path, body in content]
+    digest = files_digest(listed)
     created = _write_files(files_dir, content) if files_dir is not None else []
     try:
         write_file(target, data)
@@ -113,7 +125,8 @@ def run(
         # L'uscita esiste solo con il codice 0, anche quella di --files-dir.
         _remove(created)
         raise
-    listed = [described(path, body) for path, body in content]
+    # A uscita scritta un tempo che scade non cambia più l'esito.
+    limits.disarm()
     outcome.summary = {
         **outcome.summary,
         "grammar": grammar,
@@ -121,7 +134,7 @@ def run(
         "document": document,
         "base_version": base_version,
         "files": listed,
-        "files_sha256": files_digest(listed),
+        "files_sha256": digest,
     }
     outcome.exit_code = 0
     return outcome

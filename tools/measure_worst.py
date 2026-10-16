@@ -6,23 +6,28 @@ di 384 KiB, ognuna piena di un solo tipo di elemento con il minimo di testo: voc
 sezioni, righe di tabella, elementi in linea. Sono i pacchetti che chiedono più lavoro per
 byte al lettore XML restando entro tutti i limiti, compreso quello dei caratteri.
 
-``canon`` si misura sul percorso vero, ``canon.run`` verso un file temporaneo: validazione,
-forma canonica, archivio, controlli dell'uscita e, se passano, rivalidazione dell'archivio
-scritto. ``upgrade`` su un pacchetto corrente fa lo stesso lavoro, con un tempo dichiarato
-più largo. Scritti su una riga, i casi delle parti escono dai 384 KiB nella forma canonica e
-``canon`` li rifiuta con ``regodoc.limit.file_size``; per questo ogni caso delle parti ha
-anche una variante più corta, che nella forma canonica sta nei limiti e passa per intero.
+``canon`` si misura sul comando vero, ``python -m regodoc canon`` come processo figlio, con i
+limiti di tempo e di memoria che il motore applica da sé, verso un file temporaneo:
+validazione, forma canonica, archivio, controlli dell'uscita e, se passano, rivalidazione
+dell'archivio scritto; un'uscita scritta deve poi passare ``validate``. ``upgrade`` su un
+pacchetto corrente fa lo stesso lavoro, con un tempo dichiarato più largo. Scritti su una
+riga, i casi delle parti escono dai 384 KiB nella forma canonica e ``canon`` li rifiuta con
+``regodoc.limit.file_size``; per questo ogni caso delle parti ha anche una variante più corta,
+che nella forma canonica sta nei limiti e passa per intero.
 
-Il comando stampa i tempi ed esce con 1 se un caso non è valido, se ``canon`` rifiuta un
-caso con un codice diverso da ``regodoc.limit.file_size`` o rifiuta una variante canonica, o
-se un tempo supera quello che ``info`` dichiara per il comando diviso ``--margin``
-(predefinito 1, cioè il tempo dichiarato).
+Il comando stampa i tempi ed esce con 1 se un caso non è valido, se ``canon`` rifiuta un caso
+con un codice diverso da ``regodoc.limit.file_size`` (memoria o tempo esauriti compresi) o
+rifiuta una variante canonica, o se un tempo supera quello che ``info`` dichiara per il
+comando diviso ``--margin`` (predefinito 1, cioè il tempo dichiarato).
 
     python tools/measure_worst.py [--margin 1.5]
 """
 
 import argparse
+import json
+import os
 import random
+import subprocess
 import sys
 import tempfile
 import time
@@ -36,7 +41,7 @@ sys.path.insert(0, str(ROOT))
 from tests import test_limits as builders  # noqa: E402
 from tests.support import build_zip, example_files, png_pixels, validate_bytes  # noqa: E402
 
-from regodoc import canon, canonical  # noqa: E402
+from regodoc import canonical  # noqa: E402
 from regodoc.declaration import CONTENT_LIMITS, RESOURCES  # noqa: E402
 
 LABELS = ("observed", "declared", "decided", "proposed", "to-verify", "critical")
@@ -164,25 +169,39 @@ def time_validate(data: bytes) -> tuple[float, list[str]]:
     return best, codes
 
 
+def _command(*argv: str) -> tuple[int, list[str]]:
+    """Il comando vero, come processo figlio: con i limiti di tempo e di memoria che il
+    motore applica da sé, come quando lo chiama Rego."""
+    result = subprocess.run(
+        [sys.executable, "-B", "-m", "regodoc", *argv, "--json"],
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+        check=False,
+    )
+    report = json.loads(result.stdout)
+    return result.returncode, sorted({e["code"] for e in report["errors"]})
+
+
 def time_canon(data: bytes) -> tuple[float, list[str]]:
-    """Il tempo migliore di due ``canon`` verso un file, con i codici di rifiuto."""
+    """Il tempo migliore di due ``canon`` con il comando vero verso un file, con i codici di
+    rifiuto; se ``canon`` scrive, l'uscita deve anche passare ``validate``."""
     best = float("inf")
     codes: list[str] = []
     with tempfile.TemporaryDirectory() as folder:
         package = Path(folder) / "in.regodoc"
+        output = Path(folder) / "out.regodoc"
         package.write_bytes(data)
         for _ in range(2):
             start = time.perf_counter()
-            outcome = canon.run(
-                package,
-                str(Path(folder) / "out.regodoc"),
-                document=None,
-                base_version=None,
-                files_dir=None,
-                strict=False,
-            )
+            code, codes = _command("canon", str(package), "-o", str(output))
             best = min(best, time.perf_counter() - start)
-            codes = sorted({d.code for d in outcome.validation.report.errors})
+            if code not in (0, 1):
+                codes = codes or [f"codice d'uscita {code}"]
+                break
+        if not codes:
+            code, problems = _command("validate", str(output))
+            if code != 0:
+                codes = ["uscita non valida", *problems]
     return best, codes
 
 
