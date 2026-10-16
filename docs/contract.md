@@ -131,9 +131,9 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     righe di tabella o elementi in linea, parti miste, 1.500 variabili e i pixel delle
     immagini al loro tetto. La CI del motore li misura a ogni modifica su Linux e macOS e
     fallisce oltre 20 s, cioè due terzi del tempo dichiarato. `canon` e `upgrade` validano e
-    poi scrivono la forma canonica e l'archivio: sugli stessi casi ci hanno messo fino a
-    15,5 s, misurati e controllati allo stesso modo, contro i 30 s di `canon` e i 60 s di
-    `upgrade`. È un tetto largo: quei casi, scritti tutti su una riga, nella forma canonica
+    poi scrivono la forma canonica e l'archivio, compresso su al massimo quattro thread: sugli
+    stessi casi ci hanno messo da 10,5 a 13 s, misurati e controllati allo stesso modo, contro
+    i 30 s di `canon` e i 60 s di `upgrade`. È un tetto largo: quei casi, scritti tutti su una riga, nella forma canonica
     escono dai limiti, e `canon` li rifiuta (§8). Con un tema esterno `build`
     compila una volta in più, per il controllo dei pacchetti del §6.1: da mezzo secondo a
     circa 1,5 s.

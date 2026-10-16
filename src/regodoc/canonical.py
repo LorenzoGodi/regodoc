@@ -10,11 +10,13 @@ import dataclasses
 import datetime
 import hashlib
 import json
+import os
 import re
 import struct
 import tomllib
 import zlib
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from regodoc import __version__
@@ -351,9 +353,14 @@ def archive(files: list[tuple[str, bytes]]) -> bytes:
     descrittore di dati."""
     body = bytearray()
     central = bytearray()
-    for name, data in files:
+    # Le voci si comprimono in parallelo: zlib lascia il GIL, e ogni voce è indipendente,
+    # quindi i byte non dipendono dall'ordine in cui i thread finiscono.
+    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
+        compressed = list(
+            pool.map(lambda item: item[1] if item[0] == "mimetype" else _deflate(item[1]), files)
+        )
+    for (name, data), packed in zip(files, compressed, strict=True):
         stored = name == "mimetype"
-        packed = data if stored else _deflate(data)
         method = 0 if stored else 8
         crc = zlib.crc32(data) & 0xFFFFFFFF
         encoded = name.encode("utf-8")
