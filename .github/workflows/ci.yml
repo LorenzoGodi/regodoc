@@ -117,6 +117,13 @@ jobs:
           "$RUNNER_TEMP/venv/bin/regodoc" info
           "$RUNNER_TEMP/venv/bin/python" -m regodoc info > /dev/null
           test -z "$("$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze | grep -v -E '^(pip|regodoc)==')"
+      # Tutte le prove, con il motore importato dal wheel installato e non da src/: un file che
+      # manca nel wheel fa fallire le prove che lo usano e InstalledEngineTest.
+      - name: Prove contro il wheel installato
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s tests -t .
+        env:
+          REGODOC_TEST_INSTALLED: "1"
       # I file che la release di questo commit pubblica, con SHA256SUMS.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

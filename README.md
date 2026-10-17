@@ -90,9 +90,10 @@ nella CI, un pdflatex mancante diventa un errore.
 
 La CI usa GitHub Actions ed esegue ruff, il controllo d'igiene e le prove su Linux e macOS
 con Python 3.12, 3.13 e 3.14. Costruisce due volte wheel e archivio sorgente, che devono
-essere identici byte per byte, li installa con le impronte in un venv pulito e li conserva
-come artefatto del commit, con `SHA256SUMS`. Ogni strumento che la CI installa con pip è
-fissato con le impronte in `tools/requirements/`. Un job TeX compila
+essere identici byte per byte, li installa con le impronte in un venv pulito, ripete le prove
+contro il wheel installato e li conserva come artefatto del commit, con `SHA256SUMS`. Ogni
+strumento che la CI installa con pip è fissato con le impronte in `tools/requirements/`. Un
+job TeX compila
 due volte lo stesso sorgente sulla stessa base dell'immagine di produzione di Rego
 (`python:3.12-slim` su Debian trixie, fissata per digest) con i pacchetti TeX Live elencati
 sopra, e confronta i PDF byte per byte.

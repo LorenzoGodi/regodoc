@@ -14,7 +14,10 @@ A ogni commit il job «pacchetto riproducibile e installazione con le impronte»
    `SOURCE_DATE_EPOCH`; li costruisce una seconda volta con un'altra umask e ne confronta i
    byte; controlla nei metadati del wheel la versione e `License-Expression: Apache-2.0`;
 3. scrive `SHA256SUMS`, nella forma di `sha256sum`;
-4. installa il wheel con la sua impronta in un ambiente pulito e prova `regodoc info`;
+4. installa il wheel con la sua impronta in un ambiente pulito, prova `regodoc info` e lancia
+   tutte le prove con il motore importato dal wheel invece che da `src/`
+   (`REGODOC_TEST_INSTALLED=1`): un file che manca nel wheel, o diverso da quello del
+   sorgente, le fa fallire;
 5. carica i tre file come artefatto `regodoc-<commit>`, con lo SHA completo del commit.
 
 Chiunque può rifare la costruzione dallo stesso commit e ottenere gli stessi byte. Lo

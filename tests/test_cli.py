@@ -20,7 +20,7 @@ from unittest import mock
 
 from regodoc import __version__, cli, declaration
 from regodoc.cli import ExitCode
-from tests.support import EXAMPLE, _text, build_zip, example_files, run_cli
+from tests.support import ENGINE, EXAMPLE, _text, build_zip, example_files, run_cli
 
 
 class InfoTest(unittest.TestCase):
@@ -297,7 +297,6 @@ class MemoryTest(unittest.TestCase):
         # Il limite è relativo allo spazio che l'interprete occupa già dopo aver caricato il
         # motore: un numero fisso dipende dalla versione di Python (con 3.14 l'avvio ne
         # chiede di più) e non metterebbe alla prova la lettura del pacchetto.
-        root = Path(__file__).resolve().parent.parent
         probe = subprocess.run(
             [
                 sys.executable,
@@ -307,7 +306,7 @@ class MemoryTest(unittest.TestCase):
                 "import sys; sys.path.insert(0, sys.argv[1]); import regodoc.cli; "
                 "print(next(l.split()[1] for l in open('/proc/self/status') "
                 "if l.startswith('VmPeak')))",
-                str(root / "src"),
+                str(ENGINE),
             ],
             capture_output=True,
             check=True,
@@ -323,7 +322,7 @@ class MemoryTest(unittest.TestCase):
             package = Path(folder) / "p.regodoc"
             package.write_bytes(heavy_package())
             result = subprocess.run(
-                [sys.executable, "-I", "-B", "-c", _ENTRY, str(root / "src"), str(package)],
+                [sys.executable, "-I", "-B", "-c", _ENTRY, str(ENGINE), str(package)],
                 capture_output=True,
                 check=False,
                 timeout=120,
@@ -375,7 +374,7 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["errors"][0]["code"], "regodoc.archive.corrupt")
 
 
-# Avvia il motore da src/ anche con -I, che esclude PYTHONPATH.
+# Avvia il motore da ENGINE anche con -I, che esclude PYTHONPATH.
 _ENTRY = (
     "import sys; sys.path.insert(0, sys.argv[1]); from regodoc.cli import main; "
     "sys.exit(main(['validate', sys.argv[2], '--json']))"
@@ -473,7 +472,6 @@ class TimeLimitTest(unittest.TestCase):
     def test_engine_limit_stops_a_heavy_package(self) -> None:
         # Senza limiti imposti da chi chiama: il motore applica il proprio, abbassato qui a 40
         # MiB solo per la prova, e il pacchetto pesante lo supera.
-        root = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory() as folder:
             package = Path(folder) / "p.regodoc"
             package.write_bytes(heavy_package())
@@ -485,7 +483,7 @@ class TimeLimitTest(unittest.TestCase):
                 "from regodoc.cli import main; sys.exit(main(['validate', sys.argv[2], '--json']))"
             )
             result = subprocess.run(
-                [sys.executable, "-I", "-B", "-c", entry, str(root / "src"), str(package)],
+                [sys.executable, "-I", "-B", "-c", entry, str(ENGINE), str(package)],
                 capture_output=True,
                 check=False,
                 timeout=120,

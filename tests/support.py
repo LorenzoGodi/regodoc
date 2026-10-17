@@ -8,9 +8,14 @@ import zipfile
 import zlib
 from pathlib import Path
 
+import regodoc
 from regodoc import cli
 from regodoc.validate import Validation, validate_package
 
+# La cartella da cui le prove importano il motore: src/ con PYTHONPATH=src, oppure quella
+# dell'installazione quando le prove girano contro il wheel installato. Le prove che avviano il
+# motore in un processo con -I, che esclude PYTHONPATH, la passano esplicitamente.
+ENGINE = Path(regodoc.__file__).resolve().parent.parent
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 EXAMPLE = EXAMPLES / "colle-rovere"
 # Il secondo esempio, lungo e in inglese, usa tutto il vocabolario di rego/1.

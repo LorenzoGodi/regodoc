@@ -1,6 +1,7 @@
 """Il pacchetto Python di regodoc: metadati, licenza e strumenti di costruzione."""
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -8,6 +9,8 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+
+from tests.support import ENGINE
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -132,6 +135,35 @@ class ReproducibleBuildTest(unittest.TestCase):
         finally:
             stray.unlink()
         self.assertEqual(after, before)
+
+
+def engine_files(folder: Path) -> dict[str, bytes]:
+    """I file del motore sotto ``folder``, senza le cache dell'interprete."""
+    return {
+        path.relative_to(folder).as_posix(): path.read_bytes()
+        for path in sorted(folder.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts
+    }
+
+
+@unittest.skipUnless(
+    os.environ.get("REGODOC_TEST_INSTALLED") == "1", "le prove girano sul sorgente"
+)
+class InstalledEngineTest(unittest.TestCase):
+    """Con REGODOC_TEST_INSTALLED=1 la CI lancia le prove contro il wheel installato: il motore
+    importato deve essere quello, e portare tutti i file di src/regodoc, identici."""
+
+    def test_the_engine_comes_from_the_installation(self) -> None:
+        self.assertNotEqual(ENGINE, ROOT / "src")
+        self.assertEqual(ENGINE.name, "site-packages")
+
+    def test_the_wheel_carries_every_engine_file(self) -> None:
+        installed = engine_files(ENGINE / "regodoc")
+        source = engine_files(ROOT / "src" / "regodoc")
+        self.assertEqual(sorted(installed), sorted(source))
+        for name, data in source.items():
+            with self.subTest(name):
+                self.assertEqual(installed[name], data)
 
 
 if __name__ == "__main__":

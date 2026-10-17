@@ -27,6 +27,7 @@ from regodoc.diagnostics import Collector, Diagnostic, Severity
 from regodoc.text import MAX_JSON_DEPTH, JsonProblem, strict_json
 from regodoc.tomlfiles import MAX_KEY_SEGMENTS, long_dotted_key
 from tests.support import (
+    ENGINE,
     build_zip,
     example_files,
     png_pixels,
@@ -212,7 +213,7 @@ class CommandTest(unittest.TestCase):
     def run_engine(
         self, *args: str, close: int | None = None
     ) -> subprocess.CompletedProcess[bytes]:
-        command = [sys.executable, "-I", "-B", "-c", _ENTRY, str(ROOT / "src"), *args]
+        command = [sys.executable, "-I", "-B", "-c", _ENTRY, str(ENGINE), *args]
         if close is not None:
             # Chiude il descrittore nel processo figlio prima di avviare l'interprete.
             command = ["/bin/sh", "-c", f'exec "$@" {close}>&-', "sh", *command]
@@ -329,7 +330,7 @@ class ResidualTest(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, "-c", script, "info"],
             capture_output=True,
-            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            env={**os.environ, "PYTHONPATH": str(ENGINE)},
             check=False,
         )
         self.assertEqual(result.returncode, 3)
@@ -339,7 +340,7 @@ class ResidualTest(unittest.TestCase):
         closed = subprocess.run(
             [sys.executable, "-c", f"import os; os.close(2)\n{script}", "info"],
             capture_output=True,
-            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            env={**os.environ, "PYTHONPATH": str(ENGINE)},
             check=False,
         )
         self.assertEqual(closed.returncode, 3)
