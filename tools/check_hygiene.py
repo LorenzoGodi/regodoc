@@ -333,8 +333,12 @@ def _pdf_hex_strings(data: bytes) -> list[bytes]:
         if end < 0:
             break
         hexa = re.sub(rb"\s", b"", data[position + 1 : end])
-        if re.fullmatch(rb"[0-9A-Fa-f]*", hexa):
-            found.append(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
+        if not re.fullmatch(rb"[0-9A-Fa-f]*", hexa):
+            # Un < isolato, in una letterale (a<b) o in un commento: la stringa esadecimale
+            # può cominciare prima del > trovato, quindi si riparte dal carattere dopo.
+            position = data.find(b"<", position + 1)
+            continue
+        found.append(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
         position = data.find(b"<", end + 1)
     return found
 

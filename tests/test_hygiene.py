@@ -339,6 +339,19 @@ class BinaryMetadataTest(unittest.TestCase):
                     ["metadati (stringhe del PDF): contengono un nome vietato"],
                 )
 
+    def test_pdf_hex_string_after_an_isolated_less_than(self) -> None:
+        # Un < che non apre una stringa esadecimale non deve far perdere quella che segue.
+        title = "\ufeffproibito".encode("utf-16-be").hex().encode()
+        for body in (
+            b"1 0 obj << /Subject (a<b) /Title <" + title + b"> >> endobj",
+            b"% x<y\n1 0 obj << /Title <" + title + b"> >> endobj",
+        ):
+            with self.subTest(body[:20]):
+                self.assertEqual(
+                    self.found("a.pdf", b"%PDF-1.5\n" + body),
+                    ["metadati (stringhe del PDF): contengono un nome vietato"],
+                )
+
     def test_pdf_literal_continued_on_the_next_line(self) -> None:
         for newline in (b"\n", b"\r\n", b"\r"):
             with self.subTest(newline):
