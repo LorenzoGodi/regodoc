@@ -41,6 +41,19 @@ def pinned(path: Path) -> dict[str, tuple[str, list[str]]]:
     return found
 
 
+BUILD_TESTS = "python -m unittest tests.test_packaging -v"
+
+
+def job_steps(text: str, job: str) -> list[str]:
+    """I passi di un job di un workflow, uno per elemento, senza le righe di commento e senza
+    i commenti in fondo alle righe."""
+    found = re.search(rf"(?ms)^  {re.escape(job)}:\n(.*?)(?=^  \S|\Z)", text)
+    assert found, job
+    lines = [re.sub(r"(^|\s)#.*$", "", line).rstrip() for line in found.group(1).splitlines()]
+    body = "\n".join(line for line in lines if line.strip())
+    return [step for step in re.split(r"(?m)^(?=      - )", body) if step.startswith("      - ")]
+
+
 def automation_files(names: list[str] | None = None) -> list[str]:
     """I file che la CI esegue: i workflow e le action composite del repository, fra quelli
     tracciati da git (o fra ``names``)."""
@@ -187,10 +200,30 @@ class PinnedToolsTest(unittest.TestCase):
         self.assertTrue(hashes)
 
     def test_the_build_tests_run_in_the_package_job(self) -> None:
-        package = CI.split("\n  package:\n", 1)[1].split("\n  tex:\n", 1)[0]
-        self.assertIn('REGODOC_TEST_BUILD: "1"', package)
-        self.assertIn("tests.test_packaging", package)
-        self.assertIn("fetch-depth: 0", package)
+        # Sui passi del job senza i commenti: il comando è quello di un passo run:, la
+        # variabile è nell'env di quel passo e la storia completa nel passo del checkout.
+        steps = job_steps(CI, "package")
+        runs = [step for step in steps if run_commands(step) == [BUILD_TESTS]]
+        self.assertEqual(len(runs), 1, steps)
+        self.assertRegex(runs[0], r'(?m)^\s+env:\n(?:\s+\w+: .*\n)*?\s+REGODOC_TEST_BUILD: "1"$')
+        checkout = [step for step in steps if "uses: actions/checkout@" in step]
+        self.assertEqual(len(checkout), 1)
+        self.assertRegex(checkout[0], r"(?m)^\s+fetch-depth: 0$")
+
+    def test_the_package_job_check_ignores_comments(self) -> None:
+        text = (
+            "jobs:\n  package:\n    steps:\n"
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n          persist-credentials: false  # fetch-depth: 0\n"
+            f"      # - run: {BUILD_TESTS}\n"
+            '      - run: echo\n        env:\n          X: 1  # REGODOC_TEST_BUILD: "1"\n'
+            "  tex:\n"
+        )
+        steps = job_steps(text, "package")
+        self.assertEqual(len(steps), 2)
+        self.assertFalse([step for step in steps if run_commands(step) == [BUILD_TESTS]])
+        self.assertNotRegex(steps[0], r"fetch-depth")
+        self.assertNotRegex(steps[1], r"REGODOC_TEST_BUILD")
 
     def test_ruff_matches_the_ci_version(self) -> None:
         version = re.search(r'RUFF_VERSION: "([^"]+)"', CI)
