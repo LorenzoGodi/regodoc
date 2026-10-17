@@ -8,7 +8,11 @@ motore»).
 
 A ogni commit il job «pacchetto riproducibile e installazione con le impronte» della CI:
 
-1. installa flit_core con `pip install --require-hashes` da `tools/requirements/build.txt`;
+1. installa flit_core con `pip install --require-hashes` da `tools/requirements/build.txt` e,
+   con quell'interprete e `REGODOC_TEST_BUILD=1`, lancia le prove della costruzione
+   (`tests/test_packaging.py`), che negli altri job si saltano: due costruzioni uguali, file
+   non tracciati che restano fuori, `--commit` e la ricostruzione dei commit dei rilasci, con
+   le impronte annunciate nella tabella qui sotto;
 2. costruisce con `tools/build_release.py --check` il wheel `regodoc-<versione>-py3-none-any.whl`
    e l'archivio sorgente `regodoc-<versione>.tar.gz`, con la data dell'ultimo commit come
    `SOURCE_DATE_EPOCH`; li costruisce una seconda volta con un'altra umask e ne confronta i

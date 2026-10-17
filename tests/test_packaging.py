@@ -96,15 +96,31 @@ class PinnedToolsTest(unittest.TestCase):
         self.assertGreaterEqual(minor, 12)
         self.assertTrue(hashes)
 
+    def test_the_build_tests_run_in_the_package_job(self) -> None:
+        package = CI.split("\n  package:\n", 1)[1].split("\n  tex:\n", 1)[0]
+        self.assertIn('REGODOC_TEST_BUILD: "1"', package)
+        self.assertIn("tests.test_packaging", package)
+        self.assertIn("fetch-depth: 0", package)
+
     def test_ruff_matches_the_ci_version(self) -> None:
         version = re.search(r'RUFF_VERSION: "([^"]+)"', CI)
         assert version is not None
         self.assertEqual(pinned(REQUIREMENTS / "lint.txt")["ruff"][0], version.group(1))
 
 
-@unittest.skipUnless(importlib.util.find_spec("flit_core"), "flit_core non installato")
+# Con REGODOC_TEST_BUILD=1, come nel job del pacchetto della CI, flit_core e la storia del
+# repository devono esserci: le prove di costruzione falliscono invece di saltarsi.
+REQUIRE_BUILD = os.environ.get("REGODOC_TEST_BUILD") == "1"
+
+
+@unittest.skipUnless(
+    importlib.util.find_spec("flit_core") or REQUIRE_BUILD, "flit_core non installato"
+)
 class ReproducibleBuildTest(unittest.TestCase):
-    """La costruzione che fa il job del pacchetto nella CI, dove flit_core c'è sempre."""
+    """La costruzione di tools/build_release.py. Gli interpreti delle prove non hanno
+    flit_core, e lì queste prove si saltano: girano nel job del pacchetto della CI, con
+    l'interprete in cui è installato flit_core da tools/requirements/build.txt e con
+    REGODOC_TEST_BUILD=1."""
 
     def build(self, *extra: str) -> list[str]:
         with tempfile.TemporaryDirectory() as folder:
@@ -150,7 +166,7 @@ class ReproducibleBuildTest(unittest.TestCase):
                     capture_output=True,
                     check=False,
                 )
-                if present.returncode != 0:
+                if present.returncode != 0 and not REQUIRE_BUILD:
                     self.skipTest(f"il commit {commit} non è nel checkout")
                 self.assertEqual(self.build("--commit", commit), sums)
 
