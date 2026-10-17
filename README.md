@@ -96,7 +96,8 @@ strumento che la CI installa con pip è fissato con le impronte in `tools/requir
 job TeX compila
 due volte lo stesso sorgente sulla stessa base dell'immagine di produzione di Rego
 (`python:3.12-slim` su Debian trixie, fissata per digest) con i pacchetti TeX Live elencati
-sopra, e confronta i PDF byte per byte.
+sopra, e confronta i PDF byte per byte; nello stesso job installa il wheel della corsa con la
+sua impronta e ci ripete le prove e un `build` avviato come lo avvia Rego.
 
 ## Licenza
 

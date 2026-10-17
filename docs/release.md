@@ -20,6 +20,16 @@ A ogni commit il job «pacchetto riproducibile e installazione con le impronte»
    sorgente, le fa fallire;
 5. carica i tre file come artefatto `regodoc-<commit>`, con lo SHA completo del commit.
 
+Nella stessa corsa il job «TeX sull'immagine di riferimento», sulla base dell'immagine di Rego e
+con i suoi pacchetti TeX, scarica quell'artefatto e installa il wheel in un venv suo con
+`--require-hashes` sull'impronta calcolata dal job del pacchetto, e la scrive nel log. Poi
+lancia tutte le prove contro il wheel installato, con TeX obbligatorio, e
+`tools/check_install.py`, che avvia il motore come lo avvia Rego: `info` con i controlli
+della sezione «La versione fissata in Rego», poi `validate`, `canon` e `build` in PDF del
+pacchetto d'esempio, ciascuno con `-I -B`, stdin da `/dev/null`, una cartella corrente vuota,
+solo `PATH` e `TMPDIR` nell'ambiente e il gruppo di processi ucciso allo scadere del tempo
+dichiarato più 10 secondi (contratto, §2.2 e §2.3).
+
 Chiunque può rifare la costruzione dallo stesso commit e ottenere gli stessi byte. Lo
 strumento costruisce dai file del commit estratti con `git archive`, non dall'albero di
 lavoro: modifiche non committate e file non tracciati restano fuori, e lo strumento lo dice.

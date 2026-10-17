@@ -95,6 +95,11 @@ jobs:
     name: pacchetto riproducibile e installazione con le impronte
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Il job TeX installa questo stesso wheel, con questa impronta.
+    outputs:
+      wheel: ${{ steps.install.outputs.wheel }}
+      digest: ${{ steps.install.outputs.digest }}
+      version: ${{ steps.install.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,9 +111,16 @@ jobs:
       # Due costruzioni con umask diverse, stessi byte; versione e licenza nei metadati.
       - run: python tools/build_release.py --out dist --check
       - name: Installazione del wheel con la sua impronta, in un ambiente pulito
+        id: install
         run: |
           wheel="$(ls dist/*.whl)"
           digest="$(sha256sum "$wheel" | cut -d ' ' -f 1)"
+          name="$(basename "$wheel")"
+          {
+            echo "wheel=$name"
+            echo "digest=$digest"
+            echo "version=$(echo "$name" | cut -d - -f 2)"
+          } >> "$GITHUB_OUTPUT"
           echo "regodoc @ file://$PWD/$wheel --hash=sha256:$digest" > "$RUNNER_TEMP/pin.txt"
           python -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/python" -m pip install --require-hashes --no-deps -r "$RUNNER_TEMP/pin.txt"
@@ -133,6 +145,7 @@ jobs:
 
   tex:
     name: TeX sull'immagine di riferimento
+    needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
@@ -165,7 +178,32 @@ jobs:
         run: |
           useradd --create-home prove
           chown -R prove .
-      - name: Prove, con TeX obbligatorio
+      # Il wheel che il job del pacchetto ha costruito in questa corsa, installato come lo
+      # installa Rego: in un venv suo, con --require-hashes sull'impronta calcolata là.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: regodoc-${{ github.sha }}
+          path: /tmp/regodoc-dist
+      - name: Installazione del wheel della corsa, con la sua impronta
+        env:
+          WHEEL: ${{ needs.package.outputs.wheel }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: |
+          echo "regodoc @ file:///tmp/regodoc-dist/$WHEEL --hash=sha256:$DIGEST" > /tmp/pin.txt
+          python3 -m venv /opt/regodoc
+          /opt/regodoc/bin/python -m pip install --require-hashes --no-deps -r /tmp/pin.txt
+          echo "installato $WHEEL con sha256:$DIGEST"
+          /opt/regodoc/bin/python -m pip list --format=freeze
+      # Tutte le prove con il motore importato dal wheel installato, non da src/.
+      - name: Prove, con TeX obbligatorio, contro il wheel installato
         run: >-
-          runuser -u prove -- env REGODOC_REQUIRE_TEX=1 PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1
-          python3 -m unittest discover -s tests -t . -v
+          runuser -u prove -- env REGODOC_REQUIRE_TEX=1 REGODOC_TEST_INSTALLED=1
+          PYTHONDONTWRITEBYTECODE=1 /opt/regodoc/bin/python -m unittest discover -s tests -t . -v
+      # info, validate, canon e build in PDF con l'avvio del contratto (§2.2: -I -B, stdin da
+      # /dev/null, cartella corrente vuota, solo PATH e TMPDIR) e il tempo del §2.3.
+      - name: Il motore installato, avviato come lo avvia Rego
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+        run: >-
+          runuser -u prove -- python3 tools/check_install.py --python /opt/regodoc/bin/python
+          --version "$VERSION"
