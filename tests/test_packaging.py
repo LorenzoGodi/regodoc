@@ -42,6 +42,23 @@ def pinned(path: Path) -> dict[str, tuple[str, list[str]]]:
 
 
 BUILD_TESTS = "python -m unittest tests.test_packaging -v"
+# Le forme di oggi di ogni comando semplice che nomina pip nei passi run: dei workflow e delle
+# action composite. Una forma nuova, anche equivalente (${{ }}, virgolette, una variabile come
+# $PIP, opzioni dentro $( )), fa cadere la prova: la si guarda e, se va bene, la si aggiunge qui.
+CANONICAL_PIP = frozenset(
+    {
+        "python -m pip install --require-hashes --no-deps -r tools/requirements/lint.txt",
+        "python -m pip install --require-hashes --no-deps -r tools/requirements/build.txt",
+        '"$RUNNER_TEMP/venv/bin/python" -m pip install --require-hashes --no-deps'
+        ' -r "$RUNNER_TEMP/pin.txt"',
+        "/opt/regodoc/bin/python -m pip install --require-hashes --no-deps -r /tmp/pin.txt",
+        '"$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze',
+        "/opt/regodoc/bin/python -m pip list --format=freeze",
+        "grep -v -E '^(pip|regodoc)=='",
+    }
+)
+# Le shell ammesse per i passi run:; senza shell: il passo usa bash.
+SHELLS = frozenset({"bash", "sh"})
 
 
 def job_steps(text: str, job: str) -> list[str]:
@@ -108,6 +125,58 @@ def pip_installs(text: str) -> list[str]:
     return found
 
 
+def simple_commands(command: str) -> list[str]:
+    """I comandi semplici di un comando della shell: divisi a ogni |, ;, &, a capo fuori dalle
+    virgolette, e all'inizio e alla fine di ogni $( ), che apre un contesto di virgolette
+    nuovo anche dentro le doppie."""
+    pieces: list[str] = []
+    current: list[str] = []
+    quotes = [""]  # le virgolette aperte, una voce per ogni $( ) annidato
+
+    def cut() -> None:
+        pieces.append("".join(current).strip())
+        current.clear()
+
+    index = 0
+    while index < len(command):
+        char, quote = command[index], quotes[-1]
+        if quote != "'" and command.startswith("$(", index):
+            cut()
+            quotes.append("")
+            index += 2
+            continue
+        if char in "'\"" and quote in ("", char):
+            quotes[-1] = "" if quote == char else char
+        elif not quote and char == ")" and len(quotes) > 1:
+            cut()
+            quotes.pop()
+            index += 1
+            continue
+        elif not quote and char in "|;&\n":
+            cut()
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    cut()
+    return [piece for piece in pieces if piece]
+
+
+def pip_uses(text: str) -> list[str]:
+    """Ogni comando semplice dei passi run: che nomina pip, in qualunque forma."""
+    found = []
+    for command in run_commands(text):
+        joined = command.replace("\\\n", " ")
+        bare = "\n".join(re.sub(r"(^|\s)#.*$", "", line) for line in joined.splitlines())
+        found += [piece for piece in simple_commands(bare) if re.search("pip", piece, re.I)]
+    return found
+
+
+def shells(text: str) -> list[str]:
+    """Le shell dichiarate con shell: nei passi."""
+    return re.findall(r"(?m)^\s*(?:-\s+)?shell:\s*(\S+)", text)
+
+
 def missing_options(command: str) -> list[str]:
     """Le opzioni obbligatorie che mancano a un'installazione con pip."""
     words = command.split()
@@ -138,6 +207,47 @@ class PinnedToolsTest(unittest.TestCase):
         for name, command in installs:
             with self.subTest(f"{name}: {command}"):
                 self.assertEqual(missing_options(command), [])
+
+    def test_every_pip_use_has_a_canonical_form(self) -> None:
+        uses = 0
+        for name in automation_files():
+            text = (ROOT / name).read_text(encoding="utf-8")
+            for piece in pip_uses(text):
+                uses += 1
+                with self.subTest(f"{name}: {piece}"):
+                    self.assertIn(piece, CANONICAL_PIP)
+            for shell in shells(text):
+                with self.subTest(f"{name}: shell {shell}"):
+                    self.assertIn(shell, SHELLS)
+        self.assertGreaterEqual(uses, len(CANONICAL_PIP))
+
+    def test_new_forms_fall_outside_the_list(self) -> None:
+        cases = {
+            "${{ }}": "python -m pip install --require-hashes --no-deps -r ${{ env.R }}",
+            "virgolette": '"pip" install --require-hashes --no-deps -r tools/requirements/lint.txt',
+            "variabile": "$PIP install --require-hashes --no-deps -r tools/requirements/lint.txt",
+            "$( )": "python -m pip install $(cat opzioni) -r tools/requirements/lint.txt",
+            "maiuscole": "python -m PIP install -r tools/requirements/lint.txt",
+        }
+        for case, command in cases.items():
+            with self.subTest(case):
+                uses = pip_uses(f"steps:\n  - run: |\n      {command}\n")
+                self.assertTrue(uses)
+                self.assertTrue([use for use in uses if use not in CANONICAL_PIP], uses)
+        self.assertEqual(shells("steps:\n  - shell: python\n    run: import pip\n"), ["python"])
+
+    def test_todays_forms_are_split_as_expected(self) -> None:
+        line = (
+            'test -z "$("$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze'
+            " | grep -v -E '^(pip|regodoc)==')\""
+        )
+        self.assertEqual(
+            pip_uses(f"steps:\n  - run: |\n      {line}\n"),
+            [
+                '"$RUNNER_TEMP/venv/bin/python" -m pip list --format=freeze',
+                "grep -v -E '^(pip|regodoc)=='",
+            ],
+        )
 
     def test_the_bypasses_are_caught(self) -> None:
         cases = {
