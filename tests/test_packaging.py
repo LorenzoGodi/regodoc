@@ -106,11 +106,11 @@ class PinnedToolsTest(unittest.TestCase):
 class ReproducibleBuildTest(unittest.TestCase):
     """La costruzione che fa il job del pacchetto nella CI, dove flit_core c'è sempre."""
 
-    def build(self) -> list[str]:
+    def build(self, *extra: str) -> list[str]:
         with tempfile.TemporaryDirectory() as folder:
             tool = str(ROOT / "tools" / "build_release.py")
             result = subprocess.run(
-                [sys.executable, tool, "--out", folder, "--check"],
+                [sys.executable, tool, "--out", folder, "--check", *extra],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -135,6 +135,46 @@ class ReproducibleBuildTest(unittest.TestCase):
         finally:
             stray.unlink()
         self.assertEqual(after, before)
+
+    def test_commit_head_is_the_default(self) -> None:
+        self.assertEqual(self.build("--commit", "HEAD"), self.build())
+
+    def test_the_release_commits_give_the_announced_sums(self) -> None:
+        # Le impronte annunciate in docs/release.md, ricostruite dai file del commit del
+        # rilascio con lo strumento di oggi: servono la storia del repository e flit_core.
+        for commit, sums in released():
+            with self.subTest(commit):
+                present = subprocess.run(
+                    ["git", "cat-file", "-e", f"{commit}^{{commit}}"],  # noqa: S607 - git dal PATH
+                    cwd=ROOT,
+                    capture_output=True,
+                    check=False,
+                )
+                if present.returncode != 0:
+                    self.skipTest(f"il commit {commit} non è nel checkout")
+                self.assertEqual(self.build("--commit", commit), sums)
+
+
+def released() -> list[tuple[str, list[str]]]:
+    """I rilasci della tabella di docs/release.md: commit e righe di ``SHA256SUMS``."""
+    text = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| (\d+\.\d+\.\d+) \| `([0-9a-f]{7,40})` \|", text, re.M)
+    found = []
+    for version, commit in rows:
+        sums = re.findall(rf"^[0-9a-f]{{64}}  regodoc-{re.escape(version)}[-.]\S+$", text, re.M)
+        found.append((commit, sums))
+    return found
+
+
+class ReleaseTableTest(unittest.TestCase):
+    def test_every_release_has_its_two_sums(self) -> None:
+        releases = released()
+        self.assertTrue(releases)
+        for commit, sums in releases:
+            with self.subTest(commit):
+                self.assertEqual(len(sums), 2)
+                self.assertTrue(sums[0].endswith("-py3-none-any.whl"))
+                self.assertTrue(sums[1].endswith(".tar.gz"))
 
 
 def engine_files(folder: Path) -> dict[str, bytes]:
