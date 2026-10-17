@@ -56,9 +56,15 @@ non toccano il motore. Il wheel di un commit successivo ha lo stesso motore ma b
 tag va sul commit del rilascio, non sulla testa.
 
 1. **Scegliere il commit.** È quello della consegna con le impronte annunciate, registrato
-   nella tabella qui sotto. Deve stare in `main` (`git merge-base --is-ancestor <commit>
-   origin/main`), con la CI verde, e `__version__` in `src/regodoc/__init__.py` in quel commit
-   deve essere la versione da rilasciare, senza `.dev`.
+   nella tabella qui sotto. Deve stare in `main`, con la CI verde, e `__version__` in
+   `src/regodoc/__init__.py` in quel commit deve essere la versione da rilasciare, senza
+   `.dev`. `git merge-base --is-ancestor` non scrive niente e risponde solo con il codice
+   d'uscita, 0 se il commit sta in `main` e 1 se no; per vederlo:
+
+   ```sh
+   git fetch origin main
+   git merge-base --is-ancestor 2a7d943 origin/main && echo "in main"
+   ```
 2. **Verificarlo.** Ricostruisce il pacchetto dai file di quel commit con lo strumento di oggi
    e confronta le impronte con quelle annunciate:
 
@@ -68,10 +74,18 @@ tag va sul commit del rilascio, non sulla testa.
 
    Lo strumento estrae i file del commit con `git archive`, quindi basta un checkout di `main`
    anche non pulito. Se le impronte non coincidono, il rilascio si ferma.
-3. **Pubblicare.** Crea il tag `v<versione>` su quel commit e la release su GitHub con i due
-   file e `SHA256SUMS` della ricostruzione, oppure dell'artefatto `regodoc-<commit>` della CI
-   di quel commit, verificato con `sha256sum -c SHA256SUMS`; nelle note della release copia il
-   contenuto di `SHA256SUMS`.
+3. **Pubblicare.** Crea il tag annotato `v<versione>` su quel commit, non sulla testa di
+   `main`, e lo spinge; per la 0.1.0:
+
+   ```sh
+   git tag -a v0.1.0 2a7d943
+   git push origin v0.1.0
+   ```
+
+   Poi crea la release su GitHub da quel tag con i due file e `SHA256SUMS` della
+   ricostruzione, oppure dell'artefatto `regodoc-<commit>` della CI di quel commit, verificato
+   con `sha256sum -c SHA256SUMS`; nelle note della release copia il contenuto di
+   `SHA256SUMS`.
 
 | Versione | Commit del rilascio | Consegna | `SHA256SUMS` |
 |---|---|---|---|
@@ -98,8 +112,16 @@ non ha la forma `N.N.N` o `N.N.N.devN`.
 
 ## La versione fissata in Rego
 
-Rego installa il wheel della release nel proprio ambiente virtuale, con un file di requisiti
-che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS` della release:
+Rego non installa il wheel: usa una copia vendorizzata di `src/regodoc` presa dal tag
+`v0.1.0`, in `tools/regodoc` del suo repository, con `LICENSE`, un manifesto con il commit e
+l'impronta di ogni file e uno script che la verifica; la gestisce la sessione CI di Rego, su
+una voce sua. L'installazione del wheel con la sua impronta, qui sotto, vale per gli altri
+usi del motore. Per Rego valgono comunque il controllo di `info`, il `--contract` e la
+sezione «Immagine di Rego» per i pacchetti TeX, l'ambiente, l'avvio e il limite di tempo.
+
+Chi installa il wheel della release lo mette nel proprio ambiente virtuale, con un file di
+requisiti che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS` della
+release:
 
 ```text
 regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.1.0/regodoc-0.1.0-py3-none-any.whl \
@@ -111,12 +133,12 @@ python -m pip install --require-hashes --no-deps -r requirements-regodoc.txt
 python -I -B -m regodoc --contract 1 info
 ```
 
-`--no-deps` è sicuro: il motore non ha dipendenze. Dopo ogni installazione Rego legge `info`
-e controlla almeno `version`, che `contracts` contenga il contratto che usa, `expat` non
+`--no-deps` è sicuro: il motore non ha dipendenze. Dopo ogni installazione chi chiama legge
+`info` e controlla almeno `version`, che `contracts` contenga il contratto che usa, `expat` non
 più vecchio di `expat_min` e `grammars`; poi chiama sempre il motore con `--contract`
 (contratto, §2.1 e §5).
 
-Per cambiare versione Rego cambia indirizzo e impronta nello stesso file e rilegge `info`;
+Per cambiare versione si cambiano indirizzo e impronta nello stesso file e si rilegge `info`;
 per tornare indietro segue le condizioni del contratto, §11.
 
 ## Immagine di Rego
@@ -137,10 +159,14 @@ texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-scien
 Le versioni apt non sono fissate: la riproducibilità dei PDF si verifica sull'immagine con due
 compilazioni dello stesso pacchetto (contratto, §10).
 
-**Installazione.** Un venv dedicato al motore, per esempio `/opt/regodoc`, creato con
-l'interprete dell'immagine; il wheel della release si installa con il file di requisiti della
-sezione precedente, `--require-hashes --no-deps`, durante la costruzione dell'immagine. Il
-venv appartiene a root e il servizio non può scriverci.
+**Installazione.** In Rego il motore è la copia vendorizzata del tag (sezione precedente),
+in sola lettura nell'immagine. `python -I` esclude `PYTHONPATH` e la cartella corrente, quindi
+la cartella che contiene `regodoc` deve stare sul percorso dei moduli dell'interprete, per
+esempio con un file `.pth` nel suo `site-packages`, che `-I` legge comunque. Per gli altri usi,
+un venv dedicato al motore, per esempio `/opt/regodoc`, creato con l'interprete dell'immagine;
+il wheel della release si installa con il file di requisiti della sezione precedente,
+`--require-hashes --no-deps`, durante la costruzione dell'immagine. In tutti e due i casi i
+file del motore appartengono a root e il servizio non può scriverci.
 
 **Esecuzione.** Il servizio che chiama il motore gira con un utente non root. Per ogni
 chiamata:
