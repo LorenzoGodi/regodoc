@@ -4,11 +4,12 @@ Costruisce dai file di un commit, l'ultimo o quello di ``--commit``, estratti co
 ``git archive`` in una cartella temporanea: le modifiche non committate e i file non tracciati
 restano fuori, e lo strumento lo dice. La data dei file viene dallo stesso commit
 (``SOURCE_DATE_EPOCH``), così due costruzioni dello stesso commit danno gli stessi byte, su
-qualunque macchina e con qualunque umask. Con ``--commit`` si ricostruisce un commit del
-passato, per esempio quello di una release, con lo strumento di oggi. Scrive i due
-file e ``SHA256SUMS`` nella cartella d'uscita. Con ``--check`` costruisce due volte, in due
-cartelle con umask diverse, ed esce con 1 se i byte non coincidono o se il wheel non porta la
-versione del motore e ``License-Expression: Apache-2.0``.
+qualunque macchina e con qualunque umask; un ``SOURCE_DATE_EPOCH`` dell'ambiente è ignorato, e
+lo strumento lo dice. Un commit che non esiste è un errore, con il codice 2. Con ``--commit``
+si ricostruisce un commit del passato, per esempio quello di una release, con lo strumento di
+oggi. Scrive i due file e ``SHA256SUMS`` nella cartella d'uscita. Con ``--check`` costruisce
+due volte, in due cartelle con umask diverse, ed esce con 1 se i byte non coincidono o se il
+wheel non porta la versione del motore e ``License-Expression: Apache-2.0``.
 
 Serve flit_core nell'interprete che lo esegue, alla versione fissata con le impronte in
 ``tools/requirements/build.txt``.
@@ -33,10 +34,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def resolve(commit: str) -> str | None:
+    """Lo SHA completo del commit, o None se non esiste nel repository."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"],  # noqa: S607 - git dal PATH
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def source_date_epoch(commit: str = "HEAD") -> str:
-    """La data del commit, in secondi: quella che i file del pacchetto portano."""
-    if "SOURCE_DATE_EPOCH" in os.environ:
-        return os.environ["SOURCE_DATE_EPOCH"]
+    """La data del commit, in secondi: quella che i file del pacchetto portano, qualunque sia
+    ``SOURCE_DATE_EPOCH`` nell'ambiente."""
     result = subprocess.run(
         ["git", "log", "-1", "--format=%ct", commit],  # noqa: S607 - git dal PATH, come per l'igiene
         cwd=ROOT,
@@ -142,27 +154,33 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="costruisce due volte e confronta")
     parser.add_argument("--commit", default="HEAD", help="il commit da costruire (HEAD)")
     args = parser.parse_args()
-    epoch = source_date_epoch(args.commit)
+    commit = resolve(args.commit)
+    if commit is None:
+        sys.stderr.write(f"build_release: il commit «{args.commit}» non esiste nel repository\n")
+        return 2
+    if "SOURCE_DATE_EPOCH" in os.environ:
+        sys.stdout.write("SOURCE_DATE_EPOCH dell'ambiente ignorato: vale la data del commit\n")
+    epoch = source_date_epoch(commit)
     left_out = uncommitted()
     if args.commit != "HEAD":
-        sys.stdout.write(f"costruzione dal commit {args.commit}\n")
+        sys.stdout.write(f"costruzione dal commit {args.commit} ({commit[:7]})\n")
     elif left_out:
         sys.stdout.write(
             f"costruzione dall'ultimo commit: {len(left_out)} file non committati restano fuori\n"
         )
     with _umask(0o022):
-        files = build(args.out, epoch, args.commit)
+        files = build(args.out, epoch, commit)
     sums = write_sums(files, args.out)
     sys.stdout.write(sums)
     if args.check:
         with tempfile.TemporaryDirectory() as folder, _umask(0o077):
-            again = build(Path(folder), epoch, args.commit)
+            again = build(Path(folder), epoch, commit)
             different = [
                 first.name
                 for first, second in zip(files, again, strict=True)
                 if first.read_bytes() != second.read_bytes()
             ]
-        problems = metadata_problems(files[0], args.commit)
+        problems = metadata_problems(files[0], commit)
         if different:
             problems.append(f"costruzioni diverse: {', '.join(different)}")
         for problem in problems:

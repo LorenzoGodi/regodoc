@@ -212,16 +212,11 @@ class ReproducibleBuildTest(unittest.TestCase):
     l'interprete in cui è installato flit_core da tools/requirements/build.txt e con
     REGODOC_TEST_BUILD=1."""
 
-    def build(self, *extra: str) -> list[str]:
+    def build(self, *extra: str, environment: dict[str, str] | None = None) -> list[str]:
         with tempfile.TemporaryDirectory() as folder:
-            tool = str(ROOT / "tools" / "build_release.py")
-            result = subprocess.run(
-                [sys.executable, tool, "--out", folder, "--check", *extra],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            result = run_build_release("--out", folder, "--check", *extra, env=environment)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.output = result.stdout
             return (Path(folder) / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
 
     def test_two_builds_give_the_same_bytes(self) -> None:
@@ -245,6 +240,12 @@ class ReproducibleBuildTest(unittest.TestCase):
     def test_commit_head_is_the_default(self) -> None:
         self.assertEqual(self.build("--commit", "HEAD"), self.build())
 
+    def test_the_environment_date_is_ignored(self) -> None:
+        before = self.build()
+        after = self.build(environment={**os.environ, "SOURCE_DATE_EPOCH": "0"})
+        self.assertEqual(after, before)
+        self.assertIn("SOURCE_DATE_EPOCH dell'ambiente ignorato", self.output)
+
     def test_the_release_commits_give_the_announced_sums(self) -> None:
         # Le impronte annunciate in docs/release.md, ricostruite dai file del commit del
         # rilascio con lo strumento di oggi: servono la storia del repository e flit_core.
@@ -259,6 +260,31 @@ class ReproducibleBuildTest(unittest.TestCase):
                 if present.returncode != 0 and not REQUIRE_BUILD:
                     self.skipTest(f"il commit {commit} non è nel checkout")
                 self.assertEqual(self.build("--commit", commit), sums)
+
+
+def run_build_release(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    tool = str(ROOT / "tools" / "build_release.py")
+    return subprocess.run(
+        [sys.executable, tool, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+class BuildReleaseArgumentsTest(unittest.TestCase):
+    """Gli errori che lo strumento dà prima di costruire, anche senza flit_core."""
+
+    def test_a_missing_commit_is_a_clean_error(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            result = run_build_release("--out", folder, "--commit", "0" * 40)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("non esiste nel repository", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(list(Path(folder).iterdir()), [])
 
 
 def released() -> list[tuple[str, list[str]]]:
