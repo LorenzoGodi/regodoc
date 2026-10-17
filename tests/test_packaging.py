@@ -11,8 +11,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+WORKFLOWS = ROOT / ".github" / "workflows"
+CI = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 REQUIREMENTS = ROOT / "tools" / "requirements"
+PIP_INSTALL = re.compile(r"\bpip3?\s+install\b")
+# Quante impronte ha ciascun requisito fissato: una per file pubblicato su PyPI per quella
+# versione. Cambiano solo con la versione, e vanno ricontate allora.
+EXPECTED_HASHES = {"ruff": 18, "flit_core": 2}
 
 
 def pinned(path: Path) -> dict[str, tuple[str, list[str]]]:
@@ -43,13 +48,43 @@ class LicenseTest(unittest.TestCase):
 
 
 class PinnedToolsTest(unittest.TestCase):
-    def test_every_pip_install_in_the_ci_requires_hashes(self) -> None:
-        installs = [line for line in CI.splitlines() if "pip install" in line]
+    def test_every_pip_install_in_the_workflows_requires_hashes(self) -> None:
+        installs = [
+            (path.name, line.strip())
+            for path in sorted(WORKFLOWS.glob("*.y*ml"))
+            for line in path.read_text(encoding="utf-8").replace("\\\n", " ").splitlines()
+            if PIP_INSTALL.search(line)
+        ]
         self.assertGreaterEqual(len(installs), 3)
-        for line in installs:
-            with self.subTest(line.strip()):
-                self.assertIn("--require-hashes", line)
-                self.assertIn("--no-deps", line)
+        for name, line in installs:
+            with self.subTest(f"{name}: {line}"):
+                self.assertRegex(line, r"(?<!\S)--require-hashes(?!\S)")
+                self.assertRegex(line, r"(?<!\S)--no-deps(?!\S)")
+
+    def test_pip_install_pattern_catches_the_variants(self) -> None:
+        for line in [
+            "pip install x",
+            "pip3 install x",
+            "pip  install x",
+            "python -m pip\tinstall x",
+            "uv pip install x",
+        ]:
+            with self.subTest(line):
+                self.assertRegex(line, PIP_INSTALL)
+        self.assertNotRegex("pip list --format=freeze", PIP_INSTALL)
+
+    def test_every_locked_requirement_has_all_its_hashes(self) -> None:
+        # Le impronte di tutti i file pubblicati di ciascuna versione: se ne manca una, pip
+        # rifiuta il file che la impronta tolta copriva, e solo su qualche macchina.
+        found = {
+            name: hashes
+            for path in sorted(REQUIREMENTS.glob("*.txt"))
+            for name, (_, hashes) in pinned(path).items()
+        }
+        self.assertEqual({name: len(hashes) for name, hashes in found.items()}, EXPECTED_HASHES)
+        for name, hashes in found.items():
+            with self.subTest(name):
+                self.assertEqual(len(set(hashes)), len(hashes))
 
     def test_build_backend_is_pinned_within_the_declared_range(self) -> None:
         version, hashes = pinned(REQUIREMENTS / "build.txt")["flit_core"]
