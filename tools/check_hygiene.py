@@ -200,12 +200,17 @@ def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Pro
     return problems
 
 
-# Quanto si decomprime al massimo di un blocco compresso, e quanto si legge al massimo di una
-# voce d'archivio.
+# Quanto si decomprime al massimo di un blocco compresso, di un flusso di oggetti compressi
+# di un PDF, e quanto si legge al massimo di una voce d'archivio.
 _MAX_METADATA = 1 << 20
+_MAX_OBJECTS = 16 << 20
 _MAX_ENTRY = 64 << 20
 
 Texts = list[tuple[str, str]]
+
+
+class UnreadableEntry(Exception):
+    """Una voce d'archivio che non si può leggere: cifrata o con un metodo non supportato."""
 
 
 def _also_utf16(block: str, body: bytes) -> Texts:
@@ -291,6 +296,10 @@ def _pdf_literals(data: bytes) -> list[bytes]:
             char = data[index : index + 1]
             if char == b"\\":
                 following = data[index + 1 : index + 2]
+                if following in (b"\r", b"\n"):
+                    # La barra prima di un a capo continua la stringa sulla riga dopo.
+                    index += 3 if data[index + 1 : index + 3] == b"\r\n" else 2
+                    continue
                 octal = re.match(rb"[0-7]{1,3}", data[index + 1 : index + 4])
                 if octal:
                     out.append(int(octal.group(), 8) & 0xFF)
@@ -312,26 +321,53 @@ def _pdf_literals(data: bytes) -> list[bytes]:
     return found
 
 
+def _pdf_hex_strings(data: bytes) -> list[bytes]:
+    """Le stringhe esadecimali ``<…>`` di un PDF, anche attaccate a ``<<`` o a ``>>``."""
+    found = []
+    position = data.find(b"<")
+    while position >= 0:
+        if data[position + 1 : position + 2] == b"<":
+            position = data.find(b"<", position + 2)  # l'inizio di un dizionario
+            continue
+        end = data.find(b">", position + 1)
+        if end < 0:
+            break
+        hexa = re.sub(rb"\s", b"", data[position + 1 : end])
+        if re.fullmatch(rb"[0-9A-Fa-f]*", hexa):
+            found.append(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
+        position = data.find(b"<", end + 1)
+    return found
+
+
+def _pdf_strings(data: bytes) -> str:
+    raws = _pdf_literals(data) + _pdf_hex_strings(data)
+    return "\n".join(_pdf_string(raw) for raw in raws)
+
+
 def _pdf_texts(data: bytes) -> Texts:
     texts: Texts = []
-    # I flussi dei metadati (XMP), decompressi se serve; gli altri flussi restano fuori. Il
-    # dizionario si cerca dentro l'oggetto, senza passare la sua fine.
+    # I flussi dei metadati (XMP) e quelli degli oggetti compressi (/ObjStm, dove stanno per
+    # esempio il dizionario Info e i segnalibri), decompressi se il filtro è Flate; gli altri
+    # flussi restano fuori. Il dizionario si cerca dentro l'oggetto, senza passare la sua fine.
     objects = re.finditer(rb"obj((?:(?!endobj).)*?)stream\r?\n(.*?)endstream", data, re.S)
+    compressed = []
     for match in objects:
         dictionary, body = match.group(1), match.group(2)
+        flate = b"/FlateDecode" in dictionary
         if re.search(rb"/Type\s*/Metadata|/Subtype\s*/XML", dictionary):
-            if b"/FlateDecode" in dictionary:
+            if flate:
                 body = zlib.decompressobj().decompress(body, _MAX_METADATA)
             texts.append(("metadati XMP", body.decode("utf-8", "replace")))
+        elif re.search(rb"/Type\s*/ObjStm", dictionary):
+            if flate:
+                body = zlib.decompressobj().decompress(body, _MAX_OBJECTS)
+            compressed.append(body)
     outside = re.sub(rb"stream\r?\n.*?endstream", b"", data, flags=re.S)
     texts.append(("PDF fuori dai flussi", outside.decode("latin-1")))
-    strings = [_pdf_string(raw) for raw in _pdf_literals(outside)]
-    strings += [
-        _pdf_string(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
-        for hexa in re.findall(rb"(?<!<)<([0-9A-Fa-f\s]*)>(?!>)", outside)
-        for hexa in [re.sub(rb"\s", b"", hexa)]
-    ]
-    texts.append(("stringhe del PDF", "\n".join(strings)))
+    texts.append(("stringhe del PDF", _pdf_strings(outside)))
+    for body in compressed:
+        texts.append(("oggetti compressi del PDF", body.decode("latin-1")))
+        texts.append(("stringhe degli oggetti compressi", _pdf_strings(body)))
     return texts
 
 
@@ -344,7 +380,13 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
             texts.append(("commento di una voce", info.comment.decode("latin-1")))
             if info.is_dir() or info.file_size > _MAX_ENTRY:
                 continue
-            body = archive.read(info)
+            if info.flag_bits & 0x1:
+                raise UnreadableEntry(f"voce {info.filename} cifrata")
+            try:
+                body = archive.read(info)
+            except NotImplementedError:
+                message = f"voce {info.filename} con un metodo di compressione non supportato"
+                raise UnreadableEntry(message) from None
             reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
             if reader is _zip_texts and depth:
                 continue  # un archivio dentro un archivio dentro un archivio: si ferma qui
@@ -377,20 +419,32 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
       IEND;
     - JPEG: i commenti e i segmenti APP, anche in UTF-16, e i byte dopo la fine
       dell'immagine;
-    - PDF: il testo fuori dai flussi, le sue stringhe letterali ed esadecimali decodificate
-      (UTF-16 con il BOM, altrimenti latin-1) e i flussi dei metadati XMP, decompressi;
+    - PDF: il testo fuori dai flussi e le sue stringhe letterali ed esadecimali decodificate
+      (UTF-16 con il BOM, altrimenti latin-1; nelle letterali anche le sequenze ottali e la
+      barra prima di un a capo); i flussi dei metadati XMP e quelli degli oggetti compressi
+      (/ObjStm, con il dizionario Info e i segnalibri), decompressi se il filtro è Flate, e le
+      stringhe di questi ultimi;
     - archivi (.regodoc, .zip): commenti e nomi delle voci, il testo di ogni voce e, per le
       voci che sono immagini, PDF o archivi, quanto sopra; gli archivi annidati fino a un
-      livello.
+      livello. Una voce cifrata o con un metodo di compressione non supportato è un rilievo
+      con il suo nome.
 
     Limiti: non si leggono il testo delle pagine di un PDF, che sta in flussi compressi, né
-    i flussi diversi da quelli dei metadati, né i pixel delle immagini.
+    i flussi diversi da quelli dei metadati e degli oggetti compressi, né i pixel delle
+    immagini. Restano fuori anche: XMP in UTF-16 e flussi di metadati o di oggetti con filtri
+    diversi da Flate; i riempimenti 0xFF fra i segmenti di un JPEG, dopo i quali la lettura
+    dei segmenti si ferma; i blocchi privati dei PNG, oltre a tEXt, zTXt, iTXt ed eXIf; i
+    campi extra delle voci ZIP e il testo delle voci scritto in UTF-16. Si decomprimono al
+    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; si leggono le voci
+    fino a 64 MiB.
     """
     reader = _METADATA_READERS.get(suffix)
     if reader is None:
         return []
     try:
         texts = reader(data)
+    except UnreadableEntry as error:
+        return [Problem(where, 0, f"metadati non leggibili: {error}")]
     except (ValueError, zlib.error, zipfile.BadZipFile, IndexError, EOFError) as error:
         return [Problem(where, 0, f"metadati non leggibili: {type(error).__name__}")]
     problems = []

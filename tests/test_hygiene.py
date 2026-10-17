@@ -303,6 +303,76 @@ class BinaryMetadataTest(unittest.TestCase):
             ["metadati (nome di una voce): contengono un nome vietato"],
         )
 
+    def test_pdf_compressed_object_streams(self) -> None:
+        title = "\ufeffuna frase vietata".encode("utf-16-be").hex().encode()
+        for inner, blocks in (
+            (b"1 0 obj << /Producer (proibito) >> endobj", ["oggetti compressi", "stringhe"]),
+            (b"7 0 obj << /Title <" + title + b"> /Parent 6 0 R >>", ["stringhe"]),
+        ):
+            packed = zlib.compress(inner)
+            body = (
+                b"9 0 obj << /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length "
+                + str(len(packed)).encode()
+                + b" >> stream\n"
+                + packed
+                + b"\nendstream endobj\n"
+            )
+            names = {
+                "oggetti compressi": "metadati (oggetti compressi del PDF)",
+                "stringhe": "metadati (stringhe degli oggetti compressi)",
+            }
+            with self.subTest(inner[:20]):
+                self.assertEqual(
+                    self.found("a.pdf", b"%PDF-1.5\n" + body),
+                    [f"{names[b]}: contengono un nome vietato" for b in blocks],
+                )
+
+    def test_pdf_hex_string_before_the_end_of_a_dictionary(self) -> None:
+        title = "\ufeffproibito".encode("utf-16-be").hex().encode()
+        for body in (
+            b"1 0 obj << /Title <" + title + b">>> endobj",
+            b"1 0 obj <<<" + title + b"> /A 1 >> endobj",
+        ):
+            with self.subTest(body[:16]):
+                self.assertEqual(
+                    self.found("a.pdf", b"%PDF-1.5\n" + body),
+                    ["metadati (stringhe del PDF): contengono un nome vietato"],
+                )
+
+    def test_pdf_literal_continued_on_the_next_line(self) -> None:
+        for newline in (b"\n", b"\r\n", b"\r"):
+            with self.subTest(newline):
+                body = b"1 0 obj << /Author (proi\\" + newline + b"bito) >> endobj"
+                self.assertEqual(
+                    self.found("a.pdf", b"%PDF-1.5\n" + body),
+                    ["metadati (stringhe del PDF): contengono un nome vietato"],
+                )
+
+    def test_encrypted_or_unsupported_entries_are_reported(self) -> None:
+        # Le voci si scrivono normali e poi si cambiano i campi nell'intestazione locale e in
+        # quella centrale: zipfile non scrive né voci cifrate né metodi che non conosce.
+        def patched(name: str, local: int, central: int, value: int) -> bytes:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                archive.writestr(name, b"x")
+            data = bytearray(buffer.getvalue())
+            for header, offset in ((b"PK\x03\x04", local), (b"PK\x01\x02", central)):
+                start = data.find(header) + offset
+                data[start : start + 2] = value.to_bytes(2, "little")
+            return bytes(data)
+
+        self.assertEqual(
+            self.found("a.regodoc", patched("parts/a.xml", 6, 8, 0x1)),
+            ["metadati non leggibili: voce parts/a.xml cifrata"],
+        )
+        self.assertEqual(
+            self.found("a.zip", patched("parts/b.xml", 8, 10, 99)),
+            [
+                "metadati non leggibili: voce parts/b.xml con un metodo di compressione "
+                "non supportato"
+            ],
+        )
+
     def test_unreadable_metadata_is_reported(self) -> None:
         self.assertEqual(
             self.found("a.zip", b"non un archivio"),
