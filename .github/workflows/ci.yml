@@ -49,6 +49,9 @@ jobs:
           python-version: "3.12"
       - name: File e messaggi dei commit non ancora in main
         run: python tools/check_hygiene.py --commits origin/main..HEAD
+      # Il motore cambiato sopra una versione rilasciata deve alzarla (docs/release.md).
+      - name: Versione dopo il rilascio
+        run: python tools/check_version.py --base origin/main
 
   test:
     name: prove (${{ matrix.os }}, Python ${{ matrix.python }})

@@ -53,6 +53,17 @@ Lo fa Lorenzo, a mano; la versione non va su PyPI.
 3. Crea il tag `v<versione>` su quel commit e la release su GitHub con i tre file
    dell'artefatto; nelle note della release copia il contenuto di `SHA256SUMS`.
 
+**La versione dopo il rilascio.** Dopo il tag, `main` resta alla versione rilasciata finché
+non entra il primo commit che cambia il motore, cioè un file sotto `src/regodoc/` (in
+`__init__.py` conta tutto tranne la riga di `__version__`). Quel commit, o uno dello stesso
+lotto, porta `__version__` a una versione `.dev` successiva: `0.1.1.dev0` dopo `0.1.0`, o
+`0.2.0.dev0` se il lotto aggiunge funzioni. Così un wheel costruito da `main` dopo il rilascio
+non porta il numero della release. I commit che non toccano il motore, come documenti, prove
+e strumenti, lasciano la versione com'è. Il commit del rilascio successivo toglie `.dev`.
+`tools/check_version.py --base origin/main`, nel job d'igiene della CI, rifiuta un lotto che
+cambia il motore sopra una versione rilasciata senza alzarla, e ogni versione che scende o
+non ha la forma `N.N.N` o `N.N.N.devN`.
+
 ## La versione fissata in Rego
 
 Rego installa il wheel della release nel proprio ambiente virtuale, con un file di requisiti
