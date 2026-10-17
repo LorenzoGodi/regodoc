@@ -17,7 +17,10 @@ A ogni commit il job «pacchetto riproducibile e installazione con le impronte»
 4. installa il wheel con la sua impronta in un ambiente pulito e prova `regodoc info`;
 5. carica i tre file come artefatto `regodoc-<commit>`, con lo SHA completo del commit.
 
-Chiunque può rifare la costruzione dallo stesso commit e ottenere gli stessi byte:
+Chiunque può rifare la costruzione dallo stesso commit e ottenere gli stessi byte. Lo
+strumento costruisce dai file del commit estratti con `git archive`, non dall'albero di
+lavoro: modifiche non committate e file non tracciati restano fuori, e lo strumento lo dice.
+Basta un checkout del commit, anche non pulito:
 
 ```sh
 python3 -m venv .venv-build

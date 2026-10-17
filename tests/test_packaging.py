@@ -68,7 +68,7 @@ class PinnedToolsTest(unittest.TestCase):
 class ReproducibleBuildTest(unittest.TestCase):
     """La costruzione che fa il job del pacchetto nella CI, dove flit_core c'è sempre."""
 
-    def test_two_builds_give_the_same_bytes(self) -> None:
+    def build(self) -> list[str]:
         with tempfile.TemporaryDirectory() as folder:
             tool = str(ROOT / "tools" / "build_release.py")
             result = subprocess.run(
@@ -78,10 +78,25 @@ class ReproducibleBuildTest(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            sums = (Path(folder) / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+            return (Path(folder) / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+
+    def test_two_builds_give_the_same_bytes(self) -> None:
+        sums = self.build()
         self.assertEqual(len(sums), 2)
         self.assertTrue(sums[0].endswith("-py3-none-any.whl"))
         self.assertTrue(sums[1].endswith(".tar.gz"))
+
+    def test_untracked_files_stay_out(self) -> None:
+        # La costruzione parte dai file del commit: un file non tracciato sotto tests/, che
+        # l'archivio sorgente includerebbe, non cambia le impronte.
+        before = self.build()
+        stray = ROOT / "tests" / "zz_non_tracciato.txt"
+        stray.write_text("non committato\n", encoding="utf-8")
+        try:
+            after = self.build()
+        finally:
+            stray.unlink()
+        self.assertEqual(after, before)
 
 
 if __name__ == "__main__":

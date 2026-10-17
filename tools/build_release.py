@@ -1,7 +1,10 @@
 """Costruisce il wheel e l'archivio sorgente di regodoc in modo riproducibile.
 
-La data dei file viene dall'ultimo commit (``SOURCE_DATE_EPOCH``), così due costruzioni dello
-stesso commit danno gli stessi byte, su qualunque macchina e con qualunque umask. Scrive i due
+Costruisce dai file dell'ultimo commit, estratti con ``git archive`` in una cartella
+temporanea: le modifiche non committate e i file non tracciati restano fuori, e lo strumento
+lo dice. La data dei file viene dallo stesso commit (``SOURCE_DATE_EPOCH``), così due
+costruzioni dello stesso commit danno gli stessi byte, su qualunque macchina e con qualunque
+umask. Scrive i due
 file e ``SHA256SUMS`` nella cartella d'uscita. Con ``--check`` costruisce due volte, in due
 cartelle con umask diverse, ed esce con 1 se i byte non coincidono o se il wheel non porta la
 versione del motore e ``License-Expression: Apache-2.0``.
@@ -15,9 +18,12 @@ Serve flit_core nell'interprete che lo esegue, alla versione fissata con le impr
 import argparse
 import contextlib
 import hashlib
+import io
 import os
+import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from collections.abc import Iterator
@@ -40,6 +46,30 @@ def source_date_epoch() -> str:
     return result.stdout.strip()
 
 
+def committed_tree(destination: Path) -> None:
+    """Estrae in ``destination`` i file dell'ultimo commit, e solo quelli."""
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", "HEAD"],  # noqa: S607 - git dal PATH
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(destination, filter="data")
+
+
+def uncommitted() -> list[str]:
+    """I file modificati o non tracciati dell'albero di lavoro, che la costruzione ignora."""
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],  # noqa: S607 - git dal PATH
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return [line[3:] for line in status.splitlines()]
+
+
 @contextlib.contextmanager
 def _umask(mask: int) -> Iterator[None]:
     previous = os.umask(mask)
@@ -50,7 +80,15 @@ def _umask(mask: int) -> Iterator[None]:
 
 
 def build(out: Path, epoch: str) -> list[Path]:
-    """Costruisce wheel e archivio sorgente in ``out``; restituisce i due file."""
+    """Costruisce wheel e archivio sorgente dell'ultimo commit in ``out``; restituisce i due
+    file."""
+    with tempfile.TemporaryDirectory() as folder:
+        source = Path(folder)
+        committed_tree(source)
+        return _build(source, out.resolve(), epoch)
+
+
+def _build(source: Path, out: Path, epoch: str) -> list[Path]:
     from flit_core import buildapi  # noqa: PLC0415 - serve solo qui, e solo con flit_core
 
     out.mkdir(parents=True, exist_ok=True)
@@ -58,7 +96,7 @@ def build(out: Path, epoch: str) -> list[Path]:
     os.environ["SOURCE_DATE_EPOCH"] = epoch
     cwd = Path.cwd()
     try:
-        os.chdir(ROOT)
+        os.chdir(source)
         names = [buildapi.build_wheel(str(out)), buildapi.build_sdist(str(out))]
     finally:
         os.chdir(cwd)
@@ -79,14 +117,22 @@ def write_sums(files: list[Path], out: Path) -> str:
 
 
 def metadata_problems(wheel: Path) -> list[str]:
-    """Ciò che manca ai metadati del wheel: la versione del motore e la licenza SPDX."""
-    sys.path.insert(0, str(ROOT / "src"))
-    from regodoc import __version__  # noqa: PLC0415 - la versione del sorgente costruito
+    """Ciò che manca ai metadati del wheel: la versione del motore nell'ultimo commit e la
+    licenza SPDX."""
+    text = subprocess.run(
+        ["git", "show", "HEAD:src/regodoc/__init__.py"],  # noqa: S607 - git dal PATH
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    found = re.search(r'^__version__ = "([^"]+)"', text, re.M)
+    version = found.group(1) if found else "?"
 
     with zipfile.ZipFile(wheel) as archive:
         name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
         lines = archive.read(name).decode("utf-8").split("\n\n", 1)[0].splitlines()
-    expected = [f"Version: {__version__}", "License-Expression: Apache-2.0"]
+    expected = [f"Version: {version}", "License-Expression: Apache-2.0"]
     return [f"manca «{line}» nei metadati" for line in expected if line not in lines]
 
 
@@ -96,6 +142,11 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="costruisce due volte e confronta")
     args = parser.parse_args()
     epoch = source_date_epoch()
+    left_out = uncommitted()
+    if left_out:
+        sys.stdout.write(
+            f"costruzione dall'ultimo commit: {len(left_out)} file non committati restano fuori\n"
+        )
     with _umask(0o022):
         files = build(args.out, epoch)
     sums = write_sums(files, args.out)
