@@ -7,6 +7,7 @@ La prova completa compila un PDF: senza pdflatex si salta, tranne quando
 import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -24,6 +25,9 @@ assert _SPEC and _SPEC.loader
 install = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(install)
 
+ROOT = Path(__file__).resolve().parent.parent
+RELEASE = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
+CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 REQUIRE_TEX = os.environ.get("REGODOC_REQUIRE_TEX") == "1"
 PDFLATEX = shutil.which("pdflatex")
 ENVIRONMENT = {"PATH": os.environ.get("PATH", os.defpath)}
@@ -121,6 +125,56 @@ class CheckTest(unittest.TestCase):
             self.assertEqual(problems, [])
             self.assertTrue((out / "documento.pdf").read_bytes().startswith(b"%PDF-"))
             self.assertEqual(install.check(str(wrapper), "0.0.1", EXAMPLE, out)[0][:5], "info:")
+
+
+def image_section() -> str:
+    return RELEASE.split("## Immagine di Rego", 1)[1]
+
+
+def block(text: str, language: str) -> str:
+    found = re.search(rf"```{language}\n(.*?)```", text, re.S)
+    assert found, language
+    return found.group(1)
+
+
+class ImageDocTest(unittest.TestCase):
+    """La sezione «Immagine di Rego» di docs/release.md resta allineata al motore e alla CI."""
+
+    def test_expected_info_values_match_the_engine(self) -> None:
+        # La versione è quella della release a cui la sezione si riferisce; il resto deve
+        # coincidere con la dichiarazione del motore, finché non cambia anche la sezione.
+        expected = json.loads(block(image_section(), "json"))
+        info = declaration()
+        for key, value in expected.items():
+            if key != "version":
+                with self.subTest(key):
+                    self.assertEqual(info[key], value)
+
+    def test_the_example_check_agrees_with_the_tool(self) -> None:
+        names: dict[str, object] = {}
+        exec(block(image_section(), "python"), names)  # noqa: S102 - esempio del repository
+        example = names["info_problems"]
+        cases = [
+            {},
+            {"version": "0.0.1"},
+            {"contracts": [2]},
+            {"expat": "2.5.0", "expat_min": "2.6.0"},
+            {"expat": "2.10.0", "expat_min": "2.6.0"},
+            {"grammars": {"current": "rego/2", "read": ["rego/2"]}},
+        ]
+        for change in cases:
+            with self.subTest(change):
+                info = {**declaration(), **change}
+                self.assertEqual(
+                    len(example(info, __version__)),  # type: ignore[operator]
+                    len(install.info_problems(info, __version__)),
+                )
+
+    def test_the_packages_are_those_of_the_ci(self) -> None:
+        documented = set(block(image_section(), "text").split())
+        job = CI.split("  tex:", 1)[1]
+        installed = set(re.findall(r"\b(lmodern|texlive-[a-z-]+)\b", job.split("make ", 1)[0]))
+        self.assertEqual(documented, installed)
 
 
 if __name__ == "__main__":

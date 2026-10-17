@@ -75,3 +75,93 @@ più vecchio di `expat_min` e `grammars`; poi chiama sempre il motore con `--con
 
 Per cambiare versione Rego cambia indirizzo e impronta nello stesso file e rilegge `info`;
 per tornare indietro segue le condizioni del contratto, §11.
+
+## Immagine di Rego
+
+Questa sezione è solo documentazione: il Dockerfile di Rego lo cambia la sessione CI di Rego,
+su una voce sua, non questo repository. Qui c'è quello che l'immagine deve dare al motore
+perché funzioni come lo prova la CI (job «TeX sull'immagine di riferimento») e come lo
+promette il contratto.
+
+**Base e pacchetti.** La stessa base della CI, `python:3.12-slim` su Debian trixie fissata per
+digest, con i pacchetti apt, senza i raccomandati:
+
+```text
+lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra
+texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science
+```
+
+Le versioni apt non sono fissate: la riproducibilità dei PDF si verifica sull'immagine con due
+compilazioni dello stesso pacchetto (contratto, §10).
+
+**Installazione.** Un venv dedicato al motore, per esempio `/opt/regodoc`, creato con
+l'interprete dell'immagine; il wheel della release si installa con il file di requisiti della
+sezione precedente, `--require-hashes --no-deps`, durante la costruzione dell'immagine. Il
+venv appartiene a root e il servizio non può scriverci.
+
+**Esecuzione.** Il servizio che chiama il motore gira con un utente non root. Per ogni
+chiamata:
+
+- l'interprete del venv con `-I -B -m regodoc --contract 1` e `--json`;
+- stdin da `/dev/null` e come cartella corrente una cartella temporanea vuota;
+- nell'ambiente solo `PATH`, che deve contenere `pdflatex`, `TMPDIR`, una cartella
+  scrivibile e pulita del servizio, e, se serve, `SOURCE_DATE_EPOCH`: il motore ignora ogni
+  altra variabile (contratto, §2.2);
+- un gruppo di processi suo (`start_new_session`), ucciso per intero con `SIGKILL` allo
+  scadere di `resources.time_seconds` del comando più 10 secondi, trattando il caso come
+  codice 3 con `regodoc.limit.time` (contratto, §2.3).
+
+`tools/check_install.py` fa esattamente questo, ed è il riferimento da cui copiare:
+
+```sh
+python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.1.0
+```
+
+**Controllo di `info`.** All'avvio del servizio, o alla costruzione dell'immagine, Rego legge
+`info` e confronta almeno questi campi; per la 0.1.0 i valori attesi sono:
+
+```json
+{
+  "version": "0.1.0",
+  "contract": 1,
+  "contracts": [1],
+  "expat_min": "2.6.0",
+  "grammars": {"current": "rego/1", "read": ["rego/1"]},
+  "commands": {
+    "build": "ready",
+    "canon": "ready",
+    "info": "ready",
+    "upgrade": "ready",
+    "validate": "ready"
+  },
+  "resources": {
+    "enforced": true,
+    "memory_bytes": 1073741824,
+    "memory_enforced_on": ["linux"],
+    "time_seconds": {"build": 300, "canon": 60, "info": 5, "upgrade": 60, "validate": 30}
+  }
+}
+```
+
+`expat` dipende dalla libreria dell'interprete e non ha un valore atteso: deve essere almeno
+`expat_min`, confrontando le versioni come numeri (`2.10.0` è più recente di `2.6.0`). Un
+esempio sintetico del controllo, lo stesso di `info_problems` in `tools/check_install.py`:
+
+```python
+def info_problems(info: dict, version: str) -> list[str]:
+    def number(text: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in text.split("."))
+
+    problems = []
+    if info["version"] != version:
+        problems.append("versione diversa da quella fissata")
+    if 1 not in info["contracts"]:
+        problems.append("il motore non supporta il contratto 1")
+    if number(info["expat"]) < number(info["expat_min"]):
+        problems.append("expat troppo vecchio")
+    if "rego/1" not in info["grammars"]["read"]:
+        problems.append("il motore non legge la grammatica rego/1")
+    return problems
+```
+
+Con un problema il servizio non usa il motore e lo segnala; non prova a chiamarlo comunque.
