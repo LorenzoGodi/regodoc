@@ -382,14 +382,19 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
         for info in archive.infolist():
             texts.append(("nome di una voce", info.filename))
             texts.append(("commento di una voce", info.comment.decode("latin-1")))
-            if info.is_dir() or info.file_size > _MAX_ENTRY:
+            if info.is_dir():
                 continue
             if info.flag_bits & 0x1:
                 raise UnreadableEntry(f"voce {info.filename} cifrata")
             try:
-                body = archive.read(info)
+                # Di una voce più grande si leggono i primi _MAX_ENTRY byte, non la si salta.
+                with archive.open(info) as entry:
+                    body = entry.read(_MAX_ENTRY)
             except NotImplementedError:
                 message = f"voce {info.filename} con un metodo di compressione non supportato"
+                raise UnreadableEntry(message) from None
+            except (OSError, EOFError, zlib.error, zipfile.BadZipFile) as error:
+                message = f"voce {info.filename} con dati rotti ({type(error).__name__})"
                 raise UnreadableEntry(message) from None
             reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
             if reader is _zip_texts and depth:
@@ -430,8 +435,8 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
       stringhe di questi ultimi;
     - archivi (.regodoc, .zip): commenti e nomi delle voci, il testo di ogni voce e, per le
       voci che sono immagini, PDF o archivi, quanto sopra; gli archivi annidati fino a un
-      livello. Una voce cifrata o con un metodo di compressione non supportato è un rilievo
-      con il suo nome.
+      livello. Una voce cifrata, con un metodo di compressione non supportato o con dati
+      rotti è un rilievo con il suo nome.
 
     Limiti: non si leggono il testo delle pagine di un PDF, che sta in flussi compressi, né
     i flussi diversi da quelli dei metadati e degli oggetti compressi, né i pixel delle
@@ -439,8 +444,8 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
     diversi da Flate; i riempimenti 0xFF fra i segmenti di un JPEG, dopo i quali la lettura
     dei segmenti si ferma; i blocchi privati dei PNG, oltre a tEXt, zTXt, iTXt ed eXIf; i
     campi extra delle voci ZIP e il testo delle voci scritto in UTF-16. Si decomprimono al
-    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; si leggono le voci
-    fino a 64 MiB.
+    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; di ogni voce si
+    leggono i primi 64 MiB.
     """
     reader = _METADATA_READERS.get(suffix)
     if reader is None:

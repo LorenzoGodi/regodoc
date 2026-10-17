@@ -8,6 +8,7 @@ import unittest
 import zipfile
 import zlib
 from pathlib import Path
+from unittest import mock
 
 _PATH = Path(__file__).resolve().parent.parent / "tools" / "check_hygiene.py"
 _SPEC = importlib.util.spec_from_file_location("check_hygiene", _PATH)
@@ -385,6 +386,31 @@ class BinaryMetadataTest(unittest.TestCase):
                 "non supportato"
             ],
         )
+
+    def test_broken_bzip2_entry_is_reported(self) -> None:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_BZIP2) as archive:
+            archive.writestr("parts/c.xml", b"<p>testo di prova</p>" * 50)
+        data = bytearray(buffer.getvalue())
+        start = data.find(b"BZh") + 10
+        data[start : start + 8] = b"\x00" * 8
+        self.assertEqual(
+            self.found("a.regodoc", bytes(data)),
+            ["metadati non leggibili: voce parts/c.xml con dati rotti (OSError)"],
+        )
+
+    def test_large_entry_is_read_up_to_the_limit(self) -> None:
+        # Con il limite abbassato a 16 byte: della voce si leggono i primi 16, non la si
+        # salta; un nome dopo il limite resta fuori.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("parts/d.xml", b"<p>proibito</p>" + b" " * 100)
+            archive.writestr("parts/e.xml", b" " * 100 + b"<p>proibito</p>")
+        with mock.patch.object(hygiene, "_MAX_ENTRY", 16):
+            self.assertEqual(
+                self.found("a.regodoc", buffer.getvalue()),
+                ["metadati (voce parts/d.xml, testo): contengono un nome vietato"],
+            )
 
     def test_unreadable_metadata_is_reported(self) -> None:
         self.assertEqual(
