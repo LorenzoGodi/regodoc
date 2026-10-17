@@ -8,7 +8,11 @@ motore»).
 
 A ogni commit il job «pacchetto riproducibile e installazione con le impronte» della CI:
 
-1. installa flit_core con `pip install --require-hashes` da `tools/requirements/build.txt`;
+1. installa flit_core con `pip install --require-hashes` da `tools/requirements/build.txt` e,
+   con quell'interprete e `REGODOC_TEST_BUILD=1`, lancia le prove della costruzione
+   (`tests/test_packaging.py`), che negli altri job si saltano: due costruzioni uguali, file
+   non tracciati che restano fuori, `--commit` e la ricostruzione dei commit dei rilasci, con
+   le impronte annunciate nella tabella qui sotto;
 2. costruisce con `tools/build_release.py --check` il wheel `regodoc-<versione>-py3-none-any.whl`
    e l'archivio sorgente `regodoc-<versione>.tar.gz`, con la data dell'ultimo commit come
    `SOURCE_DATE_EPOCH`; li costruisce una seconda volta con un'altra umask e ne confronta i
@@ -45,13 +49,41 @@ python3 -m venv .venv-build
 
 Lo fa Lorenzo, a mano; la versione non va su PyPI.
 
-1. `main` è sul commit approvato, con la CI verde, e `__version__` in
-   `src/regodoc/__init__.py` è la versione da rilasciare, senza suffissi `.dev`.
-2. Scarica l'artefatto `regodoc-<commit>` della CI di quel commit e verifica i file con
-   `sha256sum -c SHA256SUMS`. Se vuole una seconda prova, rifà la costruzione come sopra e
-   confronta le impronte.
-3. Crea il tag `v<versione>` su quel commit e la release su GitHub con i tre file
-   dell'artefatto; nelle note della release copia il contenuto di `SHA256SUMS`.
+Il commit del rilascio non è per forza la testa di `main`: è il commit della consegna che ha
+annunciato le impronte della versione, e `main` può essere andato avanti dopo, con commit che
+non toccano il motore. Il wheel di un commit successivo ha lo stesso motore ma byte diversi
+(date, `README.md` nei metadati, `RECORD`), quindi impronte diverse da quelle annunciate. Il
+tag va sul commit del rilascio, non sulla testa.
+
+1. **Scegliere il commit.** È quello della consegna con le impronte annunciate, registrato
+   nella tabella qui sotto. Deve stare in `main` (`git merge-base --is-ancestor <commit>
+   origin/main`), con la CI verde, e `__version__` in `src/regodoc/__init__.py` in quel commit
+   deve essere la versione da rilasciare, senza `.dev`.
+2. **Verificarlo.** Ricostruisce il pacchetto dai file di quel commit con lo strumento di oggi
+   e confronta le impronte con quelle annunciate:
+
+   ```sh
+   .venv-build/bin/python tools/build_release.py --commit <commit> --out dist --check
+   ```
+
+   Lo strumento estrae i file del commit con `git archive`, quindi basta un checkout di `main`
+   anche non pulito. Se le impronte non coincidono, il rilascio si ferma.
+3. **Pubblicare.** Crea il tag `v<versione>` su quel commit e la release su GitHub con i due
+   file e `SHA256SUMS` della ricostruzione, oppure dell'artefatto `regodoc-<commit>` della CI
+   di quel commit, verificato con `sha256sum -c SHA256SUMS`; nelle note della release copia il
+   contenuto di `SHA256SUMS`.
+
+| Versione | Commit del rilascio | Consegna | `SHA256SUMS` |
+|---|---|---|---|
+| 0.1.0 | `2a7d943` | L7 | vedi sotto |
+
+```text
+a96095e8de0098e1cb1e6fc2a5232bb7a83555178b802f3503f07f7316636c49  regodoc-0.1.0-py3-none-any.whl
+190c6c87833b9d782263bf3e038328566d41dbeec8351a40a7bc9462c070925c  regodoc-0.1.0.tar.gz
+```
+
+Una prova del job del pacchetto ricostruisce `2a7d943` a ogni commit e confronta le sue
+impronte con queste.
 
 **La versione dopo il rilascio.** Dopo il tag, `main` resta alla versione rilasciata finché
 non entra il primo commit che cambia il motore, cioè un file sotto `src/regodoc/` (in

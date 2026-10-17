@@ -17,7 +17,11 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 REQUIREMENTS = ROOT / "tools" / "requirements"
-PIP_INSTALL = re.compile(r"\bpip3?\s+install\b")
+# Un comando pip install: pip, pip3 o pip3.12, poi qualunque opzione, poi install, fino al
+# primo separatore della shell. Si cerca sul comando normalizzato da run_commands.
+PIP_INSTALL = re.compile(r"\bpip[\d.]*(?:\s+[^\s|;&]+)*?\s+install\b[^|;&\n]*")
+_RUN_BLOCK = re.compile(r"^(\s*(?:-\s+)?)run:\s*([|>])[-+0-9]*\s*(?:#.*)?$")
+_RUN_INLINE = re.compile(r"^(\s*(?:-\s+)?)run:\s*(\S.*)$")
 # Quante impronte ha ciascun requisito fissato: una per file pubblicato su PyPI per quella
 # versione. Cambiano solo con la versione, e vanno ricontate allora.
 EXPECTED_HASHES = {"ruff": 18, "flit_core": 2}
@@ -37,6 +41,66 @@ def pinned(path: Path) -> dict[str, tuple[str, list[str]]]:
     return found
 
 
+def automation_files(names: list[str] | None = None) -> list[str]:
+    """I file che la CI esegue: i workflow e le action composite del repository, fra quelli
+    tracciati da git (o fra ``names``)."""
+    if names is None:
+        names = subprocess.run(
+            ["git", "ls-files", "*.yml", "*.yaml"],  # noqa: S607 - git dal PATH
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+    return sorted(
+        name
+        for name in names
+        if name.startswith(".github/workflows/") or Path(name).name in {"action.yml", "action.yaml"}
+    )
+
+
+def run_commands(text: str) -> list[str]:
+    """I comandi dei passi ``run:`` di un file YAML, come la shell li riceve: i blocchi ``>``
+    piegati in una riga, i blocchi ``|`` riga per riga, il valore in linea così com'è."""
+    lines = text.splitlines()
+    commands = []
+    for index, line in enumerate(lines):
+        block = _RUN_BLOCK.match(line)
+        inline = None if block else _RUN_INLINE.match(line)
+        if not block and not inline:
+            continue
+        key = len((block or inline).group(1))  # type: ignore[union-attr]
+        body = []
+        for following in lines[index + 1 :]:
+            if following.strip() and len(following) - len(following.lstrip()) <= key:
+                break
+            body.append(following.strip())
+        if inline:
+            commands.append(" ".join([inline.group(2).strip("'\""), *filter(None, body)]))
+        elif block.group(2) == ">":  # type: ignore[union-attr]
+            commands.append(" ".join(filter(None, body)))
+        else:
+            commands.append("\n".join(body))
+    return commands
+
+
+def pip_installs(text: str) -> list[str]:
+    """Le installazioni con pip nei passi ``run:``, con le righe continuate unite e senza i
+    commenti della shell."""
+    found = []
+    for command in run_commands(text):
+        joined = command.replace("\\\n", " ")
+        bare = "\n".join(re.sub(r"(^|\s)#.*$", "", line) for line in joined.splitlines())
+        found.extend(match.group(0).strip() for match in PIP_INSTALL.finditer(bare))
+    return found
+
+
+def missing_options(command: str) -> list[str]:
+    """Le opzioni obbligatorie che mancano a un'installazione con pip."""
+    words = command.split()
+    return [option for option in ("--require-hashes", "--no-deps") if option not in words]
+
+
 class LicenseTest(unittest.TestCase):
     def test_license_is_an_spdx_expression(self) -> None:
         # La forma nuova (PEP 639): il wheel porta License-Expression, e nessun
@@ -53,28 +117,54 @@ class LicenseTest(unittest.TestCase):
 class PinnedToolsTest(unittest.TestCase):
     def test_every_pip_install_in_the_workflows_requires_hashes(self) -> None:
         installs = [
-            (path.name, line.strip())
-            for path in sorted(WORKFLOWS.glob("*.y*ml"))
-            for line in path.read_text(encoding="utf-8").replace("\\\n", " ").splitlines()
-            if PIP_INSTALL.search(line)
+            (name, command)
+            for name in automation_files()
+            for command in pip_installs((ROOT / name).read_text(encoding="utf-8"))
         ]
         self.assertGreaterEqual(len(installs), 3)
-        for name, line in installs:
-            with self.subTest(f"{name}: {line}"):
-                self.assertRegex(line, r"(?<!\S)--require-hashes(?!\S)")
-                self.assertRegex(line, r"(?<!\S)--no-deps(?!\S)")
+        for name, command in installs:
+            with self.subTest(f"{name}: {command}"):
+                self.assertEqual(missing_options(command), [])
 
-    def test_pip_install_pattern_catches_the_variants(self) -> None:
-        for line in [
-            "pip install x",
-            "pip3 install x",
-            "pip  install x",
-            "python -m pip\tinstall x",
-            "uv pip install x",
-        ]:
-            with self.subTest(line):
-                self.assertRegex(line, PIP_INSTALL)
-        self.assertNotRegex("pip list --format=freeze", PIP_INSTALL)
+    def test_the_bypasses_are_caught(self) -> None:
+        cases = {
+            "opzione fra pip e install": "steps:\n  - run: python -m pip -q install x\n",
+            "pip3 e due spazi": "steps:\n  - run: pip3  install --no-deps x\n",
+            "pip3.12": "steps:\n  - run: pip3.12 install x\n",
+            "due righe di un blocco >-": "steps:\n  - run: >-\n      pip\n      install x\n",
+            "riga continuata": "steps:\n  - run: |\n      pip \\\n        install x\n",
+            "opzioni nel commento": (
+                "steps:\n  - run: |\n      pip install x  # --require-hashes --no-deps\n"
+            ),
+            "dopo un altro comando": "steps:\n  - run: echo a; pip install x\n",
+            "uv": "steps:\n  - run: uv pip install x\n",
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                installs = pip_installs(text)
+                self.assertEqual(len(installs), 1, installs)
+                self.assertTrue(missing_options(installs[0]))
+
+    def test_a_complete_install_passes(self) -> None:
+        text = (
+            "steps:\n  - run: >-\n      python -m pip -q\n      install --require-hashes\n"
+            "      --no-deps -r x.txt\n  - run: pip list --format=freeze | grep install\n"
+        )
+        installs = pip_installs(text)
+        self.assertEqual(len(installs), 1, installs)
+        self.assertEqual(missing_options(installs[0]), [])
+
+    def test_composite_actions_are_read(self) -> None:
+        names = [
+            ".github/workflows/ci.yml",
+            ".github/actions/setup/action.yml",
+            "action.yaml",
+            "docs/esempio.yml",
+        ]
+        self.assertEqual(
+            automation_files(names),
+            [".github/actions/setup/action.yml", ".github/workflows/ci.yml", "action.yaml"],
+        )
 
     def test_every_locked_requirement_has_all_its_hashes(self) -> None:
         # Le impronte di tutti i file pubblicati di ciascuna versione: se ne manca una, pip
@@ -96,21 +186,37 @@ class PinnedToolsTest(unittest.TestCase):
         self.assertGreaterEqual(minor, 12)
         self.assertTrue(hashes)
 
+    def test_the_build_tests_run_in_the_package_job(self) -> None:
+        package = CI.split("\n  package:\n", 1)[1].split("\n  tex:\n", 1)[0]
+        self.assertIn('REGODOC_TEST_BUILD: "1"', package)
+        self.assertIn("tests.test_packaging", package)
+        self.assertIn("fetch-depth: 0", package)
+
     def test_ruff_matches_the_ci_version(self) -> None:
         version = re.search(r'RUFF_VERSION: "([^"]+)"', CI)
         assert version is not None
         self.assertEqual(pinned(REQUIREMENTS / "lint.txt")["ruff"][0], version.group(1))
 
 
-@unittest.skipUnless(importlib.util.find_spec("flit_core"), "flit_core non installato")
-class ReproducibleBuildTest(unittest.TestCase):
-    """La costruzione che fa il job del pacchetto nella CI, dove flit_core c'è sempre."""
+# Con REGODOC_TEST_BUILD=1, come nel job del pacchetto della CI, flit_core e la storia del
+# repository devono esserci: le prove di costruzione falliscono invece di saltarsi.
+REQUIRE_BUILD = os.environ.get("REGODOC_TEST_BUILD") == "1"
 
-    def build(self) -> list[str]:
+
+@unittest.skipUnless(
+    importlib.util.find_spec("flit_core") or REQUIRE_BUILD, "flit_core non installato"
+)
+class ReproducibleBuildTest(unittest.TestCase):
+    """La costruzione di tools/build_release.py. Gli interpreti delle prove non hanno
+    flit_core, e lì queste prove si saltano: girano nel job del pacchetto della CI, con
+    l'interprete in cui è installato flit_core da tools/requirements/build.txt e con
+    REGODOC_TEST_BUILD=1."""
+
+    def build(self, *extra: str) -> list[str]:
         with tempfile.TemporaryDirectory() as folder:
             tool = str(ROOT / "tools" / "build_release.py")
             result = subprocess.run(
-                [sys.executable, tool, "--out", folder, "--check"],
+                [sys.executable, tool, "--out", folder, "--check", *extra],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -135,6 +241,46 @@ class ReproducibleBuildTest(unittest.TestCase):
         finally:
             stray.unlink()
         self.assertEqual(after, before)
+
+    def test_commit_head_is_the_default(self) -> None:
+        self.assertEqual(self.build("--commit", "HEAD"), self.build())
+
+    def test_the_release_commits_give_the_announced_sums(self) -> None:
+        # Le impronte annunciate in docs/release.md, ricostruite dai file del commit del
+        # rilascio con lo strumento di oggi: servono la storia del repository e flit_core.
+        for commit, sums in released():
+            with self.subTest(commit):
+                present = subprocess.run(
+                    ["git", "cat-file", "-e", f"{commit}^{{commit}}"],  # noqa: S607 - git dal PATH
+                    cwd=ROOT,
+                    capture_output=True,
+                    check=False,
+                )
+                if present.returncode != 0 and not REQUIRE_BUILD:
+                    self.skipTest(f"il commit {commit} non è nel checkout")
+                self.assertEqual(self.build("--commit", commit), sums)
+
+
+def released() -> list[tuple[str, list[str]]]:
+    """I rilasci della tabella di docs/release.md: commit e righe di ``SHA256SUMS``."""
+    text = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| (\d+\.\d+\.\d+) \| `([0-9a-f]{7,40})` \|", text, re.M)
+    found = []
+    for version, commit in rows:
+        sums = re.findall(rf"^[0-9a-f]{{64}}  regodoc-{re.escape(version)}[-.]\S+$", text, re.M)
+        found.append((commit, sums))
+    return found
+
+
+class ReleaseTableTest(unittest.TestCase):
+    def test_every_release_has_its_two_sums(self) -> None:
+        releases = released()
+        self.assertTrue(releases)
+        for commit, sums in releases:
+            with self.subTest(commit):
+                self.assertEqual(len(sums), 2)
+                self.assertTrue(sums[0].endswith("-py3-none-any.whl"))
+                self.assertTrue(sums[1].endswith(".tar.gz"))
 
 
 def engine_files(folder: Path) -> dict[str, bytes]:
