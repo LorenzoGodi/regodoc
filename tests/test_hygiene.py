@@ -227,9 +227,72 @@ class BinaryMetadataTest(unittest.TestCase):
         stream = b"2 0 obj << /Length 8 >> stream\nproibito\nendstream endobj\n"
         self.assertEqual(
             self.found("a.pdf", b"%PDF-1.5\n" + info),
-            ["metadati (PDF): contengono un nome vietato"],
+            [
+                "metadati (PDF fuori dai flussi): contengono un nome vietato",
+                "metadati (stringhe del PDF): contengono un nome vietato",
+            ],
         )
         self.assertEqual(self.found("a.pdf", b"%PDF-1.5\n" + stream), [])
+
+    def test_pdf_strings_in_utf16_and_hex(self) -> None:
+        utf16 = "\ufeffproibito".encode("utf-16-be")
+        octal = "".join(f"\\{byte:03o}" for byte in utf16).encode("ascii")
+        for body in (
+            b"1 0 obj << /Title <" + utf16.hex().encode() + b"> >> endobj",
+            b"1 0 obj << /Title (" + octal + b") >> endobj",
+        ):
+            with self.subTest(body[:30]):
+                self.assertEqual(
+                    self.found("a.pdf", b"%PDF-1.5\n" + body),
+                    ["metadati (stringhe del PDF): contengono un nome vietato"],
+                )
+
+    def test_pdf_xmp_stream_even_compressed(self) -> None:
+        xmp = zlib.compress(b"<x:xmpmeta><pdf:Producer>proibito</pdf:Producer></x:xmpmeta>")
+        body = (
+            b"5 0 obj << /Type /Metadata /Subtype /XML /Filter /FlateDecode /Length "
+            + str(len(xmp)).encode()
+            + b" >> stream\n"
+            + xmp
+            + b"\nendstream endobj\n"
+        )
+        self.assertEqual(
+            self.found("a.pdf", b"%PDF-1.5\n" + body),
+            ["metadati (metadati XMP): contengono un nome vietato"],
+        )
+        # Un flusso che non è di metadati non si legge: è un limite dichiarato.
+        page = body.replace(b"/Type /Metadata /Subtype /XML ", b"")
+        self.assertEqual(self.found("a.pdf", b"%PDF-1.5\n" + page), [])
+
+    def test_exif_in_utf16_and_bytes_after_the_end(self) -> None:
+        def segment(marker: int, body: bytes) -> bytes:
+            return bytes([0xFF, marker]) + (len(body) + 2).to_bytes(2, "big") + body
+
+        jpeg = b"\xff\xd8" + segment(0xE1, b"Exif\0\0" + "proibito".encode("utf-16-le"))
+        self.assertEqual(self.found("a.jpg", jpeg), ["metadati (APP1): contengono un nome vietato"])
+        tail = b"\xff\xd8\xff\xda\x00\x02\x00\xff\xd9una frase vietata"
+        self.assertEqual(
+            self.found("a.jpg", tail),
+            ["metadati (dopo la fine dell'immagine): contengono un nome vietato"],
+        )
+        png = png_with(b"tEXt", b"Software\0ok") + b"proibito"
+        self.assertEqual(
+            self.found("a.png", png),
+            ["metadati (dopo la fine dell'immagine): contengono un nome vietato"],
+        )
+
+    def test_archive_entries_are_read(self) -> None:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("parts/a.xml", b"<p>una frase vietata</p>")
+            archive.writestr("images/b.png", png_with(b"tEXt", b"Software\0proibito"))
+        self.assertEqual(
+            self.found("a.regodoc", buffer.getvalue()),
+            [
+                "metadati (voce parts/a.xml, testo): contengono un nome vietato",
+                "metadati (voce images/b.png, tEXt): contengono un nome vietato",
+            ],
+        )
 
     def test_archive_names_and_comments(self) -> None:
         buffer = io.BytesIO()

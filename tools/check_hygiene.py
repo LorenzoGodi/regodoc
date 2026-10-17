@@ -200,12 +200,26 @@ def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Pro
     return problems
 
 
-# Quanto si decomprime al massimo di un blocco di testo compresso di un PNG.
+# Quanto si decomprime al massimo di un blocco compresso, e quanto si legge al massimo di una
+# voce d'archivio.
 _MAX_METADATA = 1 << 20
+_MAX_ENTRY = 64 << 20
+
+Texts = list[tuple[str, str]]
 
 
-def _png_texts(data: bytes) -> list[tuple[str, str]]:
-    texts = []
+def _also_utf16(block: str, body: bytes) -> Texts:
+    """Un blocco letto in latin-1 e anche in UTF-16, nei due ordini di byte: EXIF e altri
+    metadati scrivono così i testi Unicode."""
+    return [
+        (block, body.decode("latin-1")),
+        (block, body.decode("utf-16-le", "ignore")),
+        (block, body.decode("utf-16-be", "ignore")),
+    ]
+
+
+def _png_texts(data: bytes) -> Texts:
+    texts: Texts = []
     position = 8
     while position + 8 <= len(data):
         length = int.from_bytes(data[position : position + 4], "big")
@@ -228,39 +242,119 @@ def _png_texts(data: bytes) -> list[tuple[str, str]]:
             parts = (keyword, language, translated, text)
             texts.append(("iTXt", "\n".join(p.decode("utf-8", "replace") for p in parts)))
         elif kind == b"eXIf":
-            texts.append(("eXIf", body.decode("latin-1")))
+            texts += _also_utf16("eXIf", body)
+        elif kind == b"IEND":
+            texts += _also_utf16("dopo la fine dell'immagine", data[position:])
+            break
     return texts
 
 
-def _jpeg_texts(data: bytes) -> list[tuple[str, str]]:
-    texts = []
+def _jpeg_texts(data: bytes) -> Texts:
+    texts: Texts = []
     position = 2
     while position + 4 <= len(data) and data[position] == 0xFF:
         marker = data[position + 1]
-        if marker == 0xDA:  # inizio dei dati compressi: i metadati sono tutti prima
+        if marker == 0xDA:  # inizio dei dati compressi: i segmenti di metadati sono prima
             break
         length = int.from_bytes(data[position + 2 : position + 4], "big")
         body = data[position + 4 : position + 2 + length]
         if marker == 0xFE:
             texts.append(("COM", body.decode("latin-1")))
         elif 0xE0 <= marker <= 0xEF:
-            texts.append((f"APP{marker - 0xE0}", body.decode("latin-1")))
+            texts += _also_utf16(f"APP{marker - 0xE0}", body)
         position += 2 + length
+    end = data.rfind(b"\xff\xd9")
+    if end >= 0:
+        texts += _also_utf16("dopo la fine dell'immagine", data[end + 2 :])
     return texts
 
 
-def _pdf_texts(data: bytes) -> list[tuple[str, str]]:
-    # Tutto tranne il contenuto dei flussi: il dizionario Info e i metadati non compressi.
-    outside = re.sub(rb"stream\r?\n.*?endstream", b"", data, flags=re.DOTALL)
-    return [("PDF", outside.decode("latin-1"))]
+_PDF_STRING_ESCAPES = {b"n": b"\n", b"r": b"\r", b"t": b"\t", b"b": b"\b", b"f": b"\f"}
 
 
-def _zip_texts(data: bytes) -> list[tuple[str, str]]:
+def _pdf_string(raw: bytes) -> str:
+    """Una stringa di PDF già estratta: UTF-16 con il suo BOM, altrimenti latin-1."""
+    if raw.startswith(b"\xfe\xff"):
+        return raw[2:].decode("utf-16-be", "replace")
+    if raw.startswith(b"\xff\xfe"):
+        return raw[2:].decode("utf-16-le", "replace")
+    return raw.decode("latin-1")
+
+
+def _pdf_literals(data: bytes) -> list[bytes]:
+    """Le stringhe letterali ``(…)`` di un PDF, con le parentesi annidate e le sequenze."""
+    found = []
+    position = data.find(b"(")
+    while position >= 0:
+        depth, index, out = 1, position + 1, bytearray()
+        while index < len(data) and depth:
+            char = data[index : index + 1]
+            if char == b"\\":
+                following = data[index + 1 : index + 2]
+                octal = re.match(rb"[0-7]{1,3}", data[index + 1 : index + 4])
+                if octal:
+                    out.append(int(octal.group(), 8) & 0xFF)
+                    index += 1 + len(octal.group())
+                    continue
+                out += _PDF_STRING_ESCAPES.get(following, following)
+                index += 2
+                continue
+            if char == b"(":
+                depth += 1
+            elif char == b")":
+                depth -= 1
+                if not depth:
+                    break
+            out += char
+            index += 1
+        found.append(bytes(out))
+        position = data.find(b"(", index + 1)
+    return found
+
+
+def _pdf_texts(data: bytes) -> Texts:
+    texts: Texts = []
+    # I flussi dei metadati (XMP), decompressi se serve; gli altri flussi restano fuori. Il
+    # dizionario si cerca dentro l'oggetto, senza passare la sua fine.
+    objects = re.finditer(rb"obj((?:(?!endobj).)*?)stream\r?\n(.*?)endstream", data, re.S)
+    for match in objects:
+        dictionary, body = match.group(1), match.group(2)
+        if re.search(rb"/Type\s*/Metadata|/Subtype\s*/XML", dictionary):
+            if b"/FlateDecode" in dictionary:
+                body = zlib.decompressobj().decompress(body, _MAX_METADATA)
+            texts.append(("metadati XMP", body.decode("utf-8", "replace")))
+    outside = re.sub(rb"stream\r?\n.*?endstream", b"", data, flags=re.S)
+    texts.append(("PDF fuori dai flussi", outside.decode("latin-1")))
+    strings = [_pdf_string(raw) for raw in _pdf_literals(outside)]
+    strings += [
+        _pdf_string(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
+        for hexa in re.findall(rb"(?<!<)<([0-9A-Fa-f\s]*)>(?!>)", outside)
+        for hexa in [re.sub(rb"\s", b"", hexa)]
+    ]
+    texts.append(("stringhe del PDF", "\n".join(strings)))
+    return texts
+
+
+def _zip_texts(data: bytes, depth: int = 0) -> Texts:
+    texts: Texts = []
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        texts = [("commento dell'archivio", archive.comment.decode("latin-1"))]
+        texts.append(("commento dell'archivio", archive.comment.decode("latin-1")))
         for info in archive.infolist():
             texts.append(("nome di una voce", info.filename))
             texts.append(("commento di una voce", info.comment.decode("latin-1")))
+            if info.is_dir() or info.file_size > _MAX_ENTRY:
+                continue
+            body = archive.read(info)
+            reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
+            if reader is _zip_texts and depth:
+                continue  # un archivio dentro un archivio dentro un archivio: si ferma qui
+            if reader is _zip_texts:
+                inner = _zip_texts(body, depth + 1)
+            elif reader is not None:
+                inner = reader(body)
+            else:
+                inner = [("testo", body.decode("utf-8", "replace"))]
+            texts += [(f"voce {info.filename}, {block}", text) for block, text in inner]
     return texts
 
 
@@ -275,21 +369,37 @@ _METADATA_READERS = {
 
 
 def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Problem]:
-    """Cerca i nomi vietati nei blocchi di metadati di un file binario: i blocchi di testo dei
-    PNG, i commenti e i segmenti APP dei JPEG, il PDF fuori dai flussi, i nomi e i commenti
-    delle voci di un archivio."""
+    """Cerca i nomi vietati nei metadati e nei testi di un file binario.
+
+    Che cosa si legge:
+
+    - PNG: i blocchi tEXt, zTXt, iTXt ed eXIf, quest'ultimo anche in UTF-16, e i byte dopo
+      IEND;
+    - JPEG: i commenti e i segmenti APP, anche in UTF-16, e i byte dopo la fine
+      dell'immagine;
+    - PDF: il testo fuori dai flussi, le sue stringhe letterali ed esadecimali decodificate
+      (UTF-16 con il BOM, altrimenti latin-1) e i flussi dei metadati XMP, decompressi;
+    - archivi (.regodoc, .zip): commenti e nomi delle voci, il testo di ogni voce e, per le
+      voci che sono immagini, PDF o archivi, quanto sopra; gli archivi annidati fino a un
+      livello.
+
+    Limiti: non si leggono il testo delle pagine di un PDF, che sta in flussi compressi, né
+    i flussi diversi da quelli dei metadati, né i pixel delle immagini.
+    """
     reader = _METADATA_READERS.get(suffix)
     if reader is None:
         return []
     try:
         texts = reader(data)
-    except (ValueError, zlib.error, zipfile.BadZipFile, IndexError) as error:
+    except (ValueError, zlib.error, zipfile.BadZipFile, IndexError, EOFError) as error:
         return [Problem(where, 0, f"metadati non leggibili: {type(error).__name__}")]
     problems = []
     for block, text in texts:
         printable = "".join(c if c.isprintable() or c == "\n" else "\n" for c in text)
         if find_terms(printable, terms):
-            problems.append(Problem(where, 0, f"metadati ({block}): contengono un nome vietato"))
+            message = f"metadati ({block}): contengono un nome vietato"
+            if not any(p.message == message for p in problems):
+                problems.append(Problem(where, 0, message))
     return problems
 
 
