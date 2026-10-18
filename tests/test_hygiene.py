@@ -410,6 +410,20 @@ class BinaryMetadataTest(unittest.TestCase):
             ["metadati non leggibili: voce parts/c.xml con dati rotti (OSError)"],
         )
 
+    def test_broken_lzma_entry_is_reported(self) -> None:
+        # LZMAError non deriva da OSError: senza la sua eccezione lo strumento usciva con un
+        # traceback. Otto byte azzerati a +12 dei dati compressi danno proprio LZMAError.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_LZMA) as archive:
+            archive.writestr("parts/f.xml", b"<p>testo di prova</p>" * 50)
+        data = bytearray(buffer.getvalue())
+        start = data.find(b"parts/f.xml") + len("parts/f.xml") + 12
+        data[start : start + 8] = b"\x00" * 8
+        self.assertEqual(
+            self.found("a.regodoc", bytes(data)),
+            ["metadati non leggibili: voce parts/f.xml con dati rotti (LZMAError)"],
+        )
+
     def test_large_entry_is_read_up_to_the_limit(self) -> None:
         # Con il limite abbassato a 16 byte: della voce si leggono i primi 16, non la si
         # salta; un nome dopo il limite resta fuori.

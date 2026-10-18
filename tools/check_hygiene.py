@@ -27,6 +27,7 @@ Uso:
 import argparse
 import hashlib
 import io
+import lzma
 import re
 import subprocess
 import sys
@@ -383,7 +384,7 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
             except NotImplementedError:
                 message = f"voce {info.filename} con un metodo di compressione non supportato"
                 raise UnreadableEntry(message) from None
-            except (OSError, EOFError, zlib.error, zipfile.BadZipFile) as error:
+            except (OSError, EOFError, zlib.error, lzma.LZMAError, zipfile.BadZipFile) as error:
                 message = f"voce {info.filename} con dati rotti ({type(error).__name__})"
                 raise UnreadableEntry(message) from None
             reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
@@ -444,7 +445,14 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
         texts = reader(data)
     except UnreadableEntry as error:
         return [Problem(where, 0, f"metadati non leggibili: {error}")]
-    except (ValueError, zlib.error, zipfile.BadZipFile, IndexError, EOFError) as error:
+    except (
+        ValueError,
+        zlib.error,
+        lzma.LZMAError,
+        zipfile.BadZipFile,
+        IndexError,
+        EOFError,
+    ) as error:
         return [Problem(where, 0, f"metadati non leggibili: {type(error).__name__}")]
     problems = []
     for block, text in texts:
