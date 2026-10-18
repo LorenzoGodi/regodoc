@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import tempfile
+import time
 import unittest
 import zipfile
 import zlib
@@ -352,6 +353,16 @@ class BinaryMetadataTest(unittest.TestCase):
                     self.found("a.pdf", b"%PDF-1.5\n" + body),
                     ["metadati (stringhe del PDF): contengono un nome vietato"],
                 )
+
+    def test_many_isolated_less_than_signs_stay_fast(self) -> None:
+        # Con la ricerca di 4702a3c ogni < isolato rifaceva la ricerca fino allo stesso >: 20 000
+        # «(a<b) » seguiti da un > costavano più di 20 s. Una sola passata resta sotto i 2 s.
+        title = "\ufeffproibito".encode("utf-16-be").hex().encode()
+        data = b"%PDF-1.5\n" + b"(a<b) " * 20_000 + b">\n<" + title + b">"
+        started = time.monotonic()
+        found = self.found("a.pdf", data)
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(found, ["metadati (stringhe del PDF): contengono un nome vietato"])
 
     def test_pdf_literal_continued_on_the_next_line(self) -> None:
         for newline in (b"\n", b"\r\n", b"\r"):

@@ -322,24 +322,14 @@ def _pdf_literals(data: bytes) -> list[bytes]:
 
 
 def _pdf_hex_strings(data: bytes) -> list[bytes]:
-    """Le stringhe esadecimali ``<…>`` di un PDF, anche attaccate a ``<<`` o a ``>>``."""
+    """Le stringhe esadecimali ``<…>`` di un PDF, anche attaccate a ``<<`` o a ``>>`` e dopo un
+    ``<`` isolato. Una sola passata: ogni ``<`` prova a cominciare una stringa e la prova si
+    ferma al primo carattere non esadecimale, quindi i tentativi non si sovrappongono e il tempo
+    resta lineare."""
     found = []
-    position = data.find(b"<")
-    while position >= 0:
-        if data[position + 1 : position + 2] == b"<":
-            position = data.find(b"<", position + 2)  # l'inizio di un dizionario
-            continue
-        end = data.find(b">", position + 1)
-        if end < 0:
-            break
-        hexa = re.sub(rb"\s", b"", data[position + 1 : end])
-        if not re.fullmatch(rb"[0-9A-Fa-f]*", hexa):
-            # Un < isolato, in una letterale (a<b) o in un commento: la stringa esadecimale
-            # può cominciare prima del > trovato, quindi si riparte dal carattere dopo.
-            position = data.find(b"<", position + 1)
-            continue
+    for match in re.finditer(rb"<([0-9A-Fa-f\s]*)>", data):
+        hexa = re.sub(rb"\s", b"", match.group(1))
         found.append(bytes.fromhex(hexa.decode("ascii") + "0" * (len(hexa) % 2)))
-        position = data.find(b"<", end + 1)
     return found
 
 
