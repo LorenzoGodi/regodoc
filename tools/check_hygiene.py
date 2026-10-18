@@ -206,6 +206,9 @@ def check_text(where: str, data: bytes, terms: Terms, *, tabs: bool) -> list[Pro
 _MAX_METADATA = 1 << 20
 _MAX_OBJECTS = 16 << 20
 _MAX_ENTRY = 64 << 20
+# I metodi di compressione che zipfile decomprime senza un limite sull'uscita: leggerne una parte
+# decomprime comunque in memoria tutta la voce.
+_UNBOUNDED = frozenset({zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA})
 
 Texts = list[tuple[str, str]]
 
@@ -377,6 +380,8 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
                 continue
             if info.flag_bits & 0x1:
                 raise UnreadableEntry(f"voce {info.filename} cifrata")
+            if info.file_size > _MAX_ENTRY and info.compress_type in _UNBOUNDED:
+                raise UnreadableEntry(f"voce {info.filename} troppo grande per il controllo")
             try:
                 # Di una voce più grande si leggono i primi _MAX_ENTRY byte, non la si salta.
                 with archive.open(info) as entry:
@@ -435,8 +440,11 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
     diversi da Flate; i riempimenti 0xFF fra i segmenti di un JPEG, dopo i quali la lettura
     dei segmenti si ferma; i blocchi privati dei PNG, oltre a tEXt, zTXt, iTXt ed eXIf; i
     campi extra delle voci ZIP e il testo delle voci scritto in UTF-16. Si decomprimono al
-    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; di ogni voce si
-    leggono i primi 64 MiB.
+    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; di ogni voce stored o
+    deflate si leggono i primi 64 MiB. Una voce bzip2 o lzma che dichiara più di 64 MiB è un
+    rilievo («troppo grande per il controllo») e non si legge, perché zipfile la decomprimerebbe
+    tutta in memoria. Resta un limite: una voce bzip2 o lzma che dichiara una dimensione falsa e
+    piccola si decomprime ancora per intero.
     """
     reader = _METADATA_READERS.get(suffix)
     if reader is None:

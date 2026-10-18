@@ -1,5 +1,6 @@
 """Prove del controllo d'igiene, con un termine vietato inventato per l'occasione."""
 
+import base64
 import hashlib
 import importlib.util
 import io
@@ -176,6 +177,27 @@ class MessageTest(unittest.TestCase):
 
     def test_term(self) -> None:
         self.assertEqual(self.check("L1: x\n\nparolaproibito\n"), ["contiene un nome vietato"])
+
+
+# Un archivio di 925 byte con una voce bzip2 «parts/g.xml» di 1 GiB di zeri, con la dimensione
+# dichiarata onesta: costruito una volta con zipfile e ZIP_BZIP2, scritto qui in base64.
+BIG_BZIP2 = base64.b64decode(
+    "UEsDBC4AAAAMAAAAIQCwwmRb//////////8LABQAcGFydHMvZy54bWwBABAAAAAAQAAAAAARAwAAAAAAAEJa"
+    "aDkxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZCoCWp"
+    "CoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBNRkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1GQqAl"
+    "qQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZCoCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBNRkKg"
+    "JakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZC"
+    "oCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBNRkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1G"
+    "QqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZCoCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBN"
+    "RkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCA"
+    "TUZCoCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBNRkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAw"
+    "gE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZCoCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAA"
+    "MIBNRkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAIIAAwgE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAgg"
+    "ADCATUZCoCWpCoCXMUFZJlNZDgni3wFfjkAAwAAACCAAMIBNRkKgJakKgJcxQVkmU1kOCeLfAV+OQADAAAAI"
+    "IAAwgE1GQqAlqQqAlzFBWSZTWQ4J4t8BX45AAMAAAAggADCATUZCoCWpCoCXMUFZJlNZSHxfyQCKUsgAwAAA"
+    "BAAIIAAwzAUpppEiQ2FEiQ8XckU4UJD2iOQCUEsBAi4DLgAAAAwAAAAhALDCZFsRAwAAAAAAQAsAAAAAAAAA"
+    "AAAAAIABAAAAAHBhcnRzL2cueG1sUEsFBgAAAAABAAEAOQAAAE4DAAAAAA=="
+)
 
 
 def png_with(kind: bytes, body: bytes) -> bytes:
@@ -422,6 +444,16 @@ class BinaryMetadataTest(unittest.TestCase):
         self.assertEqual(
             self.found("a.regodoc", bytes(data)),
             ["metadati non leggibili: voce parts/f.xml con dati rotti (LZMAError)"],
+        )
+
+    def test_large_bzip2_entry_is_refused_without_reading_it(self) -> None:
+        # zipfile non limita l'uscita di bzip2 e lzma: leggere i primi 64 MiB decomprimeva
+        # comunque 1 GiB in memoria, in più di due minuti, senza alcun rilievo.
+        started = time.monotonic()
+        found = self.found("a.zip", BIG_BZIP2)
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertEqual(
+            found, ["metadati non leggibili: voce parts/g.xml troppo grande per il controllo"]
         )
 
     def test_large_entry_is_read_up_to_the_limit(self) -> None:
