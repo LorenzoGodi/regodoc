@@ -61,6 +61,16 @@ CANONICAL_PIP = frozenset(
 SHELLS = frozenset({"bash", "sh"})
 
 
+_SKIPPING = re.compile(r"(?m)^\s*(?:-\s+)?(?:if|continue-on-error)\s*:")
+
+
+def job_head(text: str, job: str) -> str:
+    """Le chiavi di un job prima dei suoi passi, senza i commenti."""
+    found = re.search(rf"(?ms)^  {re.escape(job)}:\n(.*?)(?=^    steps:|^  \S|\Z)", text)
+    assert found, job
+    return "\n".join(_without_yaml_comment(line) for line in found.group(1).splitlines())
+
+
 def job_steps(text: str, job: str) -> list[str]:
     """I passi di un job di un workflow, uno per elemento, senza le righe di commento e senza
     i commenti in fondo alle righe."""
@@ -89,11 +99,10 @@ def automation_files(names: list[str] | None = None) -> list[str]:
     )
 
 
-def run_commands(text: str) -> list[str]:
-    """I comandi dei passi ``run:`` di un file YAML, come la shell li riceve: i blocchi ``>``
-    piegati in una riga, i blocchi ``|`` riga per riga, il valore in linea così com'è."""
+def _run_blocks(text: str) -> list[tuple[str, list[int]]]:
+    """I comandi dei passi ``run:`` letti, ciascuno con gli indici delle righe che occupa."""
     lines = text.splitlines()
-    commands = []
+    blocks = []
     for index, line in enumerate(lines):
         block = _RUN_BLOCK.match(line)
         inline = None if block else _RUN_INLINE.match(line)
@@ -105,13 +114,46 @@ def run_commands(text: str) -> list[str]:
             if following.strip() and len(following) - len(following.lstrip()) <= key:
                 break
             body.append(following.strip())
+        used = list(range(index, index + 1 + len(body)))
         if inline:
-            commands.append(" ".join([inline.group(2).strip("'\""), *filter(None, body)]))
+            command = " ".join([inline.group(2).strip("'\""), *filter(None, body)])
         elif block.group(2) == ">":  # type: ignore[union-attr]
-            commands.append(" ".join(filter(None, body)))
+            command = " ".join(filter(None, body))
         else:
-            commands.append("\n".join(body))
-    return commands
+            command = "\n".join(body)
+        blocks.append((command, used))
+    return blocks
+
+
+def run_commands(text: str) -> list[str]:
+    """I comandi dei passi ``run:`` di un file YAML, come la shell li riceve: i blocchi ``>``
+    piegati in una riga, i blocchi ``|`` riga per riga, il valore in linea così com'è."""
+    return [command for command, _ in _run_blocks(text)]
+
+
+def _without_yaml_comment(line: str) -> str:
+    """La riga senza il commento YAML: un # all'inizio o dopo uno spazio, fuori dalle
+    virgolette."""
+    quote = ""
+    for index, char in enumerate(line):
+        if char in "'\"" and quote in ("", char):
+            quote = "" if quote == char else char
+        elif char == "#" and not quote and (index == 0 or line[index - 1] in " \t"):
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
+def outside_runs(text: str) -> list[str]:
+    """Le righe di un file YAML fuori dai passi ``run:`` letti, senza i commenti YAML e senza
+    le righe vuote: lì una chiave run: scritta in un'altra forma (mappa o sequenza in linea,
+    chiave fra virgolette, spazio prima dei due punti, ancora) non è letta come comando."""
+    used = {index for _, lines in _run_blocks(text) for index in lines}
+    kept = [
+        _without_yaml_comment(line)
+        for index, line in enumerate(text.splitlines())
+        if index not in used
+    ]
+    return [line for line in kept if line.strip()]
 
 
 def pip_installs(text: str) -> list[str]:
@@ -128,7 +170,8 @@ def pip_installs(text: str) -> list[str]:
 def simple_commands(command: str) -> list[str]:
     """I comandi semplici di un comando della shell: divisi a ogni |, ;, &, a capo fuori dalle
     virgolette, e all'inizio e alla fine di ogni $( ), che apre un contesto di virgolette
-    nuovo anche dentro le doppie."""
+    nuovo anche dentro le doppie. Un # a inizio parola fuori dalle virgolette apre un commento
+    fino all'a capo, che si toglie."""
     pieces: list[str] = []
     current: list[str] = []
     quotes = [""]  # le virgolette aperte, una voce per ogni $( ) annidato
@@ -156,6 +199,11 @@ def simple_commands(command: str) -> list[str]:
             cut()
             index += 1
             continue
+        elif not quote and char == "#" and (index == 0 or command[index - 1] in " \t\n;|&("):
+            # Un commento della shell, fino all'a capo, che poi divide come sempre.
+            end = command.find("\n", index)
+            index = len(command) if end < 0 else end
+            continue
         current.append(char)
         index += 1
     cut()
@@ -167,14 +215,14 @@ def pip_uses(text: str) -> list[str]:
     found = []
     for command in run_commands(text):
         joined = command.replace("\\\n", " ")
-        bare = "\n".join(re.sub(r"(^|\s)#.*$", "", line) for line in joined.splitlines())
-        found += [piece for piece in simple_commands(bare) if re.search("pip", piece, re.I)]
+        found += [piece for piece in simple_commands(joined) if re.search("pip", piece, re.I)]
     return found
 
 
 def shells(text: str) -> list[str]:
-    """Le shell dichiarate con shell: nei passi."""
-    return re.findall(r"(?m)^\s*(?:-\s+)?shell:\s*(\S+)", text)
+    """Le shell dichiarate con shell:, nei passi, nei defaults e nelle mappe in linea."""
+    found = re.findall(r"\bshell\s*:\s*([^\s,}\]]+)", "\n".join(outside_runs(text)))
+    return [shell.strip("'\"") for shell in found]
 
 
 def missing_options(command: str) -> list[str]:
@@ -219,7 +267,34 @@ class PinnedToolsTest(unittest.TestCase):
             for shell in shells(text):
                 with self.subTest(f"{name}: shell {shell}"):
                     self.assertIn(shell, SHELLS)
+            for line in outside_runs(text):
+                with self.subTest(f"{name}: {line.strip()}"):
+                    self.assertNotRegex(line, re.compile("pip", re.I))
         self.assertGreaterEqual(uses, len(CANONICAL_PIP))
+
+    def test_yaml_forms_outside_the_runs_are_caught(self) -> None:
+        # Le forme di [CP-161]: ciascuna o dà un uso di pip fuori dall'elenco, o lascia «pip»
+        # in una riga fuori dai run: letti, o dichiara una shell non ammessa.
+        cases = {
+            "commento fra virgolette": 'steps:\n  - run: |\n      echo " #"; pip install ruff\n',
+            "mappa in linea": "steps:\n  - {name: a, run: pip install ruff}\n",
+            "sequenza in linea": "steps: [{run: pip install ruff}]\n",
+            "chiave fra virgolette": 'steps:\n  - "run": pip install ruff\n',
+            "spazio prima dei due punti": "steps:\n  - run : pip install ruff\n",
+            "ancora": "x: &cmd pip install ruff\nsteps:\n  - run: *cmd\n",
+            "defaults": "defaults: {run: {shell: python}}\nsteps:\n  - run: import os\n",
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                outside = [line for line in outside_runs(text) if re.search("pip", line, re.I)]
+                foreign = [use for use in pip_uses(text) if use not in CANONICAL_PIP]
+                bad_shells = [shell for shell in shells(text) if shell not in SHELLS]
+                self.assertTrue(outside or foreign or bad_shells, case)
+
+    def test_shell_comments_are_read_as_comments(self) -> None:
+        self.assertEqual(simple_commands("echo a # pip install x\nls"), ["echo a", "ls"])
+        self.assertEqual(simple_commands('echo "a # b"; ls'), ['echo "a # b"', "ls"])
+        self.assertEqual(simple_commands("echo a#b"), ["echo a#b"])
 
     def test_new_forms_fall_outside_the_list(self) -> None:
         cases = {
@@ -319,6 +394,24 @@ class PinnedToolsTest(unittest.TestCase):
         checkout = [step for step in steps if "uses: actions/checkout@" in step]
         self.assertEqual(len(checkout), 1)
         self.assertRegex(checkout[0], r"(?m)^\s+fetch-depth: 0$")
+        # Né il passo né il job si possono saltare o lasciar fallire in silenzio.
+        self.assertNotRegex(runs[0], _SKIPPING)
+        self.assertNotRegex(job_head(CI, "package"), _SKIPPING)
+
+    def test_a_skipped_or_tolerated_job_is_caught(self) -> None:
+        for head, step in (
+            ("    if: false\n", ""),
+            ("    continue-on-error: true\n", ""),
+            ("", "        if: false\n"),
+            ("", "        continue-on-error: true\n"),
+        ):
+            text = (
+                f"jobs:\n  package:\n    runs-on: x\n{head}    steps:\n"
+                f"      - run: {BUILD_TESTS}\n{step}  tex:\n"
+            )
+            with self.subTest(head + step):
+                found = job_head(text, "package") + "\n" + job_steps(text, "package")[0]
+                self.assertRegex(found, _SKIPPING)
 
     def test_the_package_job_check_ignores_comments(self) -> None:
         text = (
