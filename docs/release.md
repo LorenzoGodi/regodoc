@@ -78,7 +78,7 @@ tag va sul commit del rilascio, non sulla testa.
    `main`, e lo spinge; per la 0.1.0:
 
    ```sh
-   git tag -a v0.1.0 2a7d943
+   git tag -a v0.1.0 2a7d943 -m "regodoc 0.1.0"
    git push origin v0.1.0
    ```
 
@@ -114,10 +114,10 @@ non ha la forma `N.N.N` o `N.N.N.devN`.
 
 Rego non installa il wheel: usa una copia vendorizzata di `src/regodoc` presa dal tag
 `v0.1.0`, in `tools/regodoc` del suo repository, con `LICENSE`, un manifesto con il commit e
-l'impronta di ogni file e uno script che la verifica; la gestisce la sessione CI di Rego, su
-una voce sua. L'installazione del wheel con la sua impronta, qui sotto, vale per gli altri
-usi del motore. Per Rego valgono comunque il controllo di `info`, il `--contract` e la
-sezione «Immagine di Rego» per i pacchetti TeX, l'ambiente, l'avvio e il limite di tempo.
+l'impronta di ogni file e uno script che la verifica; la gestisce Rego. L'installazione del
+wheel con la sua impronta, qui sotto, vale per gli altri usi del motore. Per Rego valgono
+comunque il controllo di `info`, il `--contract` e la sezione «Immagine di Rego» per i
+pacchetti TeX, l'ambiente, l'avvio e il limite di tempo.
 
 Chi installa il wheel della release lo mette nel proprio ambiente virtuale, con un file di
 requisiti che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS` della

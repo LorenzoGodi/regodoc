@@ -214,7 +214,15 @@ Texts = list[tuple[str, str]]
 
 
 class UnreadableEntry(Exception):
-    """Una voce d'archivio che non si può leggere: cifrata o con un metodo non supportato."""
+    """Una voce d'archivio che non si può leggere: cifrata, rotta, troppo grande per essere
+    decompressa con un limite o con un metodo non supportato."""
+
+
+def _error_name(error: BaseException) -> str:
+    """Il nome dell'eccezione per un rilievo: con il modulo quando il nome da solo non dice
+    niente, come ``zlib.error``."""
+    kind = type(error)
+    return f"{kind.__module__}.{kind.__name__}" if kind.__name__ == "error" else kind.__name__
 
 
 def _also_utf16(block: str, body: bytes) -> Texts:
@@ -390,7 +398,7 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
                 message = f"voce {info.filename} con un metodo di compressione non supportato"
                 raise UnreadableEntry(message) from None
             except (OSError, EOFError, zlib.error, lzma.LZMAError, zipfile.BadZipFile) as error:
-                message = f"voce {info.filename} con dati rotti ({type(error).__name__})"
+                message = f"voce {info.filename} con dati rotti ({_error_name(error)})"
                 raise UnreadableEntry(message) from None
             reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
             if reader is _zip_texts and depth:
@@ -461,7 +469,7 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
         IndexError,
         EOFError,
     ) as error:
-        return [Problem(where, 0, f"metadati non leggibili: {type(error).__name__}")]
+        return [Problem(where, 0, f"metadati non leggibili: {_error_name(error)}")]
     problems = []
     for block, text in texts:
         printable = "".join(c if c.isprintable() or c == "\n" else "\n" for c in text)

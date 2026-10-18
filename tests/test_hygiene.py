@@ -469,6 +469,14 @@ class BinaryMetadataTest(unittest.TestCase):
                 ["metadati (voce parts/d.xml, testo): contengono un nome vietato"],
             )
 
+    def test_zlib_errors_carry_the_module_name(self) -> None:
+        compressed = zlib.compress(b"x")
+        broken = compressed[:2] + b"\xff" * 4
+        self.assertEqual(
+            self.found("a.png", png_with(b"zTXt", b"Comment\0\0" + broken)),
+            ["metadati non leggibili: zlib.error"],
+        )
+
     def test_unreadable_metadata_is_reported(self) -> None:
         self.assertEqual(
             self.found("a.zip", b"non un archivio"),

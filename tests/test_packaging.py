@@ -535,6 +535,20 @@ def released() -> list[tuple[str, list[str]]]:
 
 
 class ReleaseTableTest(unittest.TestCase):
+    def test_the_tag_command_names_the_release_commit(self) -> None:
+        text = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
+        commands = re.findall(r'git tag -a v(\d+\.\d+\.\d+) ([0-9a-f]{7,40}) -m "[^"]+"', text)
+        self.assertTrue(commands)
+        table = {
+            version: commit
+            for version, commit in re.findall(
+                r"^\| (\d+\.\d+\.\d+) \| `([0-9a-f]{7,40})` \|", text, re.M
+            )
+        }
+        for version, commit in commands:
+            with self.subTest(version):
+                self.assertEqual(table.get(version), commit)
+
     def test_every_release_has_its_two_sums(self) -> None:
         releases = released()
         self.assertTrue(releases)
