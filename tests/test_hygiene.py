@@ -376,6 +376,17 @@ class BinaryMetadataTest(unittest.TestCase):
                     ["metadati (stringhe del PDF): contengono un nome vietato"],
                 )
 
+    def test_pdf_hex_string_with_spaces_and_newlines(self) -> None:
+        # Gli spazi e gli a capo dentro <…> non contano: la stringa si legge lo stesso.
+        hexa = "\ufeffproibito".encode("utf-16-be").hex()
+        spaced = " ".join(hexa[i : i + 4] for i in range(0, len(hexa), 4)).encode()
+        spaced = spaced.replace(b" 00", b"\n00", 2)
+        body = b"1 0 obj << /Title < " + spaced + b"\r\n> >> endobj"
+        self.assertEqual(
+            self.found("a.pdf", b"%PDF-1.5\n" + body),
+            ["metadati (stringhe del PDF): contengono un nome vietato"],
+        )
+
     def test_many_isolated_less_than_signs_stay_fast(self) -> None:
         # Con la ricerca di 4702a3c ogni < isolato rifaceva la ricerca fino allo stesso >: 20 000
         # «(a<b) » seguiti da un > costavano più di 20 s. Una sola passata resta sotto i 2 s.
@@ -457,8 +468,9 @@ class BinaryMetadataTest(unittest.TestCase):
         )
 
     def test_large_entry_is_read_up_to_the_limit(self) -> None:
-        # Con il limite abbassato a 16 byte: della voce si leggono i primi 16, non la si
-        # salta; un nome dopo il limite resta fuori.
+        # Con il tetto abbassato a 16 byte: della prima voce si leggono i primi 16, non la si
+        # salta; la seconda non ci sta più ed è un rilievo, e quanto letto prima resta
+        # controllato.
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
             archive.writestr("parts/d.xml", b"<p>proibito</p>" + b" " * 100)
@@ -466,8 +478,50 @@ class BinaryMetadataTest(unittest.TestCase):
         with mock.patch.object(hygiene, "_MAX_ENTRY", 16):
             self.assertEqual(
                 self.found("a.regodoc", buffer.getvalue()),
-                ["metadati (voce parts/d.xml, testo): contengono un nome vietato"],
+                [
+                    "metadati (voce parts/d.xml, testo): contengono un nome vietato",
+                    "metadati non leggibili: voce parts/e.xml oltre il tetto di 0 MiB letti "
+                    "per archivio, troppo grande per il controllo",
+                ],
             )
+
+    def test_the_cap_is_per_archive(self) -> None:
+        # Tre voci da 10 byte con un tetto di 16: la seconda si legge per 6 byte, la terza è
+        # un rilievo. Anche le voci di un archivio annidato contano nello stesso tetto.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for name in ("a.txt", "b.txt", "c.txt"):
+                archive.writestr(name, b"0123456789")
+        inner = buffer.getvalue()
+        nested = io.BytesIO()
+        with zipfile.ZipFile(nested, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("x.txt", b"0123456789")
+            archive.writestr("y.zip", inner)
+        with mock.patch.object(hygiene, "_MAX_ENTRY", 16):
+            found = self.found("a.zip", buffer.getvalue())
+            self.assertEqual(len(found), 1)
+            self.assertIn("voce c.txt oltre il tetto", found[0])
+            found = self.found("a.zip", nested.getvalue())
+            self.assertEqual(len(found), 1)
+            self.assertIn("voce y.zip oltre il tetto", found[0])
+
+    def test_large_lzma_entry_is_refused_without_reading_it(self) -> None:
+        # Come per bzip2: una voce lzma che dichiara più di 64 MiB non si apre. La dimensione
+        # dichiarata si porta oltre il limite nelle due intestazioni di una voce piccola.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_LZMA) as archive:
+            archive.writestr("parts/h.xml", b"<p>testo</p>")
+        data = bytearray(buffer.getvalue())
+        declared = ((64 << 20) + 1).to_bytes(4, "little")
+        for header, offset in ((b"PK\x03\x04", 22), (b"PK\x01\x02", 24)):
+            start = data.find(header) + offset
+            data[start : start + 4] = declared
+        started = time.monotonic()
+        found = self.found("a.zip", bytes(data))
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertEqual(
+            found, ["metadati non leggibili: voce parts/h.xml troppo grande per il controllo"]
+        )
 
     def test_zlib_errors_carry_the_module_name(self) -> None:
         compressed = zlib.compress(b"x")

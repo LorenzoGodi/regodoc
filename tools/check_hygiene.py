@@ -215,7 +215,12 @@ Texts = list[tuple[str, str]]
 
 class UnreadableEntry(Exception):
     """Una voce d'archivio che non si può leggere: cifrata, rotta, troppo grande per essere
-    decompressa con un limite o con un metodo non supportato."""
+    decompressa con un limite, oltre il tetto per archivio o con un metodo non supportato.
+    ``texts`` porta i testi già letti prima di fermarsi, che si controllano comunque."""
+
+    def __init__(self, message: str, texts: "Texts | None" = None) -> None:
+        super().__init__(message)
+        self.texts = texts or []
 
 
 def _error_name(error: BaseException) -> str:
@@ -377,7 +382,10 @@ def _pdf_texts(data: bytes) -> Texts:
     return texts
 
 
-def _zip_texts(data: bytes, depth: int = 0) -> Texts:
+def _zip_texts(data: bytes, depth: int = 0, budget: list[int] | None = None) -> Texts:
+    # Quanti byte decompressi restano da leggere in tutto l'archivio, annidati compresi:
+    # senza un tetto per archivio, molte voci da 64 MiB sommano minuti di lavoro.
+    budget = [_MAX_ENTRY] if budget is None else budget
     texts: Texts = []
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         texts.append(("commento dell'archivio", archive.comment.decode("latin-1")))
@@ -390,10 +398,18 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
                 raise UnreadableEntry(f"voce {info.filename} cifrata")
             if info.file_size > _MAX_ENTRY and info.compress_type in _UNBOUNDED:
                 raise UnreadableEntry(f"voce {info.filename} troppo grande per il controllo")
+            over_cap = UnreadableEntry(
+                f"voce {info.filename} oltre il tetto di {_MAX_ENTRY >> 20} MiB letti per "
+                "archivio, troppo grande per il controllo",
+                texts,
+            )
+            if info.file_size and not budget[0]:
+                raise over_cap
             try:
-                # Di una voce più grande si leggono i primi _MAX_ENTRY byte, non la si salta.
+                # Di una voce più grande si leggono i byte che restano nel tetto, non la si salta.
                 with archive.open(info) as entry:
-                    body = entry.read(_MAX_ENTRY)
+                    body = entry.read(budget[0])
+                budget[0] -= len(body)
             except NotImplementedError:
                 message = f"voce {info.filename} con un metodo di compressione non supportato"
                 raise UnreadableEntry(message) from None
@@ -403,8 +419,15 @@ def _zip_texts(data: bytes, depth: int = 0) -> Texts:
             reader = _METADATA_READERS.get(Path(info.filename).suffix.lower())
             if reader is _zip_texts and depth:
                 continue  # un archivio dentro un archivio dentro un archivio: si ferma qui
+            if reader is _zip_texts and len(body) < info.file_size:
+                raise over_cap  # un archivio troncato dal tetto non si legge
             if reader is _zip_texts:
-                inner = _zip_texts(body, depth + 1)
+                try:
+                    inner = _zip_texts(body, depth + 1, budget)
+                except UnreadableEntry as error:
+                    prefix = f"voce {info.filename}, "
+                    texts += [(prefix + block, text) for block, text in error.texts]
+                    raise UnreadableEntry(str(error), texts) from None
             elif reader is not None:
                 inner = reader(body)
             else:
@@ -448,8 +471,10 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
     diversi da Flate; i riempimenti 0xFF fra i segmenti di un JPEG, dopo i quali la lettura
     dei segmenti si ferma; i blocchi privati dei PNG, oltre a tEXt, zTXt, iTXt ed eXIf; i
     campi extra delle voci ZIP e il testo delle voci scritto in UTF-16. Si decomprimono al
-    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti; di ogni voce stored o
-    deflate si leggono i primi 64 MiB. Una voce bzip2 o lzma che dichiara più di 64 MiB è un
+    massimo 1 MiB per blocco di metadati e 16 MiB per flusso di oggetti. Di un archivio si
+    leggono al massimo 64 MiB decompressi in tutto, voci annidate comprese: una voce stored o
+    deflate più grande si legge fino al tetto, e una voce che non ci sta più è un rilievo
+    («oltre il tetto … per archivio»). Una voce bzip2 o lzma che dichiara più di 64 MiB è un
     rilievo («troppo grande per il controllo») e non si legge, perché zipfile la decomprimerebbe
     tutta in memoria. Resta un limite: una voce bzip2 o lzma che dichiara una dimensione falsa e
     piccola si decomprime ancora per intero.
@@ -457,10 +482,12 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
     reader = _METADATA_READERS.get(suffix)
     if reader is None:
         return []
+    unreadable = []
     try:
         texts = reader(data)
     except UnreadableEntry as error:
-        return [Problem(where, 0, f"metadati non leggibili: {error}")]
+        texts = error.texts
+        unreadable = [Problem(where, 0, f"metadati non leggibili: {error}")]
     except (
         ValueError,
         zlib.error,
@@ -477,7 +504,7 @@ def check_binary(where: str, suffix: str, data: bytes, terms: Terms) -> list[Pro
             message = f"metadati ({block}): contengono un nome vietato"
             if not any(p.message == message for p in problems):
                 problems.append(Problem(where, 0, message))
-    return problems
+    return problems + unreadable
 
 
 def check_file(root: Path, relative: str, terms: Terms) -> list[Problem]:
