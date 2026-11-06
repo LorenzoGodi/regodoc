@@ -58,6 +58,9 @@ Sono ammesse anche le voci di cartella `parts/` e `images/`, vuote; non contano 
 aggiungono da soli (`__MACOSX/`, `.DS_Store`, `._*`, `Thumbs.db`, `desktop.ini`): il messaggio
 d'errore lo dice e suggerisce `regodoc canon` per ricostruire l'archivio.
 
+Il motore dichiara questa disposizione in `info.layout` (contratto, §5): file fissi, cartelle
+e percorsi ammessi di parti e immagini.
+
 Il file di una parte **si ricava dal suo id**: la parte `network` sta in `parts/network.xml`.
 Un file in `parts/` che non corrisponde a nessun id di `structure.toml` è un errore, e così un
 id senza file.

@@ -16,7 +16,8 @@ dei candidati di Rego (§4.2) e, nella specifica, le regole della forma canonica
 spazi del testo misto e le immagini memorizzate senza compressione. La bozza che la precedeva,
 dichiarata come versione 0, non è servita da nessun motore: chi chiama passa `--contract 1`.
 Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, la capacità
-`table.align` (§5.2) e i comandi `\RdCellEnd` e `\RdCellR` (§6.4).
+`table.align` (§5.2), la chiave `layout` di `info` (§5) e i comandi `\RdCellEnd` e `\RdCellR`
+(§6.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -424,6 +425,7 @@ codice d'uscita:
 | `commands` | per ciascun comando, `ready` oppure `draft` (non ancora disponibile, codice 3) |
 | `capabilities` | le capacità di questa versione (§5.2) |
 | `languages` | le lingue del documento supportate |
+| `layout` | la disposizione del pacchetto (specifica, §1.1), dal motore 0.2: `fixed_files`, i file fissi; `folders`, le cartelle; `part_path` e `image_path`, i percorsi ammessi di parti e immagini come espressioni regolari nella sintassi del modulo `re` di Python, da confrontare con il percorso intero, con i gruppi `id` e `name` |
 | `passes` | `min` e `max` delle passate di pdflatex che `build` può eseguire |
 | `tex` | `packages`: i pacchetti LaTeX che il motore e il tema neutro caricano |
 | `theme` | `contracts`, le versioni del contratto del tema supportate; `roles`, i ruoli della tavolozza; `hooks`, gli agganci (§6); `limits`, `files` e `bytes` della cartella del tema (§3.3) |
@@ -432,7 +434,8 @@ Chi chiama legge la dichiarazione quando cambia la versione fissata del motore e
 Per esempio Rego applica `limits.envelope.compressed_bytes` all'ingresso, concede a ogni
 chiamata il tempo di `resources`, abilita le funzioni dell'interfaccia secondo `commands` e
 `capabilities`, e confronta `tex.packages` con la propria immagine TeX prima di aggiornare il
-motore.
+motore. Chi scrive i file di un pacchetto prende da `layout` i nomi e i percorsi ammessi,
+invece di importarli dal codice del motore: la regola 1 vale anche qui.
 
 ### 5.1 Limiti
 
