@@ -9,12 +9,13 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from regodoc import declaration
+from regodoc import declaration, parts
 from regodoc.cli import ExitCode
 from regodoc.diagnostics import Collector, Diagnostic, Severity
 from regodoc.validate import files_digest
-from tests.support import EXAMPLE, build_zip, example_files
+from tests.support import EXAMPLE, build_zip, codes, example_files, validate_bytes
 from tests.test_cli import run_cli
+from tests.test_render import aligned_example
 
 CONTRACT = (Path(__file__).resolve().parent.parent / "docs" / "contract.md").read_text(
     encoding="utf-8"
@@ -82,6 +83,13 @@ class DeclarationContractTest(unittest.TestCase):
         for cell in re.findall(r"^\| (`[^|]+) \|", section("5.2"), re.M):
             documented |= set(re.findall(r"`([a-z.]+)`", cell))
         self.assertEqual(documented, set(declaration.CAPABILITIES))
+
+    def test_vocabulary_capabilities_are_accepted(self) -> None:
+        # Una capacità «elemento.attributo» dice a chi chiama che può scriverlo: un pacchetto
+        # che lo usa deve essere valido.
+        vocabulary = [c for c in declaration.CAPABILITIES if c.split(".")[0] in parts.ELEMENTS]
+        self.assertEqual(vocabulary, ["table.align"])
+        self.assertEqual(codes(validate_bytes(build_zip(aligned_example()))), [])
 
     def test_every_ready_command_has_its_capability(self) -> None:
         for command, state in declaration.COMMANDS.items():

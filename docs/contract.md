@@ -15,6 +15,8 @@ portato a 60 s (§2.3), le capacità `canon` e `upgrade` (§5.2), la nota sui va
 dei candidati di Rego (§4.2) e, nella specifica, le regole della forma canonica (§9): gli
 spazi del testo misto e le immagini memorizzate senza compressione. La bozza che la precedeva,
 dichiarata come versione 0, non è servita da nessun motore: chi chiama passa `--contract 1`.
+Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, la capacità
+`table.align` (§5.2) e i comandi `\RdCellEnd` e `\RdCellR` (§6.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -470,6 +472,7 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `build.pdf`, `build.latex` | `build` nei due formati |
 | `build.theme` | `build` con `--theme` |
 | `upgrade` | `upgrade` |
+| `table.align` | l'attributo `align` di `<table>` (specifica, §4.4), dal motore 0.2: chi chiama lo scrive solo se la capacità c'è |
 
 Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
 `resources.enforced` (§2.3).
@@ -603,7 +606,7 @@ da uno ostile. Ciò che deve reggere anche contro un tema ostile sta fuori da Te
 | preambolo | `\RdColor{ruolo}{RRGGBB}`, `\RdNames{parte}{figura}{indice}`, `\RdTitle`, `\RdSubject`, `\RdReference`, `\RdVersionLabel`, `\RdDate`, `\RdFrame{chiave}{valore}` |
 | struttura | `\RdTitlePage`, `\RdTableOfContents`, `RdLegend` con `\RdLegendItem{ruolo}{dicitura}`, `\RdOpening{ancora}`, `\RdPart{numero}{ruolo}{ancora}{titolo}`, `\RdSummary`, `\RdSection{livello}{ancora}{titolo}{titolo per i segnalibri}` |
 | blocchi | `RdList{bullet\|numbered}` con `\RdItem`, `RdBox{ruolo}{titolo}`, `RdSmall`, `RdListing` con `\RdListingLine`, `\RdFigure{percorso}{larghezza}{didascalia}`, `RdSources{titolo}` con `\RdSourceGroup` e `\RdSource` |
-| tabelle | `RdTable{corpo}{colonne}{colonne «*»}{larghezza fissa}{preambolo}`, `\RdCell{tipo}{colonne}{larghezza}{contenuto}`, `\RdHeadEnd`, `\RdRowEnd`, `\RdSeparator`, `\RdCellStart`, `\RdStar`, `RdLandscape` |
+| tabelle | `RdTable{corpo}{colonne}{colonne «*»}{larghezza fissa}{preambolo}`, `\RdCell{tipo}{colonne}{larghezza}{contenuto}`, `\RdHeadEnd`, `\RdRowEnd`, `\RdSeparator`, `\RdCellStart`, `\RdCellEnd`, `\RdCellR{tipo}{colonne}{larghezza}{contenuto}`, `\RdStar`, `RdLandscape` |
 | in linea | `\RdB`, `\RdI`, `\RdCode`, `\RdMono`, `\RdTone{ruolo}`, `\RdLabel{ruolo}{dicitura}`, `\RdLink{indirizzo}{testo}`, `\RdMail`, `\RdDomain`, `\RdRef{ancora}{testo}`, `\RdCite{ancora}{numero}`, `\RdBreak`, `\RdAB` |
 
 Dal vocabolario ai ruoli (§6.2), nel motore:

@@ -155,6 +155,7 @@ CAPABILITIES: Final = (
     "build.latex",
     "build.theme",
     "upgrade",
+    "table.align",
 )
 
 LANGUAGES: Final = ("it", "en")
