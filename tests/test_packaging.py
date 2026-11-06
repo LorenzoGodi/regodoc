@@ -61,14 +61,20 @@ CANONICAL_PIP = frozenset(
 SHELLS = frozenset({"bash", "sh"})
 
 
-_SKIPPING = re.compile(r"(?m)^\s*(?:-\s+)?(?:if|continue-on-error)\s*:")
+# Una chiave che salta un passo o un job, o ne lascia passare il fallimento, anche scritta
+# fra virgolette.
+_SKIPPING = re.compile(r"""(?m)^\s*(?:-\s+)?["']?(?:if|continue-on-error)["']?\s*:""")
+# Le sequenze di escape delle stringhe YAML fra virgolette doppie: con \x70 o \u0070 una «p»
+# non si leggerebbe nel testo del file.
+_YAML_ESCAPE = re.compile(r"""\\[0abtnvfre"/\\NLP_xuU]""")
 
 
 def job_head(text: str, job: str) -> str:
-    """Le chiavi di un job prima dei suoi passi, senza i commenti."""
-    found = re.search(rf"(?ms)^  {re.escape(job)}:\n(.*?)(?=^    steps:|^  \S|\Z)", text)
+    """Le chiavi del job al suo livello, prima e dopo ``steps:``, senza i commenti."""
+    found = re.search(rf"(?ms)^  {re.escape(job)}:\n(.*?)(?=^  \S|\Z)", text)
     assert found, job
-    return "\n".join(_without_yaml_comment(line) for line in found.group(1).splitlines())
+    lines = [_without_yaml_comment(line) for line in found.group(1).splitlines()]
+    return "\n".join(line for line in lines if re.match(r"    \S", line))
 
 
 def job_steps(text: str, job: str) -> list[str]:
@@ -220,9 +226,25 @@ def pip_uses(text: str) -> list[str]:
 
 
 def shells(text: str) -> list[str]:
-    """Le shell dichiarate con shell:, nei passi, nei defaults e nelle mappe in linea."""
-    found = re.findall(r"\bshell\s*:\s*([^\s,}\]]+)", "\n".join(outside_runs(text)))
-    return [shell.strip("'\"") for shell in found]
+    """Le shell dichiarate con shell:, nei passi, nei defaults e nelle mappe in linea, con
+    tutto il valore: «bash -c 'exit 0' {0}» non è «bash»."""
+    pattern = r"""\b["']?shell["']?\s*:\s*([^,}\]\n]+)"""
+    found = re.findall(pattern, "\n".join(outside_runs(text)))
+    return [shell.strip().strip("'\"") for shell in found]
+
+
+def stray_pip(text: str) -> list[str]:
+    """I comandi run: in cui «pip», in qualunque maiuscola e anche nei commenti, compare fuori
+    dalle forme di CANONICAL_PIP. Non si legge la shell: si toglie ogni forma ammessa e non
+    deve restare niente."""
+    found = []
+    for command in run_commands(text):
+        rest = command
+        for form in sorted(CANONICAL_PIP, key=len, reverse=True):
+            rest = rest.replace(form, "")
+        if re.search("pip", rest, re.I):
+            found.append(command)
+    return found
 
 
 def missing_options(command: str) -> list[str]:
@@ -270,7 +292,34 @@ class PinnedToolsTest(unittest.TestCase):
             for line in outside_runs(text):
                 with self.subTest(f"{name}: {line.strip()}"):
                     self.assertNotRegex(line, re.compile("pip", re.I))
+            with self.subTest(f"{name}: pip fuori dalle forme"):
+                self.assertEqual(stray_pip(text), [])
+            with self.subTest(f"{name}: escape YAML"):
+                self.assertFalse(_YAML_ESCAPE.findall(text))
         self.assertGreaterEqual(uses, len(CANONICAL_PIP))
+
+    def test_pip_outside_the_forms_is_caught_whatever_the_shell_reads(self) -> None:
+        # Le forme del controllo di L11: la lettura dei commenti della shell non coincide con
+        # quella di bash, quindi «pip» non deve comparire affatto fuori dalle forme ammesse.
+        cases = {
+            "barra e virgolette": 'echo "\\" #"; pip install ruff',
+            "${x:- #}": "echo ${x:- #}; pip install ruff",
+            "barra in fondo al commento": "# nota \\\npip install ruff",
+            "solo commento": "ls  # pip install ruff",
+        }
+        for case, command in cases.items():
+            with self.subTest(case):
+                text = "steps:\n  - run: |\n" + "".join(
+                    f"      {line}\n" for line in command.splitlines()
+                )
+                self.assertTrue(stray_pip(text), text)
+        allowed = f"steps:\n  - run: |\n      {sorted(CANONICAL_PIP)[0]}\n"
+        self.assertEqual(stray_pip(allowed), [])
+
+    def test_yaml_escapes_are_caught(self) -> None:
+        for text in ('run: "\\x70ip install ruff"', 'run: "\\u0070ip install ruff"'):
+            with self.subTest(text):
+                self.assertTrue(_YAML_ESCAPE.findall(text))
 
     def test_yaml_forms_outside_the_runs_are_caught(self) -> None:
         # Le forme di [CP-161]: ciascuna o dà un uso di pip fuori dall'elenco, o lascia «pip»
@@ -399,19 +448,32 @@ class PinnedToolsTest(unittest.TestCase):
         self.assertNotRegex(job_head(CI, "package"), _SKIPPING)
 
     def test_a_skipped_or_tolerated_job_is_caught(self) -> None:
-        for head, step in (
-            ("    if: false\n", ""),
-            ("    continue-on-error: true\n", ""),
-            ("", "        if: false\n"),
-            ("", "        continue-on-error: true\n"),
+        for head, step, tail in (
+            ("    if: false\n", "", ""),
+            ("    continue-on-error: true\n", "", ""),
+            ('    "if": false\n', "", ""),
+            ("    'continue-on-error': true\n", "", ""),
+            ("", "        if: false\n", ""),
+            ("", "        continue-on-error: true\n", ""),
+            ("", '        "if": false\n', ""),
+            ("", "", "    if: false\n"),
+            ("", "", "    continue-on-error: true\n"),
         ):
             text = (
                 f"jobs:\n  package:\n    runs-on: x\n{head}    steps:\n"
-                f"      - run: {BUILD_TESTS}\n{step}  tex:\n"
+                f"      - run: {BUILD_TESTS}\n{step}{tail}  tex:\n"
             )
-            with self.subTest(head + step):
+            with self.subTest(head + step + tail):
                 found = job_head(text, "package") + "\n" + job_steps(text, "package")[0]
                 self.assertRegex(found, _SKIPPING)
+
+    def test_a_shell_is_read_whole(self) -> None:
+        text = "steps:\n  - shell: bash -c 'exit 0' {0}\n    run: echo\n"
+        found = shells(text)
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].startswith("bash -c 'exit 0'"))
+        self.assertNotIn(found[0], SHELLS)
+        self.assertEqual(shells('defaults: {run: {"shell": python}}\n'), ["python"])
 
     def test_the_package_job_check_ignores_comments(self) -> None:
         text = (
@@ -539,6 +601,9 @@ class ReleaseTableTest(unittest.TestCase):
         text = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
         commands = re.findall(r'git tag -a v(\d+\.\d+\.\d+) ([0-9a-f]{7,40}) -m "[^"]+"', text)
         self.assertTrue(commands)
+        # Ogni comando del tag ha la forma piena, con il messaggio: senza -m si apre l'editor.
+        every = re.findall(r"git\s+tag\b[^\n]*", text)
+        self.assertEqual(len(every), len(commands), every)
         table = {
             version: commit
             for version, commit in re.findall(
