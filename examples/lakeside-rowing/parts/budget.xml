@@ -4,7 +4,7 @@
   <section id="costs">
     <title>Costs</title>
     <p><label type="decided"/> The committee has approved a change of <var name="budgetChange"/> on the equipment line, offset by a grant of <var name="grantRange"/> (<var name="grantRange" form="min"/> at least) and a refund of <var name="refundPerMember"/> per member on the next fee.</p>
-    <table columns="* 2.6cm 2.6cm">
+    <table columns="* 2.6cm 2.6cm" align="left right right">
       <head>
         <cell>Item</cell>
         <cell>Season 1</cell>

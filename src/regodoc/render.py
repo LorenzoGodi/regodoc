@@ -417,7 +417,12 @@ class _Emitter:
         stars = columns.count("*")
         fixed = sum(float(c.removesuffix("cm")) for c in columns if c != "*")
         widths = [r"\RdStar" if c == "*" else c for c in columns]
-        spec = "".join(f">{{\\RdCellStart}}p{{{w}}}" for w in widths)
+        right = [a == "right" for a in node.attrs.get("align", "").split(" ")]
+        right += [False] * (len(columns) - len(right))
+        spec = "".join(
+            f">{{\\{'RdCellEnd' if r else 'RdCellStart'}}}p{{{w}}}"
+            for w, r in zip(widths, right, strict=True)
+        )
         if landscape:
             self.out(r"\begin{RdLandscape}")
         size = "small" if small else "normal"
@@ -434,9 +439,10 @@ class _Emitter:
             for cell in row.elements():
                 span = int(cell.attrs.get("span", "1"))
                 taken = widths[column : column + span]
+                command = "RdCellR" if right[column] else "RdCell"
                 column += span
                 width = taken[0] if span == 1 else self.span_width(taken)
-                cells.append(rf"\RdCell{{{kind}}}{{{span}}}{{{width}}}{{{self.cell(cell)}}}")
+                cells.append(rf"\{command}{{{kind}}}{{{span}}}{{{width}}}{{{self.cell(cell)}}}")
             self.out("\n&".join(cells))
             self.out(r"\RdHeadEnd" if kind == "head" else r"\RdRowEnd")
         self.out(r"\end{RdTable}")

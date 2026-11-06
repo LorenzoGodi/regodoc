@@ -91,6 +91,15 @@ class VocabularyCoverageTest(unittest.TestCase):
             with self.subTest(key):
                 self.assertEqual(sorted(set(values) - self.usage.values.get(key, set())), [])
 
+    def test_every_alignment(self) -> None:
+        # «align» è una lista di valori, uno per colonna: contano i valori, non la lista.
+        used = {
+            item
+            for value in self.usage.values.get("table.align", set())
+            for item in value.split(" ")
+        }
+        self.assertEqual(sorted(set(parts.ALIGNMENTS) - used), [])
+
     def test_every_variable_type_and_shape(self) -> None:
         self.assertEqual(sorted(set(tomlfiles.VARIABLE_TYPES) - self.usage.variable_types()), [])
         specs = list(self.usage.variables.values())

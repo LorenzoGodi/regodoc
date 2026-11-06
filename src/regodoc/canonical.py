@@ -30,7 +30,7 @@ _SPACES = re.compile(r"[ \t\n\r]+")
 ATTRIBUTE_ORDER = {
     "source": ("id", "href", "publisher", "accessed"),
     "figure": ("file", "width"),
-    "table": ("columns", "orientation"),
+    "table": ("columns", "align", "orientation"),
     "reference": ("to", "through"),
     "var": ("name", "form"),
 }
@@ -59,6 +59,9 @@ def _attribute(value: str) -> str:
 
 def _open(node: Node, *, empty: bool = False) -> str:
     attrs = node.attrs
+    if node.tag == "table" and set(attrs.get("align", "right").split(" ")) == {"left"}:
+        # Tutte le colonne a sinistra è il valore predefinito: la forma canonica lo toglie.
+        attrs = {name: value for name, value in attrs.items() if name != "align"}
     close = "/>" if empty else ">"
     if not attrs:
         return f"<{node.tag}{close}"

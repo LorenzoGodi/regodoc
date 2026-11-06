@@ -40,6 +40,16 @@ def neutral_palette() -> dict[str, str]:
     return dict(tomllib.loads(path.read_text(encoding="utf-8"))["palette"])
 
 
+def aligned_example() -> dict[str, bytes]:
+    """L'esempio breve con la colonna «Copia» della tabella allineata a destra (R7)."""
+    files = example_files(EXAMPLE)
+    table = b'<table columns="* 2.2cm 2.6cm">'
+    files["parts/backup.xml"] = files["parts/backup.xml"].replace(
+        table, b'<table columns="* 2.2cm 2.6cm" align="left left right">'
+    )
+    return files
+
+
 def render_files(files: dict[str, bytes], date: datetime.date | None = None) -> str:
     validation = validate_bytes(build_zip(files))
     errors = [str(d) for d in validation.report.errors]
@@ -209,6 +219,31 @@ class StructureTest(unittest.TestCase):
         self.assertIn(r"\RdCell{total}{2}{\dimexpr\RdStar+2.2cm+2\tabcolsep\relax}", tex)
         self.assertIn(r"\RdHeadEnd", tex)
 
+    def test_right_aligned_columns(self) -> None:
+        tex = render_files(aligned_example())
+        self.assertIn(
+            r"{>{\RdCellStart}p{\RdStar}>{\RdCellStart}p{2.2cm}>{\RdCellEnd}p{2.6cm}}", tex
+        )
+        self.assertIn(r"\RdCellR{head}{1}{2.6cm}{Copia}", tex)
+        self.assertIn(r"\RdCell{head}{1}{2.2cm}{Dove}", tex)
+        # La cella su due colonne prende la prima colonna che copre: a sinistra.
+        self.assertIn(r"\RdCell{total}{2}{\dimexpr\RdStar+2.2cm+2\tabcolsep\relax}", tex)
+        self.assertIn(r"\RdCellR{total}{1}{2.6cm}", tex)
+        # Senza «align», o con tutto a sinistra, il testo è quello di prima.
+        files = aligned_example()
+        files["parts/backup.xml"] = files["parts/backup.xml"].replace(
+            b"left left right", b"left left left"
+        )
+        self.assertEqual(render_files(files), render_files(example_files(EXAMPLE)))
+
+    def test_a_spanned_cell_takes_the_first_column(self) -> None:
+        files = aligned_example()
+        files["parts/backup.xml"] = files["parts/backup.xml"].replace(
+            b"left left right", b"right left left"
+        )
+        tex = render_files(files)
+        self.assertIn(r"\RdCellR{total}{2}{\dimexpr\RdStar+2.2cm+2\tabcolsep\relax}", tex)
+
     def test_wide_tables_are_small_in_portrait_only(self) -> None:
         tex = render_files(example_files(LONG_EXAMPLE))
         self.assertIn(r"\begin{RdLandscape}", tex)
@@ -268,6 +303,10 @@ class GoldenTest(unittest.TestCase):
             with self.subTest(root.name):
                 expected = (GOLDEN / f"{root.name}.tex").read_text(encoding="utf-8")
                 self.assertEqual(render_files(example_files(root)), expected)
+
+    def test_aligned_example_matches_its_golden_file(self) -> None:
+        expected = (GOLDEN / "colle-rovere-align.tex").read_text(encoding="utf-8")
+        self.assertEqual(render_files(aligned_example()), expected)
 
 
 if __name__ == "__main__":
