@@ -143,10 +143,9 @@ per tornare indietro segue le condizioni del contratto, §11.
 
 ## Immagine di Rego
 
-Questa sezione è solo documentazione: il Dockerfile di Rego lo cambia la sessione CI di Rego,
-su una voce sua, non questo repository. Qui c'è quello che l'immagine deve dare al motore
-perché funzioni come lo prova la CI (job «TeX sull'immagine di riferimento») e come lo
-promette il contratto.
+Questa sezione è solo documentazione: il Dockerfile di Rego lo cambia Rego, non questo
+repository. Qui c'è quello che l'immagine deve dare al motore perché funzioni come lo prova la
+CI (job «TeX sull'immagine di riferimento») e come lo promette il contratto.
 
 **Base e pacchetti.** La stessa base della CI, `python:3.12-slim` su Debian trixie fissata per
 digest, con i pacchetti apt, senza i raccomandati:
