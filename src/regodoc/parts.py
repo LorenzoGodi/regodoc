@@ -50,6 +50,7 @@ LABEL_TYPES = ("observed", "declared", "decided", "proposed", "to-verify", "crit
 TONE_TYPES = ("critical", "warning", "ok", "muted")
 VAR_FORMS = ("min", "max", "number")
 ORIENTATIONS = ("portrait", "landscape")
+ALIGNMENTS = ("left", "right")
 
 _COLUMN = re.compile(r"\*|(?P<n>\d{1,2}(?:\.\d{1,2})?)cm")
 _WIDTH = re.compile(r"(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?)")
@@ -808,9 +809,10 @@ class PartChecker:
     # Tabelle
 
     def check_table(self, node: Node) -> None:
-        self.check_attributes(node, required=("columns",), optional=("orientation",))
+        self.check_attributes(node, required=("columns",), optional=("align", "orientation"))
         self.check_choice(node, "orientation", ORIENTATIONS)
         columns = self.parse_columns(node)
+        self.check_align(node, columns)
         self.check_element_only(node, ("head", "row", "separator"))
         children = node.elements()
         rows = 0
@@ -871,6 +873,21 @@ class PartChecker:
             self.at(node, "regodoc.xml.columns", f"«columns»: {problem}")
             return 0
         return len(items)
+
+    def check_align(self, node: Node, columns: int) -> None:
+        """«align»: un valore per colonna, «left» o «right», separati da uno spazio."""
+        value = node.attrs.get("align")
+        if value is None:
+            return
+        items = value.split(" ")
+        wrong = [item for item in items if item not in ALIGNMENTS]
+        if wrong:
+            problem = f"«{wrong[0]}» non è «left» né «right»"
+        elif columns and len(items) != columns:
+            problem = f"{len(items)} valori, la tabella dichiara {columns} colonne"
+        else:
+            return
+        self.at(node, "regodoc.xml.align", f"«align»: {problem}")
 
     def check_row_cells(self, row: Node, columns: int) -> None:
         self.check_element_only(row, ("cell",))

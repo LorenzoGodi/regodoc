@@ -9,12 +9,13 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from regodoc import declaration
+from regodoc import declaration, parts, source
 from regodoc.cli import ExitCode
 from regodoc.diagnostics import Collector, Diagnostic, Severity
 from regodoc.validate import files_digest
-from tests.support import EXAMPLE, build_zip, example_files
+from tests.support import EXAMPLE, build_zip, codes, example_files, validate_bytes
 from tests.test_cli import run_cli
+from tests.test_render import aligned_example
 
 CONTRACT = (Path(__file__).resolve().parent.parent / "docs" / "contract.md").read_text(
     encoding="utf-8"
@@ -82,6 +83,49 @@ class DeclarationContractTest(unittest.TestCase):
         for cell in re.findall(r"^\| (`[^|]+) \|", section("5.2"), re.M):
             documented |= set(re.findall(r"`([a-z.]+)`", cell))
         self.assertEqual(documented, set(declaration.CAPABILITIES))
+
+    def test_vocabulary_capabilities_are_accepted(self) -> None:
+        # Una capacità «elemento.attributo» dice a chi chiama che può scriverlo: un pacchetto
+        # che lo usa deve essere valido.
+        vocabulary = [c for c in declaration.CAPABILITIES if c.split(".")[0] in parts.ELEMENTS]
+        self.assertEqual(vocabulary, ["table.align"])
+        self.assertEqual(codes(validate_bytes(build_zip(aligned_example()))), [])
+
+    def test_layout_is_the_one_of_section_1_1(self) -> None:
+        # I file fissi sono quelli della tabella del §1.1 della specifica, e i percorsi
+        # dichiarati, letti dal JSON di info, ammettono e rifiutano come il lettore.
+        layout = json.loads(run_cli("info", "--json")[1])["layout"]
+        spec = (Path(__file__).resolve().parent.parent / "docs" / "spec" / "rego-1.md").read_text(
+            encoding="utf-8"
+        )
+        table = spec.split("### 1.1 ", 1)[1].split("\n### ", 1)[0]
+        fixed = set(re.findall(r"^\| `([A-Za-z.]+)` \|", table, re.M))
+        self.assertEqual(set(layout["fixed_files"]), fixed)
+        self.assertEqual(set(layout["folders"]), {"parts", "images"})
+        part = re.compile(layout["part_path"])
+        image = re.compile(layout["image_path"])
+        paths = [
+            "parts/network.xml",
+            "parts/a-b.xml",
+            "parts/a--b.xml",
+            "parts/con.xml",
+            "parts/Rete.xml",
+            "parts/x/y.xml",
+            "images/logo.png",
+            "images/2024-plan.jpeg",
+            "images/logo.gif",
+            "images/aux.png",
+            "images/-a.jpg",
+            "structure.toml",
+        ]
+        for path in paths:
+            with self.subTest(path):
+                declared = path in layout["fixed_files"] or bool(
+                    part.fullmatch(path) or image.fullmatch(path)
+                )
+                self.assertEqual(declared, source.is_allowed_path(path))
+        self.assertEqual(part.fullmatch("parts/network.xml")["id"], "network")
+        self.assertEqual(image.fullmatch("images/logo.png")["name"], "logo")
 
     def test_every_ready_command_has_its_capability(self) -> None:
         for command, state in declaration.COMMANDS.items():

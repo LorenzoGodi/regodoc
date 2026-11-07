@@ -258,6 +258,23 @@ class MixedTextTest(unittest.TestCase):
             part,
         )
 
+    def test_align_order_and_default(self) -> None:
+        body = (
+            '    <table orientation="landscape" align="left right" columns="* 2cm">\n'
+            "      <row><cell>a</cell><cell>b</cell></row>\n"
+            "    </table>"
+        )
+        part = content(with_part(body))["parts/network.xml"].decode("utf-8")
+        self.assertIn(
+            '    <table columns="* 2cm" align="left right" orientation="landscape">\n', part
+        )
+        # Tutto a sinistra è il valore predefinito: la forma canonica toglie «align».
+        part = content(with_part(body.replace("left right", "left left")))
+        self.assertIn(
+            '    <table columns="* 2cm" orientation="landscape">\n',
+            part["parts/network.xml"].decode("utf-8"),
+        )
+
     def test_comments_keep_their_place(self) -> None:
         body = (
             "    <list><!-- primo -->\n<item>a</item>\n<item>b</item>\n"

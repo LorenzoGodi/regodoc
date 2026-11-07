@@ -1,4 +1,5 @@
-"""Rigenera i golden dell'emettitore LaTeX: il testo di document.tex per i due esempi.
+"""Rigenera i golden dell'emettitore LaTeX: il testo di document.tex per i due esempi e per
+l'esempio breve con una colonna allineata a destra.
 
     python tools/update_golden.py
 
@@ -14,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 from tests.support import EXAMPLE, LONG_EXAMPLE, example_files  # noqa: E402
-from tests.test_render import GOLDEN, render_files  # noqa: E402
+from tests.test_render import GOLDEN, aligned_example, render_files  # noqa: E402
 
 
 def main() -> int:
@@ -23,6 +24,9 @@ def main() -> int:
         target = GOLDEN / f"{root.name}.tex"
         target.write_text(render_files(example_files(root)), encoding="utf-8")
         print(target.relative_to(ROOT))
+    target = GOLDEN / "colle-rovere-align.tex"
+    target.write_text(render_files(aligned_example()), encoding="utf-8")
+    print(target.relative_to(ROOT))
     return 0
 
 

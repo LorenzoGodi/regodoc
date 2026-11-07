@@ -155,9 +155,23 @@ CAPABILITIES: Final = (
     "build.latex",
     "build.theme",
     "upgrade",
+    "table.align",
 )
 
 LANGUAGES: Final = ("it", "en")
+
+# La disposizione del pacchetto (specifica, §1.1): i file fissi, le cartelle e i percorsi di
+# parti e immagini, che info dichiara in layout perché chi chiama non li copi.
+FIXED_FILES: Final = frozenset(
+    {"mimetype", "manifest.json", "README.md", "structure.toml", "variables.toml"}
+)
+FOLDERS: Final = frozenset({"parts", "images"})
+ID_PATTERN: Final = (
+    r"(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:[.]|$))[a-z](?:[a-z0-9]|-(?!-)){0,47}(?<!-)"
+)
+_IMAGE_NAME = r"(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z0-9](?:[a-z0-9]|-(?!-)){0,63}(?<!-)"
+PART_PATTERN: Final = rf"parts/(?P<id>{ID_PATTERN})\.xml"
+IMAGE_PATTERN: Final = rf"images/(?P<name>{_IMAGE_NAME})\.(?:png|jpg|jpeg)"
 
 # Passate di pdflatex che build può eseguire: due per indice e rimandi, una in più per le
 # citazioni, una di riserva per i riferimenti che si spostano.
@@ -211,6 +225,12 @@ def describe() -> dict[str, object]:
         "commands": dict(COMMANDS),
         "capabilities": list(CAPABILITIES),
         "languages": list(LANGUAGES),
+        "layout": {
+            "fixed_files": sorted(FIXED_FILES),
+            "folders": sorted(FOLDERS),
+            "part_path": PART_PATTERN,
+            "image_path": IMAGE_PATTERN,
+        },
         "passes": dict(PASSES),
         "tex": {"packages": list(TEX_PACKAGES)},
         "theme": {

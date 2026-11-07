@@ -18,7 +18,15 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from regodoc.declaration import ENVELOPE_LIMITS, PACKAGE_MIMETYPE
+from regodoc.declaration import (
+    ENVELOPE_LIMITS,
+    FIXED_FILES,
+    FOLDERS,
+    ID_PATTERN,
+    IMAGE_PATTERN,
+    PACKAGE_MIMETYPE,
+    PART_PATTERN,
+)
 from regodoc.diagnostics import Collector
 
 MIMETYPE = PACKAGE_MIMETYPE.encode("ascii")
@@ -46,15 +54,10 @@ _FLAG_ENCRYPTED = 0x0001
 _FLAG_DESCRIPTOR = 0x0008
 _FLAG_STRONG_ENCRYPTION = 0x0040
 
-FIXED_FILES = frozenset(
-    {"mimetype", "manifest.json", "README.md", "structure.toml", "variables.toml"}
-)
-FOLDERS = frozenset({"parts", "images"})
-_ID = r"(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:[.]|$))[a-z](?:[a-z0-9]|-(?!-)){0,47}(?<!-)"
-_IMAGE = r"(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z0-9](?:[a-z0-9]|-(?!-)){0,63}(?<!-)"
-PART_PATH = re.compile(rf"parts/(?P<id>{_ID})\.xml")
-IMAGE_PATH = re.compile(rf"images/(?P<name>{_IMAGE})\.(?:png|jpg|jpeg)")
-ID = re.compile(_ID)
+# La disposizione del §1.1 sta nella dichiarazione, che la espone in info.layout.
+PART_PATH = re.compile(PART_PATTERN)
+IMAGE_PATH = re.compile(IMAGE_PATTERN)
+ID = re.compile(ID_PATTERN)
 _PATH_CHARS = re.compile(r"[a-z0-9._/-]+")
 # File che i sistemi operativi aggiungono da soli (§1.6): ignorati in una cartella, rifiutati
 # in un archivio con il consiglio di ricostruirlo.

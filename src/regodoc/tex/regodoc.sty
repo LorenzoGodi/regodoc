@@ -183,6 +183,10 @@
   \bottomrule\endlongtable\par}
 \newcommand\RdCell[4]{% tipo, colonne, larghezza, contenuto
   \multicolumn{#2}{>{\RdCellStart}p{#3}}{\rd@cellfont{#1}#4}}
+% Le colonne allineate a destra (align="right"): come \RdCellStart e \RdCell, a destra.
+\newcommand\RdCellEnd{\raggedleft\arraybackslash}
+\newcommand\RdCellR[4]{% tipo, colonne, larghezza, contenuto
+  \multicolumn{#2}{>{\RdCellEnd}p{#3}}{\rd@cellfont{#1}#4}}
 \newcommand*\rd@cellfont[1]{%
   \ifnum\pdfstrcmp{#1}{row}=0 \else\bfseries\fi}
 \newcommand\RdHeadEnd{\\\midrule\endhead}
@@ -250,6 +254,7 @@
   RdTitlePage,RdTableOfContents,RdLegend,endRdLegend,RdLegendItem,RdOpening,RdPart,%
   RdSummary,RdSection,RdList,endRdList,RdItem,RdBox,endRdBox,RdSmall,endRdSmall,RdTable,%
   endRdTable,RdCell,RdHeadEnd,RdRowEnd,RdSeparator,RdCellStart,RdLandscape,endRdLandscape,%
+  RdCellEnd,RdCellR,%
   RdFigure,RdListing,endRdListing,RdListingLine,RdSources,endRdSources,RdSourceGroup,%
   RdSource,RdB,RdI,RdCode,RdMono,RdTone,RdLabel,RdLink,RdMail,RdDomain,RdRef,RdCite,%
   RdBreak,RdAB,RdCheckContent}

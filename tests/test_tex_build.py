@@ -23,6 +23,7 @@ from regodoc import compiler
 from regodoc.text import is_allowed_char
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
 from tests.test_build import Workspace
+from tests.test_render import aligned_example
 from tests.test_upgrade import current_files, old_files, test_grammar
 
 REQUIRE_TEX = os.environ.get("REGODOC_REQUIRE_TEX") == "1"
@@ -71,6 +72,50 @@ class ExamplesCompileTest(unittest.TestCase):
                     if _LOG_WARNINGS.search(line)
                 ]
                 self.assertEqual(found, [])
+
+    def test_aligned_example_compiles_twice_to_the_same_pdf(self) -> None:
+        space = Workspace(self, aligned_example())
+        pdfs = []
+        for name in ("a", "b"):
+            target = space.root / f"{name}.pdf"
+            code, out, _ = run_cli("build", str(space.package), "-o", str(target), "--json")
+            self.assertEqual(code, 0, out)
+            pdfs.append(target.read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / "p.regodoc"
+            package.write_bytes(build_zip(aligned_example()))
+            log = compile_log(package, Path(folder))
+        self.assertIsNone(_LOG_WARNINGS.search(log))
+
+    def test_a_package_without_align_gives_the_pdf_of_0_1(self) -> None:
+        # Lo stesso document.tex compilato con regodoc.sty di oggi e con regodoc.sty senza le
+        # due macro di R7, cioè quello della 0.1: i PDF devono essere identici byte per byte.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / "p.regodoc"
+            package.write_bytes(build_zip(example_files(EXAMPLE)))
+            code, out, _ = run_cli(
+                "build", str(package), "-o", str(root / "new"), "--format", "latex"
+            )
+            self.assertEqual(code, 0, out)
+            shutil.copytree(root / "new", root / "old")
+            sty = (root / "old" / "regodoc.sty").read_text(encoding="utf-8")
+            start = sty.index("% Le colonne allineate a destra")
+            end = sty.index("\\newcommand*\\rd@cellfont")
+            sty = sty[:start] + sty[end:]
+            sty = sty.replace("%\n  RdCellEnd,RdCellR,%", "%")
+            self.assertNotIn("RdCellR", sty)
+            (root / "old" / "regodoc.sty").write_text(sty, encoding="utf-8")
+            pdfs = []
+            for name, guarded in (("new", compiler.GUARDED), ("old", compiler.GUARDED - 2)):
+                home = root / f"home-{name}"
+                home.mkdir()
+                assert PDFLATEX is not None
+                with mock.patch.object(compiler, "GUARDED", guarded):
+                    compiler.compile_pdf(root / name, home, 1791158400, PDFLATEX)
+                pdfs.append((root / name / "document.pdf").read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
 
     def test_two_builds_give_the_same_pdf(self) -> None:
         space = Workspace(self, example_files(LONG_EXAMPLE))

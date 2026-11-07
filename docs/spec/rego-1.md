@@ -58,6 +58,9 @@ Sono ammesse anche le voci di cartella `parts/` e `images/`, vuote; non contano 
 aggiungono da soli (`__MACOSX/`, `.DS_Store`, `._*`, `Thumbs.db`, `desktop.ini`): il messaggio
 d'errore lo dice e suggerisce `regodoc canon` per ricostruire l'archivio.
 
+Il motore dichiara questa disposizione in `info.layout` (contratto, §5): file fissi, cartelle
+e percorsi ammessi di parti e immagini.
+
 Il file di una parte **si ricava dal suo id**: la parte `network` sta in `parts/network.xml`.
 Un file in `parts/` che non corrisponde a nessun id di `structure.toml` è un errore, e così un
 id senza file.
@@ -342,7 +345,7 @@ Il formato delle parti è XML a vocabolario chiuso (decisione 24).
 | `<item>` | in `<list>` | testo misto, poi al massimo una `<list>` | — |
 | `<box>` | dove è ammesso un blocco | `<p>` e `<list>` | `type`: `status`, `note`, `warning`, `critical`; obbligatorio |
 | `<small>` | dove è ammesso un blocco | `<p>` e `<list>` | — |
-| `<table>` | dove è ammesso un blocco | §4.4 | `columns`, obbligatorio; `orientation` facoltativo |
+| `<table>` | dove è ammesso un blocco | §4.4 | `columns`, obbligatorio; `align` e `orientation` facoltativi |
 | `<figure>` | dove è ammesso un blocco | `<caption>` facoltativa | `file`, obbligatorio; `width` facoltativo |
 | `<listing>` | dove è ammesso un blocco | solo testo, spazi conservati | — |
 | `<sources>` | dove è ammesso un blocco, al massimo una volta nel documento | solo `<group>` oppure solo `<source>` | `id` facoltativo |
@@ -438,6 +441,14 @@ Regole:
 - `columns`: una voce per colonna, separate da uno spazio. `*` è una colonna che si allarga;
   una misura come `1.8cm` è una colonna fissa, da `0.5cm` a `12cm`, con il punto decimale, al
   massimo due decimali e solo l'unità `cm`. Almeno una colonna è `*`. Al massimo 10 colonne.
+- `align`, facoltativo: un valore per colonna, separati da uno spazio, `left` o `right`, tanti
+  quante le voci di `columns`: `align="left right right"`. Se manca, tutte le colonne sono
+  allineate a sinistra; scritto tutto `left` è lo stesso, e la forma canonica lo toglie
+  (§9). Vale per l'intestazione, per le righe e per i totali; una cella con `span` prende
+  l'allineamento della prima colonna che copre. Il centro non esiste. Un valore diverso,
+  un numero di valori diverso dalle colonne o uno spazio in più sono l'errore
+  `regodoc.xml.align`. È un'aggiunta del motore 0.2 dentro `rego/1` (§10): un motore 0.1
+  rifiuta l'attributo come sconosciuto.
 - `orientation` vale `portrait`, il predefinito, oppure `landscape`, che mette la tabella su
   pagine orizzontali; `landscape` è ammesso con qualunque numero di colonne.
 - **Oltre le otto colonne**, cioè con nove o dieci, la tabella si stampa in carattere ridotto
@@ -898,6 +909,7 @@ non bloccano il pacchetto.
 | `regodoc.xml.var_form` | §3.2, §6.4 passo 11 |
 | `regodoc.xml.unknown_variable` | §3.2, §6, §6.4 passo 11 |
 | `regodoc.xml.columns` | §4.4 |
+| `regodoc.xml.align` | §4.4 |
 | `regodoc.xml.row_width` | §4.4 |
 | `regodoc.xml.table_head` | §4.4 |
 | `regodoc.xml.separator` | §4.4 |
@@ -1183,7 +1195,7 @@ nuova del motore o con una grammatica nuova.
 | Variabili condivise fra documenti | decisione 5 | la cornice fornita da chi chiama il motore |
 | Celle unite in verticale | complicano l'impaginazione delle tabelle lunghe | celle unite in orizzontale (`span`) o una tabella diversa |
 | Colori, caratteri e dimensioni scelti dall'autore | l'aspetto è del tema | `accent`, `<tone>`, `<label/>`, `<box>` |
-| Allineamento a destra o al centro | previsto per una versione futura del motore (decisione 23) | — |
+| Allineamento al centro | decisione 23; la destra c'è dal motore 0.2 (§4.4) | `align` con `left` o `right` |
 | Immagini dentro il testo e nelle celle | impaginazione fragile | `<figure>` |
 | Immagini SVG e PDF | superficie d'attacco e resa imprevedibile (decisione 15) | PNG o JPEG |
 | Collegamenti `http://`, `mailto:` e altri schemi | decisione 23 | `https://`; gli indirizzi email con `<address>` |
@@ -1258,7 +1270,7 @@ ha letto la bozza: il motore non la legge.
 | `<voce>` | `<item>` |
 | `<riquadro tipo="stato\|nota\|avviso\|critico">` | `<box type="status\|note\|warning\|critical">` |
 | `<piccolo>` | `<small>` |
-| `<tabella colonne>` | `<table columns>`, più `orientation` |
+| `<tabella colonne>` | `<table columns>`, più `orientation` e, dal motore 0.2, `align` |
 | `<intestazione>` | `<head>` |
 | `<riga tipo="totale">` | `<row type="total">` |
 | `<cella unisci>` | `<cell span>` |

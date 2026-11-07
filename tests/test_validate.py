@@ -882,6 +882,12 @@ class XmlTableFigureTest(unittest.TestCase):
             (table("*", "<row><cell><p>y</p><b>z</b></cell></row>"), "regodoc.xml.cell_mixed"),
             (table("*", row, ' orientation="sideways"'), "regodoc.xml.attribute_value"),
             (table("*", "<row><cell>" + "a" * 2001 + "</cell></row>"), "regodoc.limit.cell"),
+            (table("* *", two, ' align="left center"'), "regodoc.xml.align"),
+            (table("* *", two, ' align="right"'), "regodoc.xml.align"),
+            (table("* *", two, ' align="left  right"'), "regodoc.xml.align"),
+            (table("* *", two, ' align=" left right"'), "regodoc.xml.align"),
+            (table("* *", two, ' align="Right left"'), "regodoc.xml.align"),
+            (table("* *", two, ' align=""'), "regodoc.xml.align"),
         ]
         for xml, code in cases:
             with self.subTest(xml[:60]):
@@ -891,6 +897,11 @@ class XmlTableFigureTest(unittest.TestCase):
         wide = '<table columns="' + " ".join(["*"] * 10) + '" orientation="landscape">'
         wide += "<row>" + "<cell/>" * 10 + "</row></table>"
         self.assertEqual(self.body(wide), [])
+        aligned = '<table columns="* 2cm 2cm" align="left right right"><head>'
+        aligned += "<cell>a</cell><cell>b</cell><cell>c</cell></head>"
+        aligned += '<row type="total"><cell span="2">x</cell><cell>y</cell></row></table>'
+        self.assertEqual(self.body(aligned), [])
+        self.assertEqual(self.body(aligned.replace("left right right", "left left left")), [])
 
     def test_table_rows_limit(self) -> None:
         rows = "<row><cell>x</cell></row>" * 601

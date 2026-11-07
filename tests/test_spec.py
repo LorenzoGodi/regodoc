@@ -60,6 +60,7 @@ class VocabularyInSpecTest(unittest.TestCase):
             "tone": parts.TONE_TYPES,
             "form": parts.VAR_FORMS,
             "orientation": parts.ORIENTATIONS,
+            "align": parts.ALIGNMENTS,
             "types": tomlfiles.VARIABLE_TYPES,
         }
         for name, values in groups.items():
