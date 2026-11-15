@@ -224,7 +224,8 @@ def _validate(path: Path, result: Validation, data: bytes | None) -> None:
     variables = read_variables(variables_data, report) if variables_data is not None else None
     result.variables = variables.valid if variables is not None else {}
     declared = variables.declared if variables is not None else set()
-    result.roots = _check_parts(package, structure, result.variables, declared, report)
+    in_formulas = variables.in_formulas if variables is not None else set()
+    result.roots = _check_parts(package, structure, result.variables, declared, in_formulas, report)
 
 
 def _check_manifest(
@@ -339,12 +340,14 @@ def _check_parts(
     structure: Structure,
     variables: dict[str, Variable],
     declared: set[str] | None,
+    in_formulas: set[str],
     report: Collector,
 ) -> dict[str, Node]:
     roots: dict[str, Node] = {}
     entries = {entry.id: entry for entry in structure.entries}
     context = Context(report, variables, entries)
     context.declared_variables = declared
+    context.formula_variables = in_formulas
     for entry in structure.entries:
         context.define(entry.id, Target(entry.kind, "structure.toml", 0, 0, entry.id))
     # Falso se una parte manca, non si legge o non si legge affatto perché orfana, o se una
@@ -400,7 +403,7 @@ def _check_parts(
 
 def _check_uses(context: Context, images: set[str], *, complete: bool) -> None:
     report = context.report
-    used_variables: set[str] = set()
+    used_variables: set[str] = set(context.formula_variables)
     used_images: set[str] = set()
     for use in context.uses:
         where = (use.file, use.line, use.column)

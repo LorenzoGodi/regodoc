@@ -100,6 +100,16 @@ class VocabularyCoverageTest(unittest.TestCase):
         }
         self.assertEqual(sorted(set(parts.ALIGNMENTS) - used), [])
 
+    def test_calculated_variables(self) -> None:
+        # Una variabile calcolata per eur, count e percent, gli esempi del §3.3.
+        calculated = {
+            kind
+            for spec in self.usage.variables.values()
+            for kind, value in spec.items()
+            if isinstance(value, dict)
+        }
+        self.assertEqual(calculated, {"eur", "count", "percent"})
+
     def test_every_variable_type_and_shape(self) -> None:
         self.assertEqual(sorted(set(tomlfiles.VARIABLE_TYPES) - self.usage.variable_types()), [])
         specs = list(self.usage.variables.values())

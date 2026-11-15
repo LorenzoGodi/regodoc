@@ -3,7 +3,7 @@
   <summary>Layout of the shed, lockers and the landing stage.</summary>
   <section id="layout">
     <title>Layout</title>
-    <p><label type="observed"/> Lockers are used at <var name="lockerUse"/> of capacity; the racks along the north wall are full.</p>
+    <p><label type="observed"/> Lockers are used at <var name="lockerUse"/> of capacity; the racks along the north wall are full. Two thirds of that use is <var name="lockerShareOfTwoThirds"/>, and the two oldest eights alone take <var name="seatsInTwoEights"/> seats.</p>
     <figure file="images/shed-plan.png" width="0.75">
       <caption>Plan of the shed, with the racks drawn as <i>outlined</i> rectangles.</caption>
     </figure>

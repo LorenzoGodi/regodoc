@@ -399,6 +399,8 @@ class Context:
     targets: dict[str, Target] = field(default_factory=dict)
     uses: list[Use] = field(default_factory=list)
     declared_variables: set[str] | None = field(default_factory=set)
+    # Le variabili richiamate dalle formule di variables.toml: contano come richiamate.
+    formula_variables: set[str] = field(default_factory=set)
     # Falso se qualche parte non è stata letta: gli id raccolti sono incompleti.
     complete: bool = True
     sources_blocks: int = 0

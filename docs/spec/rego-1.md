@@ -253,8 +253,8 @@ worksStart = { date = 2026-11-16 }
 ```
 
 Un nome di variabile (§1.5) è unico. Le variabili sono di un solo documento: non esistono
-variabili condivise fra documenti (decisione 5). Non esistono formule né variabili calcolate
-(decisione 6).
+variabili condivise fra documenti (decisione 5). Dal motore 0.2 una variabile numerica può
+avere una formula al posto del valore: è una variabile calcolata (§3.3, decisione 6).
 
 ### 3.1 Tipi
 
@@ -306,7 +306,114 @@ stampare:
 | `min`, `max` | intervalli | un estremo, con l'unità |
 
 Un richiamo a una variabile che non esiste è un errore. Una variabile mai richiamata produce
-un avviso.
+un avviso; una variabile richiamata solo da una formula (§3.3) conta come richiamata.
+
+### 3.3 Variabili calcolate
+
+Al posto del valore, il tipo ha una tabella con la sola chiave `calc`, che contiene la
+formula. Il tipo dichiarato resta quello che il testo stampa, e un `<var/>` richiama una
+variabile calcolata come le altre (§3.2).
+
+```toml
+imponibile = { eur = "2.140" }
+aliquota = { percent = "22" }
+iva = { eur = { calc = "imponibile * aliquota" }, note = "aliquota ordinaria" }
+```
+
+Le formule stanno solo nel pacchetto: il motore non legge valori da altre fonti, e gli
+importi calcolati restano editoriali come quelli scritti (decisione 7). È un'aggiunta del
+motore 0.2 dentro `rego/1` (§10): un motore 0.1 rifiuta la tabella `calc` con
+`regodoc.toml.value`. Non c'è un controllo di coerenza fra i totali scritti e quelli
+calcolati.
+
+**Grammatica.**
+
+```
+formula := termine (("+" | "-") termine)*
+termine := fattore (("*" | "/") fattore)*
+fattore := nome | numero | "(" formula ")"
+```
+
+- `nome` è il nome di un'altra variabile del file, numerica e senza intervallo, scritta o
+  calcolata; `date`, `text` e gli intervalli sono l'errore `regodoc.toml.calc_name`, come un
+  nome che non esiste.
+- `numero` è un numero italiano senza segno (§3.1): `2`, `0,5`, `1.000`. Non c'è il meno
+  unario: `a - b` sì, `-a` no.
+- Fra i simboli sono ammessi solo spazi. `*` e `/` legano più di `+` e `-`, e a parità di
+  forza si calcola da sinistra: `a - b - c` è `(a - b) - c`.
+- Una formula illeggibile è l'errore `regodoc.toml.calc_syntax`, con la colonna del primo
+  simbolo sbagliato.
+- Al massimo 500 caratteri, 64 operandi (nomi e numeri) e 16 livelli di parentesi; oltre è
+  l'errore `regodoc.limit.calc`. Ogni valore, intermedio o finale, sta entro 10^15 in valore
+  assoluto, come i valori scritti; oltre è l'errore `regodoc.toml.calc_value`.
+
+Il motore legge la formula con un analizzatore suo, senza valutazione dinamica, e calcola in
+aritmetica esatta, con le frazioni: nessun errore di virgola mobile.
+
+**Tipi.** Gli scalari sono `number`, `count` e `percent`; le unità sono `eur`, `gb`, `tb`,
+`hours`, `days` e `months`. Una costante della formula è `number`. In una formula `percent`
+vale come frazione: `"22"` vale 0,22.
+
+| Operazione | Ammessa | Tipo del risultato |
+|---|---|---|
+| `a + b`, `a - b` | solo fra lo stesso tipo | quel tipo |
+| `unità * scalare`, `scalare * unità` | sì | l'unità |
+| `scalare * scalare` | sì | `number` |
+| `unità / scalare` | sì | l'unità |
+| `unità / la stessa unità`, `scalare / scalare` | sì | `number` |
+| `unità * unità`, `scalare / unità`, unità diverse | no | errore `regodoc.toml.calc_type` |
+
+Il tipo della formula si accorda con quello dichiarato: un'unità vuole lo stesso tipo
+dichiarato, uno scalare vale per qualunque tipo scalare. Altrimenti è
+`regodoc.toml.calc_type`. Una costante non prende l'unità dell'altro operando: in
+`aliquota + 2` il 2 potrebbe valere due punti o il 200%. La costante con un'unità diventa una
+variabile:
+
+```toml
+canone = { eur = "900" }
+spese = { eur = "50" }
+totale = { eur = { calc = "canone + spese" } }   # non "canone + 50"
+```
+
+**Arrotondamento.** Si arrotonda solo alla fine di ogni variabile, al mezzo superiore in
+valore assoluto (0,005 → 0,01, −0,005 → −0,01): `eur` ai centesimi, gli altri tipi a due
+decimali, `percent` sulla percentuale stampata. Gli zeri finali cadono (3,50 si stampa 3,5);
+`eur` si stampa come i valori scritti, senza decimali se i centesimi sono zero, altrimenti
+con due. Un risultato intero di `count`, `number`, `hours`, `days` e `months` è un intero:
+un risultato uguale a 1 prende l'unità al singolare, come il valore scritto `1`.
+
+- `count` vuole un risultato intero: un conteggio non si arrotonda, e un risultato con
+  decimali è l'errore `regodoc.toml.calc_value`. Chi vuole i decimali dichiara `number`.
+- Un risultato negativo per un tipo che non ammette negativi (§3.1) è
+  `regodoc.toml.calc_value`; il controllo vale dopo l'arrotondamento.
+- Una divisione per zero è l'errore `regodoc.toml.calc_division`, con l'operando nullo.
+
+**Una variabile calcolata entra nelle altre formule con il valore arrotondato**, cioè con
+quello che il testo stampa: così i conti del documento tornano con ciò che si legge.
+
+```toml
+totale = { eur = "100" }
+terzo = { eur = { calc = "totale / 3" } }      # 33,33 euro
+treTerzi = { eur = { calc = "terzo * 3" } }    # 99,99 euro, non 100
+```
+
+**Ordine e cicli.** L'ordine delle righe non conta: il motore calcola ogni variabile dopo
+quelle che usa. Un ciclo, anche lungo (`a` usa `b`, `b` usa `a`), è l'errore
+`regodoc.toml.calc_cycle`, con il percorso: «a → b → a». Una variabile che usa una variabile
+sbagliata resta fuori senza un secondo errore: l'errore è già sull'altra.
+
+**Esempi, uno per tipo.**
+
+| Variabili | Formula | Valore | Stampa |
+|---|---|---|---|
+| `imponibile = { eur = "2.140" }`, `aliquota = { percent = "22" }` | `imponibile * aliquota` (`eur`) | 470,8 | 470,80 euro |
+| `canone = { eur = "100,01" }` | `canone / 2` (`eur`) | 50,005 → 50,01 | 50,01 euro |
+| `uffici = { count = 3 }` | `uffici * 4 + 2` (`count`) | 14 | 14 |
+| `persone = { count = 14 }` | `persone / 4` (`count`) | 3,5 | errore `regodoc.toml.calc_value` |
+| `coperte = { count = 13 }`, `postazioni = { count = 14 }` | `coperte / postazioni` (`percent`) | 0,928571… → 92,86% | 92,86% |
+
+Su una variabile calcolata `form="number"` vale come per le altre; `min` e `max` restano per
+gli intervalli, e una variabile calcolata non lo è mai.
 
 ---
 
@@ -699,7 +806,7 @@ sulle immagini, che sono già compresse e non hanno motivo di espandersi di più
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
 | 7. Manifesto e grammatica | `README.md`, se c'è, al massimo 64 KiB (il contenuto non si legge); `manifest.json` presente, al massimo 64 KiB, UTF-8, JSON senza chiavi ripetute, `NaN` o `Infinity`, un oggetto; `format`; chiavi e valori del §1.3; grammatica letta dal motore (§10) | si ferma nei casi elencati all'inizio del §6 (dimensione, codifica, sintassi, non un oggetto, `format`, grammatica); altrimenti raccoglie gli errori e prosegue | `regodoc.limit.file_size`, `regodoc.text.encoding`, `regodoc.manifest.missing`, `.syntax`, `.type`, `.unknown_key`, `.format`, `.grammar`, `.grammar_newer`, `.value`; `regodoc.grammar.upgraded` |
-| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2), chiavi puntate e nomi di tabella al massimo di 8 segmenti (`regodoc.toml.depth`: `tomllib` costa tempo e memoria quadratici nella lunghezza di una chiave puntata); poi `tomllib`, e un intero con troppe cifre per Python è un errore di sintassi; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`; avviso `regodoc.toml.comment` |
+| 8. TOML | prima: dimensione, BOM, UTF-8, caratteri (§5.2), chiavi puntate e nomi di tabella al massimo di 8 segmenti (`regodoc.toml.depth`: `tomllib` costa tempo e memoria quadratici nella lunghezza di una chiave puntata); poi `tomllib`, e un intero con troppe cifre per Python è un errore di sintassi; poi chiavi, tipi e valori del §2 e del §3. Un commento `#` produce un avviso, trovato da un analizzatore che riconosce le stringhe | per `structure.toml`, si ferma se manca o se le verifiche preliminari o `tomllib` lo rifiutano; per il resto raccoglie tutti gli errori del file e prosegue | `regodoc.package.missing`, `regodoc.limit.file_size`, `regodoc.text.bom`, `.encoding`, `.char`, `.plain`, `regodoc.toml.syntax`, `.depth`, `.unknown_key`, `.missing`, `.type`, `.value`, `.id`, `.variable_name`, `.variable_type`, `.range`, `.calc_syntax`, `.calc_name`, `.calc_cycle`, `.calc_type`, `.calc_division`, `.calc_value`, `regodoc.xml.duplicate_id` (una voce ripetuta), `regodoc.limit.parts`, `.variables`, `.calc`; avviso `regodoc.toml.comment` |
 
 ### 6.3 XML
 
@@ -877,6 +984,12 @@ non bloccano il pacchetto.
 | `regodoc.toml.variable_name` | §1.5, §3, §6.2 passo 8 |
 | `regodoc.toml.variable_type` | §3, §3.1, §6.2 passo 8 |
 | `regodoc.toml.range` | §3.1, §6.2 passo 8 |
+| `regodoc.toml.calc_syntax` | §3.3, §6.2 passo 8 |
+| `regodoc.toml.calc_name` | §3.3, §6.2 passo 8 |
+| `regodoc.toml.calc_cycle` | §3.3, §6.2 passo 8 |
+| `regodoc.toml.calc_type` | §3.3, §6.2 passo 8 |
+| `regodoc.toml.calc_division` | §3.3, §6.2 passo 8 |
+| `regodoc.toml.calc_value` | §3.3, §6.2 passo 8 |
 | `regodoc.toml.comment` | avviso; §2, §3.1, §6.2 passo 8 |
 | `regodoc.toml.unused_variable` | avviso; §3.2, §6.4 passo 11 |
 | `regodoc.xml.declaration` | §4.1, §6.3 |
@@ -939,6 +1052,7 @@ non bloccano il pacchetto.
 | `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
 | `regodoc.limit.variables` | §7.2 |
+| `regodoc.limit.calc` | §3.3 |
 | `regodoc.limit.characters` | §7.2 |
 | `regodoc.limit.depth` | §6.3, §7.2 |
 | `regodoc.limit.images` | §6.4 passo 10, §7.2 |
@@ -1034,7 +1148,10 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
 - **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
-  `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; stringhe
+  `name = { tipo = valore, note = "…" }`, con la chiave di tipo prima di `note`; una formula
+  come `name = { tipo = { calc = "a * (b + 2)" }, note = "…" }`, con uno spazio prima e dopo
+  `+`, `-`, `*` e `/`, nessuno dentro le parentesi, e nomi e numeri così come sono scritti;
+  stringhe
   fra virgolette doppie, con `\"` e `\\` (gli altri caratteri di controllo, che un pacchetto
   valido non contiene, si scriverebbero `\b`, `\t`, `\n`, `\f` o `\uXXXX`); intervalli come
   `[10, 14]`; commenti rimossi. Un `variables.toml` senza variabili è omesso
@@ -1191,7 +1308,7 @@ nuova del motore o con una grammatica nuova.
 |---|---|---|
 | Note a piè di pagina | rompono il flusso del testo e il confronto fra versioni | un `<box type="note">` o una fonte citata |
 | Formule matematiche | richiedono un linguaggio a sé, che sarebbe un ingresso non fidato in più | un `<listing>` o testo |
-| Variabili calcolate e formule sulle variabili | decisione 6 | il valore scritto, con la provenienza in `note` |
+| Formule con funzioni, intervalli, date o testi | decisione 6: dal motore 0.2 le formule hanno solo le quattro operazioni (§3.3) | il valore scritto, con la provenienza in `note` |
 | Variabili condivise fra documenti | decisione 5 | la cornice fornita da chi chiama il motore |
 | Celle unite in verticale | complicano l'impaginazione delle tabelle lunghe | celle unite in orizzontale (`span`) o una tabella diversa |
 | Colori, caratteri e dimensioni scelti dall'autore | l'aspetto è del tema | `accent`, `<tone>`, `<label/>`, `<box>` |
@@ -1255,6 +1372,7 @@ ha letto la bozza: il motore non la legge.
 | `nota` | `note` |
 | attributo `nome` di `<var/>` | `name` |
 | attributo `parte` di `<var/>`: `min`, `max`, `numero` | `form`: `min`, `max`, `number` |
+| — | dal motore 0.2, `calc`: la formula di una variabile calcolata (§3.3) |
 
 ### A.4 Elementi e attributi XML
 
@@ -1306,7 +1424,7 @@ testo monospaziato in linea (decisione 26).
 | 3 e 3bis nomi in inglese, livello 3 | §0 e appendice A |
 | 4 elenco di ciò che resta fuori | §12 |
 | 5 nessuna variabile condivisa | §3 |
-| 6 nessuna formula | §3, §12 |
+| 6 nessuna formula: superata da [CP-233] e [CP-235] il 27/10/2026, variabili calcolate dal motore 0.2 | §3, §3.3, §12 |
 | 7 importi editoriali | §3.1 |
 | 8 etichette in inglese, diciture nella lingua del documento; campo lingua | §2, §4.3, §5.6 |
 | 9 otto ruoli della tavolozza | §2 |

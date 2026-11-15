@@ -13,3 +13,6 @@ refundPerMember = { eur = "-40" }
 migrationHours = { hours = ["6", "9,5"] }
 trainingDays = { days = 1 }
 retentionMonths = { months = 18 }
+feeIncome = { eur = { calc = "annualFee * memberRecords" }, note = "upper bound: not every record is a paying member" }
+seatsInTwoEights = { count = { calc = "crewSeats * 2" } }
+lockerShareOfTwoThirds = { percent = { calc = "lockerUse * 2 / 3" } }

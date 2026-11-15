@@ -17,7 +17,7 @@ import zlib
 from collections.abc import Iterable
 from pathlib import Path
 
-from regodoc import __version__
+from regodoc import __version__, calc
 from regodoc.declaration import CONTENT_LIMITS, ENGINE_NAME, PACKAGE_MIMETYPE
 from regodoc.diagnostics import Collector, Diagnostic
 from regodoc.parts import XML_DECLARATION, Comment, Node, Text
@@ -269,9 +269,16 @@ def variables_toml(data: bytes) -> bytes | None:
     lines = []
     for name, spec in document.items():
         keys = [key for key in spec if key != "note"] + (["note"] if "note" in spec else [])
-        inner = ", ".join(f"{key} = {_toml_value(spec[key])}" for key in keys)
+        inner = ", ".join(f"{key} = {_variable_value(spec[key])}" for key in keys)
         lines.append(f"{name} = {{ {inner} }}")
     return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _variable_value(value: object) -> str:
+    """Un valore di variabile; una formula con gli spazi della forma canonica (§3.3, §9)."""
+    if isinstance(value, dict):
+        return f"{{ calc = {_toml_string(calc.normalize(str(value['calc'])))} }}"
+    return _toml_value(value)
 
 
 def content_files(validation: Validation) -> list[tuple[str, bytes]]:

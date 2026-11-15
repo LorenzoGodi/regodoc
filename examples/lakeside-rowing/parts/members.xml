@@ -3,7 +3,7 @@
   <summary>Where the member records live today and how to bring them into one register.</summary>
   <section id="registers">
     <title>Registers in use</title>
-    <p><label type="observed"/> Records are split between a spreadsheet, a paper ledger and the treasurer's laptop; the annual fee is <var name="annualFee"/> per member.</p>
+    <p><label type="observed"/> Records are split between a spreadsheet, a paper ledger and the treasurer's laptop; the annual fee is <var name="annualFee"/> per member, at most <var name="feeIncome"/> a year if every record paid.</p>
     <!-- One item per register, the most used first. -->
     <list>
       <item>The spreadsheet on the club computer:

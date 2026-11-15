@@ -7,6 +7,7 @@ import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from regodoc import calc
 from regodoc.declaration import CONTENT_LIMITS
 from regodoc.diagnostics import Collector, clip
 from regodoc.source import ID
@@ -487,6 +488,8 @@ class Variables:
 
     valid: dict[str, Variable] = field(default_factory=dict)
     declared: set[str] | None = field(default_factory=set)
+    # I nomi richiamati dalle formule lette (§3.3): contano come richiamati nel testo.
+    in_formulas: set[str] = field(default_factory=set)
 
 
 def read_variables(data: bytes, report: Collector) -> Variables:
@@ -517,17 +520,33 @@ def read_variables(data: bytes, report: Collector) -> Variables:
         result.declared = None
         return result
     result.declared = set(document)
+    pending: dict[str, calc.Pending] = {}
     for name, spec in document.items():
         line = _line_of_key(text, name)
         variable = _read_variable(name, spec, file, line, report)
-        if variable is not None:
+        if isinstance(variable, calc.Pending):
+            pending[name] = variable
+            result.in_formulas.update(variable.formula.names)
+        elif variable is not None:
             result.valid[name] = variable
+    if pending:
+        known = {v.name: (v.type, v.value, v.is_range) for v in result.valid.values()}
+        values = calc.resolve(pending, known, result.declared, file, report)
+        # Le variabili restano nell'ordine del file.
+        ordered = {}
+        for name in document:
+            if name in result.valid:
+                ordered[name] = result.valid[name]
+            elif name in values:
+                entry = pending[name]
+                ordered[name] = Variable(name, entry.type, values[name], False, entry.line)
+        result.valid = ordered
     return result
 
 
 def _read_variable(
     name: str, spec: object, file: str, line: int, report: Collector
-) -> Variable | None:
+) -> Variable | calc.Pending | None:
     if not VARIABLE_NAME.fullmatch(name):
         report.error(
             "regodoc.toml.variable_name",
@@ -569,6 +588,8 @@ def _read_variable(
         return None
     kind = types[0]
     value = spec[kind]
+    if isinstance(value, dict):
+        return _read_formula(name, kind, value, file, line, report)
     if isinstance(value, list):
         if kind in ("date", "text"):
             report.error(
@@ -602,6 +623,36 @@ def _read_variable(
     if _scalar(name, kind, value, file, line, report) is None:
         return None
     return Variable(name, kind, value, False, line)
+
+
+def _read_formula(
+    name: str, kind: str, value: dict[str, object], file: str, line: int, report: Collector
+) -> calc.Pending | None:
+    """Una variabile calcolata (§3.3): la tabella ha la sola chiave «calc», con la formula."""
+    if kind not in calc.SCALARS | calc.UNITS or set(value) != {"calc"}:
+        report.error(
+            "regodoc.toml.value",
+            f'«{name}»: una formula si scrive {{ {kind} = {{ calc = "…" }} }}, solo per i '
+            f"tipi numerici, non {_shown(value)}",
+            file,
+            line,
+        )
+        return None
+    source = value["calc"]
+    if not isinstance(source, str):
+        report.error(
+            "regodoc.toml.value",
+            f"«{name}»: «calc» vuole la formula fra virgolette, non {_type_name(source)}",
+            file,
+            line,
+        )
+        return None
+    try:
+        formula = calc.parse(source)
+    except calc.FormulaError as problem:
+        report.error(problem.code, f"«{name}»: {problem.message}", file, line)
+        return None
+    return calc.Pending(name, kind, formula, line)
 
 
 def _scalar(
