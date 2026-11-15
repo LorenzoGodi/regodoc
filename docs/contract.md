@@ -15,9 +15,10 @@ portato a 60 s (§2.3), le capacità `canon` e `upgrade` (§5.2), la nota sui va
 dei candidati di Rego (§4.2) e, nella specifica, le regole della forma canonica (§9): gli
 spazi del testo misto e le immagini memorizzate senza compressione. La bozza che la precedeva,
 dichiarata come versione 0, non è servita da nessun motore: chi chiama passa `--contract 1`.
-Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, la capacità
-`table.align` (§5.2), la chiave `layout` di `info` (§5) e i comandi `\RdCellEnd` e `\RdCellR`
-(§6.4).
+Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, le capacità
+`table.align` e `variables.calc` (§5.2), i limiti `content.calc_characters`,
+`content.calc_operands` e `content.calc_depth` (§5.1), la chiave `layout` di `info` (§5) e i
+comandi `\RdCellEnd` e `\RdCellR` (§6.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -456,6 +457,9 @@ invece di importarli dal codice del motore: la regola 1 vale anche qui.
 | `content.cell_characters` | caratteri | per cella |
 | `content.variables` | variabili | voci di `variables.toml` |
 | `content.number_abs_max` | valore | valore assoluto massimo di un intero o di un numero delle variabili |
+| `content.calc_characters` | caratteri | per formula di una variabile calcolata, dal motore 0.2; oltre, `regodoc.limit.calc` |
+| `content.calc_operands` | operandi | nomi e numeri di una formula, dal motore 0.2 |
+| `content.calc_depth` | livelli | parentesi annidate di una formula, dal motore 0.2 |
 | `content.section_depth`, `list_depth`, `element_depth` | livelli | annidamento |
 | `content.references` | rimandi e citazioni | elementi `<reference/>` e `<cite/>` |
 | `content.sources` | fonti | elementi `<source>` |
@@ -476,6 +480,7 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `build.theme` | `build` con `--theme` |
 | `upgrade` | `upgrade` |
 | `table.align` | l'attributo `align` di `<table>` (specifica, §4.4), dal motore 0.2: chi chiama lo scrive solo se la capacità c'è |
+| `variables.calc` | le variabili calcolate di `variables.toml` (specifica, §3.3), dal motore 0.2: chi chiama scrive una formula solo se la capacità c'è |
 
 Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
 `resources.enforced` (§2.3).

@@ -903,6 +903,7 @@ grammatica.
 | `href` | 2.000 caratteri | `content.href_characters` |
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
+| Formula di una variabile calcolata (§3.3) | 500 caratteri, 64 operandi, 16 livelli di parentesi; oltre è `regodoc.limit.calc` | `content.calc_characters`, `content.calc_operands`, `content.calc_depth` |
 | Problemi elencati in un rapporto | 500; un errore in più ferma la lettura con l'errore `regodoc.limit.problems`; gli avvisi in più non si elencano, la lettura prosegue e l'avviso `regodoc.limit.warnings` li conta | `content.problems` |
 
 **Che cosa conta nei 1.500.000 caratteri.** Il testo dei blocchi di testo misto, dopo la
@@ -1052,7 +1053,7 @@ non bloccano il pacchetto.
 | `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
 | `regodoc.limit.variables` | §7.2 |
-| `regodoc.limit.calc` | §3.3 |
+| `regodoc.limit.calc` | §3.3, §7.2 |
 | `regodoc.limit.characters` | §7.2 |
 | `regodoc.limit.depth` | §6.3, §7.2 |
 | `regodoc.limit.images` | §6.4 passo 10, §7.2 |

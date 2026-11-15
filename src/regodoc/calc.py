@@ -16,9 +16,9 @@ from regodoc.declaration import CONTENT_LIMITS
 from regodoc.diagnostics import Collector
 
 # I limiti di una formula (§3.3).
-MAX_CHARACTERS = 500
-MAX_OPERANDS = 64
-MAX_DEPTH = 16
+MAX_CHARACTERS = int(CONTENT_LIMITS["calc_characters"])
+MAX_OPERANDS = int(CONTENT_LIMITS["calc_operands"])
+MAX_DEPTH = int(CONTENT_LIMITS["calc_depth"])
 _MAX_ABS = Fraction(int(CONTENT_LIMITS["number_abs_max"]))
 
 SCALARS = frozenset({"number", "count", "percent"})

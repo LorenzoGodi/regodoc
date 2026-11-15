@@ -147,6 +147,14 @@ def without_sources(files: dict[str, bytes]) -> dict[str, bytes]:
     return files
 
 
+def with_formula(formula: str) -> dict[str, bytes]:
+    """L'esempio con una variabile calcolata in più, con questa formula (§3.3)."""
+    files = example_files()
+    extra = f'limit = {{ number = {{ calc = "{formula}" }} }}\n'.encode()
+    files["variables.toml"] = files["variables.toml"] + extra
+    return files
+
+
 class Boundary:
     """Un limite: come si costruisce un pacchetto con un valore dato, e il codice atteso."""
 
@@ -211,6 +219,24 @@ BOUNDARIES = [
         "regodoc.xml.list_depth",
         lambda n: with_backup(section(list_of_depth(n))),
         L["list_depth"],
+    ),
+    Boundary(
+        "calc_characters",
+        "regodoc.limit.calc",
+        lambda n: with_formula("1" + " " * (n - 1)),
+        L["calc_characters"],
+    ),
+    Boundary(
+        "calc_operands",
+        "regodoc.limit.calc",
+        lambda n: with_formula(" + ".join(["1"] * n)),
+        L["calc_operands"],
+    ),
+    Boundary(
+        "calc_depth",
+        "regodoc.limit.calc",
+        lambda n: with_formula("(" * n + "1" + ")" * n),
+        L["calc_depth"],
     ),
     Boundary(
         "variables",

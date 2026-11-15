@@ -68,6 +68,10 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "cell_characters": 2000,
         "variables": 1500,
         "number_abs_max": 10**15,
+        # Una formula di una variabile calcolata (specifica, §3.3).
+        "calc_characters": 500,
+        "calc_operands": 64,
+        "calc_depth": 16,
         "problems": 500,
         "structure_bytes": 64 * _KIB,
         "variables_bytes": 384 * _KIB,
@@ -156,6 +160,7 @@ CAPABILITIES: Final = (
     "build.theme",
     "upgrade",
     "table.align",
+    "variables.calc",
 )
 
 LANGUAGES: Final = ("it", "en")
