@@ -17,8 +17,10 @@ nei commenti alle issue e alle pull request la riga di attribuzione predefinita 
   testi [CP-n] che riceve; in Rego non lavora (DL-27).
 - Lingua: italiano per documenti, docstring, commenti, messaggi dei commit ed errori del
   motore; inglese per i nomi nel codice, i nomi di file, gli elementi XML e le chiavi TOML.
-- All'avvio la sessione legge per intero `memory/MEMORY.md` di rego-memoria e i file che
-  indica; non la modifica e ne propone gli aggiornamenti nella consegna.
+- All'avvio la sessione legge per intero questo file, `README.md` e `docs/contract.md`, poi
+  la issue di canale dall'ultimo testo [CP-n] ricevuto in avanti; non legge altri repository.
+  La sua memoria di lavoro sono le consegne, le ricevute e le proposte sulla issue di canale
+  e sulle pull request.
 - Un orario si scrive in UTC e solo dopo `date -u`, mai a stima.
 
 ## Proprietà dei file
