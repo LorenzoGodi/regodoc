@@ -50,6 +50,58 @@ def aligned_example() -> dict[str, bytes]:
     return files
 
 
+DIAGRAMS = """      <figure width="0.9">
+        <diagram type="sequence">
+          <step>Richiesta del preventivo</step>
+          <step>Sopralluogo del <var name="worksStart"/></step>
+          <step>Cablaggio di <b>tutte</b> le <var name="workstations"/> postazioni</step>
+          <step>Collaudo</step>
+        </diagram>
+        <caption>Le fasi del lavoro.</caption>
+      </figure>
+      <figure>
+        <diagram type="timeline">
+          <event date="2026-11-16">Inizio dei lavori</event>
+          <event date="2026-11-20">Armadio montato</event>
+          <event date="2026-12-01">Collaudo</event>
+        </diagram>
+      </figure>
+      <figure width="0.8">
+        <diagram type="bars">
+          <bar value="14">Postazioni</bar>
+          <bar value="3,5">Stampanti \\ { } % $ &amp; # _ ^ ~</bar>
+          <bar value="0">Server</bar>
+        </diagram>
+        <caption>Apparati per tipo.</caption>
+      </figure>
+      <figure>
+        <diagram type="tree">
+          <node>Rete della cantina
+            <node>Uffici
+              <node>Amministrazione</node>
+              <node>Vendite</node>
+            </node>
+            <node>Cantina
+              <node>Barricaia</node>
+            </node>
+          </node>
+        </diagram>
+        <caption>La struttura della rete.</caption>
+      </figure>
+"""
+
+
+def diagram_example() -> dict[str, bytes]:
+    """L'esempio breve con un diagramma per tipo dopo la figura della rete (R1). Un'etichetta
+    contiene tutti i caratteri speciali del LaTeX."""
+    files = example_files(EXAMPLE)
+    figure = "        <caption>Copertura misurata prima dei lavori.</caption>\n      </figure>\n"
+    part = files["parts/network.xml"].decode()
+    assert part.count(figure) == 1
+    files["parts/network.xml"] = part.replace(figure, figure + DIAGRAMS).encode()
+    return files
+
+
 def render_files(files: dict[str, bytes], date: datetime.date | None = None) -> str:
     validation = validate_bytes(build_zip(files))
     errors = [str(d) for d in validation.report.errors]
@@ -253,7 +305,7 @@ class StructureTest(unittest.TestCase):
 
     def test_english_words(self) -> None:
         tex = render_files(example_files(LONG_EXAMPLE))
-        self.assertIn(r"\usepackage[en]{regodoc}", tex)
+        self.assertIn(r"\usepackage[en,diagrams]{regodoc}", tex)
         self.assertIn(r"\RdNames{Part}{Figure}{Contents}", tex)
         self.assertIn(r"\begin{RdSources}{Sources}", tex)
 
@@ -307,6 +359,12 @@ class GoldenTest(unittest.TestCase):
     def test_aligned_example_matches_its_golden_file(self) -> None:
         expected = (GOLDEN / "colle-rovere-align.tex").read_text(encoding="utf-8")
         self.assertEqual(render_files(aligned_example()), expected)
+
+    def test_diagram_example_matches_its_golden_file(self) -> None:
+        # Il golden fissa le coordinate dei diagrammi: la CI lo confronta su ogni Python.
+        expected = (GOLDEN / "colle-rovere-diagrams.tex").read_text(encoding="utf-8")
+        self.assertEqual(render_files(diagram_example()), expected)
+        self.assertEqual(render_files(diagram_example()), render_files(diagram_example()))
 
 
 if __name__ == "__main__":

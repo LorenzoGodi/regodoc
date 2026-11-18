@@ -1,5 +1,5 @@
 \documentclass[a4paper,11pt]{article}
-\usepackage[en]{regodoc}
+\usepackage[en,diagrams]{regodoc}
 \RdColor{azure}{2F5F8A}
 \RdColor{slate}{4A5560}
 \RdColor{sage}{4F6F4B}
@@ -100,6 +100,20 @@ a year if every record paid.
 
 Records of former members are kept for 18~months after they leave, then deleted.
 \par
+\begin{RdDiagram}{azure}{1}
+{How the new register is organised.}
+\RdDiagramNode{rd0}{}{0}{96}{Member register}
+\RdDiagramNode{rd1}{rd0}{6}{90}{Seniors}
+\RdDiagramNode{rd2}{rd1}{12}{84}{Rowers}
+\RdDiagramNode{rd3}{rd2}{12}{84}{Coaches}
+\RdDiagramNode{rd4}{rd3}{6}{90}{Juniors}
+\RdDiagramNode{rd5}{rd4}{6}{90}{Former members, kept 18~months}
+\RdDiagramEdge{rd0}{rd1}
+\RdDiagramEdge{rd1}{rd2}
+\RdDiagramEdge{rd1}{rd3}
+\RdDiagramEdge{rd0}{rd4}
+\RdDiagramEdge{rd0}{rd5}
+\end{RdDiagram}
 
 \RdSection{3}{rd-register-access}
 {Who can read it}
@@ -144,6 +158,12 @@ average.
 The worn hull of \RdI{Kingfisher} should be checked before the first regatta.
 \par
 \end{RdBox}
+\begin{RdDiagram}{slate}{0.7}
+{Seats per boat class.}
+\RdDiagramBar{rd0}{}{30}{50}{Seats in an \RdI{eight}}{8}
+\RdDiagramBar{rd1}{rd0}{30}{25}{Seats in a four}{4}
+\RdDiagramBar{rd2}{rd1}{30}{6.25}{Seats in a single scull}{1}
+\end{RdDiagram}
 
 \RdPart{III}{sage}{rd-shed}
 {The boat shed}
@@ -271,6 +291,22 @@ total, at most 9.5~hours.
 \RdItem How to answer a request to see one’s own data.
 \RdItem How to restore a file from the copy.
 \end{RdList}
+\begin{RdDiagram}{olive}{0.9}
+{The three sessions, in order.}
+\RdDiagramBox{rd0}{0}{25.33}{Register explained}
+\RdDiagramBox{rd1}{35.33}{25.33}{Data requests}
+\RdDiagramBox{rd2}{70.67}{25.33}{Restore from the \RdB{copy}}
+\RdDiagramArrow{rd0}{rd1}
+\RdDiagramArrow{rd1}{rd2}
+\end{RdDiagram}
+\begin{RdDiagram}{olive}{1}
+{}
+\RdDiagramAxis{0}{98}
+\RdDiagramEvent{12.5}{21}{5 September 2026}{Survey}
+\RdDiagramEvent{37.5}{21}{19 September 2026}{Copy disk bought}
+\RdDiagramEvent{62.5}{21}{3 October 2026}{Records moved}
+\RdDiagramEvent{87.5}{21}{3 October 2026}{First restore test}
+\end{RdDiagram}
 
 \RdPart{VIII}{gray}{rd-appendix}
 {Inventory tables}

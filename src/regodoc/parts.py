@@ -26,7 +26,7 @@ from regodoc.text import (
     position_in,
     triple_hyphen,
 )
-from regodoc.tomlfiles import VARIABLE_NAME, PartEntry, Variable
+from regodoc.tomlfiles import NUMERIC_TYPES, VARIABLE_NAME, PartEntry, Variable
 
 XML_DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>'
 
@@ -42,6 +42,7 @@ ELEMENTS = (
     | INLINE
     | {"part", "opening", "summary", "section", "title", "item", "head", "row", "cell"}
     | {"separator", "caption", "group", "source"}
+    | {"diagram", "step", "event", "bar", "node"}
 )
 
 LIST_TYPES = ("bullet", "numbered")
@@ -51,6 +52,21 @@ TONE_TYPES = ("critical", "warning", "ok", "muted")
 VAR_FORMS = ("min", "max", "number")
 ORIENTATIONS = ("portrait", "landscape")
 ALIGNMENTS = ("left", "right")
+DIAGRAM_TYPES = ("sequence", "timeline", "bars", "tree")
+# L'elemento figlio di ogni tipo di diagramma, e quanti ne servono (§4.5).
+DIAGRAM_ITEMS = {"sequence": "step", "timeline": "event", "bars": "bar", "tree": "node"}
+DIAGRAM_COUNTS = {"sequence": (2, 8), "timeline": (2, 12), "bars": (1, 12)}
+DIAGRAM_INLINE = frozenset({"b", "i", "code", "var"})
+TREE_DEPTH = 4
+TREE_CHILDREN = 8
+# I limiti dei diagrammi (§4.5): diagrammi per documento, elementi per diagramma, caratteri
+# per etichetta.
+MAX_DIAGRAMS = int(CONTENT_LIMITS["diagrams"])
+MAX_DIAGRAM_ITEMS = int(CONTENT_LIMITS["diagram_items"])
+MAX_LABEL_CHARACTERS = int(CONTENT_LIMITS["diagram_label_characters"])
+# La larghezza minima di una figura con un diagramma: sotto, le etichette non stanno.
+DIAGRAM_MIN_WIDTH = 0.5
+_ITALIAN_NUMBER = re.compile(r"(?:0|[1-9]\d{0,2}(?:\.\d{3})*)(?:,\d+)?")
 
 _COLUMN = re.compile(r"\*|(?P<n>\d{1,2}(?:\.\d{1,2})?)cm")
 _WIDTH = re.compile(r"(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?)")
@@ -407,6 +423,7 @@ class Context:
     sources: int = 0
     characters: int = 0
     references: int = 0
+    diagrams: int = 0
 
     def define(self, identifier: str, target: Target) -> None:
         """Registra un id, segnalando i doppioni."""
@@ -485,6 +502,11 @@ def _check_date(value: str) -> str | None:
     except ValueError:
         return "data inesistente"
     return None
+
+
+def _parse_date(value: str) -> datetime.date | None:
+    """La data di un <event>, o None se non è una data AAAA-MM-GG esistente."""
+    return datetime.date.fromisoformat(value) if _check_date(value) is None else None
 
 
 # --- Verifica dell'albero --------------------------------------------------------------------
@@ -781,8 +803,18 @@ class PartChecker:
                 )
 
     def check_figure(self, node: Node) -> None:
-        self.check_attributes(node, required=("file",), optional=("width",))
-        path = node.attrs.get("file")
+        diagrams = [child for child in node.elements() if child.tag == "diagram"]
+        if diagrams:
+            self.check_attributes(node, optional=("file", "width"))
+            if "file" in node.attrs:
+                self.at(
+                    node,
+                    "regodoc.xml.diagram",
+                    "<figure> ha «file» oppure un <diagram>, non tutti e due",
+                )
+        else:
+            self.check_attributes(node, required=("file",), optional=("width",))
+        path = node.attrs.get("file") if not diagrams else None
         if path is not None:
             if not IMAGE_PATH.fullmatch(path):
                 self.at(
@@ -799,14 +831,211 @@ class PartChecker:
                 "regodoc.xml.attribute_value",
                 f"«width» deve essere un numero da 0.1 a 1 con il punto, non «{width}»",
             )
-        self.check_element_only(node, ("caption",))
-        captions = node.elements()
+        elif diagrams and width is not None and float(width) < DIAGRAM_MIN_WIDTH:
+            self.at(
+                node,
+                "regodoc.xml.diagram",
+                f"una figura con un diagramma è larga almeno {DIAGRAM_MIN_WIDTH}, non «{width}»",
+            )
+        self.check_element_only(node, ("caption", "diagram"))
+        captions = [child for child in node.elements() if child.tag == "caption"]
         if len(captions) > 1:
             self.at(node, "regodoc.xml.caption", "<figure> ammette una sola <caption>")
-        for caption in captions:
-            if caption.tag == "caption":
-                self.check_attributes(caption)
-                self.check_mixed_block(caption, CAPTION_INLINE)
+        if len(diagrams) > 1:
+            self.at(node, "regodoc.xml.diagram", "<figure> ammette un solo <diagram>")
+        for child in node.elements():
+            if child.tag == "caption":
+                self.check_attributes(child)
+                self.check_mixed_block(child, CAPTION_INLINE)
+            elif child.tag == "diagram":
+                self.check_diagram(child)
+
+    # Diagrammi
+
+    def check_diagram(self, node: Node) -> None:
+        self.check_attributes(node, required=("type",))
+        self.check_choice(node, "type", DIAGRAM_TYPES)
+        self.context.diagrams += 1
+        if self.context.diagrams == MAX_DIAGRAMS + 1:
+            self.at(
+                node,
+                "regodoc.limit.diagram",
+                f"più di {MAX_DIAGRAMS} diagrammi nel documento",
+            )
+        kind = node.attrs.get("type")
+        if kind not in DIAGRAM_ITEMS:
+            self.skipped()
+            return
+        tag = DIAGRAM_ITEMS[kind]
+        self.check_element_only(node, (tag,))
+        items = [child for child in node.elements() if child.tag == tag]
+        if kind == "tree":
+            if len(items) != 1:
+                self.at(node, "regodoc.xml.diagram", "un albero ha un solo <node> radice")
+            total = self.count_nodes(items)
+        else:
+            low, high = DIAGRAM_COUNTS[kind]
+            if not low <= len(items) <= high:
+                self.at(
+                    node,
+                    "regodoc.xml.diagram",
+                    f"un diagramma «{kind}» ha da {low} a {high} <{tag}>, non {len(items)}",
+                )
+            total = len(items)
+        if total > MAX_DIAGRAM_ITEMS:
+            self.at(
+                node,
+                "regodoc.limit.diagram",
+                f"{total} elementi nel diagramma, il massimo è {MAX_DIAGRAM_ITEMS}",
+            )
+        if kind == "sequence":
+            for item in items:
+                self.check_attributes(item)
+                self.check_label(item)
+        elif kind == "timeline":
+            self.check_events(items)
+        elif kind == "bars":
+            self.check_bars(items)
+        else:
+            for item in items:
+                self.check_tree_node(item, 1)
+
+    def count_nodes(self, nodes: list[Node]) -> int:
+        total = 0
+        pending = list(nodes)
+        while pending:
+            current = pending.pop()
+            total += 1
+            pending.extend(child for child in current.elements() if child.tag == "node")
+        return total
+
+    def check_label(self, node: Node, children: list[Node | Text | Comment] | None = None) -> None:
+        """Il testo di un elemento del diagramma: testo misto con b, i, code e var."""
+        label = node if children is None else Node(node.tag, {}, node.line, node.column, children)
+        self.check_mixed_block(label, DIAGRAM_INLINE)
+        length = len(collapse_spaces(self.label_text(label)).strip())
+        if length > MAX_LABEL_CHARACTERS:
+            self.at(
+                node,
+                "regodoc.limit.diagram",
+                f"etichetta di {length} caratteri, il massimo è {MAX_LABEL_CHARACTERS}",
+            )
+
+    def label_text(self, node: Node) -> str:
+        parts = []
+        for child in node.children:
+            if isinstance(child, Text):
+                parts.append(child.value)
+            elif isinstance(child, Node):
+                parts.append(self.label_text(child))
+        return "".join(parts)
+
+    def check_events(self, items: list[Node]) -> None:
+        previous: datetime.date | None = None
+        for item in items:
+            self.check_attributes(item, required=("date",))
+            self.check_label(item)
+            value = item.attrs.get("date")
+            if value is None:
+                continue
+            day = _parse_date(value)
+            if day is None:
+                self.at(
+                    item,
+                    "regodoc.xml.attribute_value",
+                    f"«date» di <event> vuole una data AAAA-MM-GG, non «{value}»",
+                )
+                continue
+            if previous is not None and day < previous:
+                self.at(
+                    item,
+                    "regodoc.xml.diagram",
+                    f"la data {value} viene prima di quella dell'evento precedente",
+                )
+            previous = day
+
+    def check_bars(self, items: list[Node]) -> None:
+        kinds: set[str] = set()
+        for item in items:
+            self.check_attributes(item, optional=("value", "var"))
+            self.check_label(item)
+            value = item.attrs.get("value")
+            name = item.attrs.get("var")
+            if (value is None) == (name is None):
+                self.at(
+                    item,
+                    "regodoc.xml.diagram",
+                    "<bar> ha esattamente uno fra «value» e «var»",
+                )
+                continue
+            if value is not None:
+                if not _ITALIAN_NUMBER.fullmatch(value):
+                    self.at(
+                        item,
+                        "regodoc.xml.attribute_value",
+                        f"«value» di <bar> vuole un numero italiano non negativo, non «{value}»",
+                    )
+                else:
+                    kinds.add("number")
+                continue
+            if not VARIABLE_NAME.fullmatch(str(name)):
+                self.at(item, "regodoc.xml.var_name", f"«{name}» non è un nome di variabile")
+                continue
+            self.context.uses.append(Use("var", str(name), "", self.file, item.line, item.column))
+            variable = self.context.variables.get(str(name))
+            if variable is None:
+                continue  # inesistente o sbagliata: l'errore viene dai richiami
+            if variable.type not in NUMERIC_TYPES or variable.is_range:
+                self.at(
+                    item,
+                    "regodoc.xml.diagram",
+                    f"«{name}» non è una variabile numerica senza intervallo",
+                )
+                continue
+            if str(variable.value).startswith("-") or (
+                isinstance(variable.value, int) and variable.value < 0
+            ):
+                self.at(
+                    item, "regodoc.xml.diagram", f"«{name}» è negativa: una barra parte da zero"
+                )
+                continue
+            kinds.add(variable.type)
+        if len(kinds) > 1:
+            self.at(
+                items[0],
+                "regodoc.xml.diagram",
+                f"le barre di un diagramma sono dello stesso tipo, non {', '.join(sorted(kinds))}",
+            )
+
+    def check_tree_node(self, node: Node, depth: int) -> None:
+        self.check_attributes(node)
+        children = [child for child in node.elements() if child.tag == "node"]
+        position = node.children.index(children[0]) if children else len(node.children)
+        after = node.children[position:]
+        for child in after:
+            if isinstance(child, Text) and child.is_blank():
+                continue
+            if isinstance(child, Node) and child.tag == "node":
+                continue
+            self.at(
+                node,
+                "regodoc.xml.diagram",
+                "in un <node> il testo viene prima dei nodi figli, e dopo ci sono solo <node>",
+            )
+            break
+        self.check_label(node, node.children[:position])
+        if children and depth >= TREE_DEPTH:
+            self.at(node, "regodoc.xml.diagram", f"un albero ha al massimo {TREE_DEPTH} livelli")
+            self.skipped()
+            return
+        if len(children) > TREE_CHILDREN:
+            self.at(
+                node,
+                "regodoc.xml.diagram",
+                f"un <node> ha al massimo {TREE_CHILDREN} figli, non {len(children)}",
+            )
+        for child in children:
+            self.check_tree_node(child, depth + 1)
 
     # Tabelle
 

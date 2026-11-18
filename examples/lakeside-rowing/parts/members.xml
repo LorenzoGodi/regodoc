@@ -21,6 +21,19 @@
     <section id="register-rules">
       <title>Rules for the new register</title>
       <p>Records of former members are kept for <var name="retentionMonths"/> after they leave, then deleted.</p>
+      <figure>
+        <diagram type="tree">
+          <node>Member register
+            <node>Seniors
+              <node>Rowers</node>
+              <node>Coaches</node>
+            </node>
+            <node>Juniors</node>
+            <node>Former members, kept <var name="retentionMonths"/></node>
+          </node>
+        </diagram>
+        <caption>How the new register is organised.</caption>
+      </figure>
       <section id="register-access">
         <title>Who can read it</title>
         <p>Only the secretary and the treasurer; questions go to <address>secretary@lakeside-rowing.example</address>.</p>

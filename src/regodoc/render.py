@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Final
 
+from regodoc import calc, diagrams
 from regodoc.declaration import THEME_ROLES
 from regodoc.parts import Node, Text
 from regodoc.texts import (
@@ -23,6 +24,7 @@ from regodoc.texts import (
     LABEL_ROLES,
     WORDS,
     format_date,
+    format_number,
     render_variable,
     roman,
 )
@@ -266,7 +268,9 @@ class _Emitter:
     def preamble(self) -> None:
         header = self.structure.header
         self.out(r"\documentclass[a4paper,11pt]{article}")
-        self.out(rf"\usepackage[{self.language}]{{regodoc}}")
+        # TikZ si carica solo se il documento ha un diagramma (specifica, §4.5).
+        options = f"{self.language},diagrams" if self.has_diagrams() else self.language
+        self.out(rf"\usepackage[{options}]{{regodoc}}")
         for role in THEME_ROLES:
             self.out(rf"\RdColor{{{role}}}{{{self.document.palette[role]}}}")
         words = self.words
@@ -283,6 +287,15 @@ class _Emitter:
         for key in sorted(self.document.frame):
             value = wrap(plain(self.document.frame[key]))
             self.out(rf"\RdFrame{{{key}}}{{{value}}}")
+
+    def has_diagrams(self) -> bool:
+        pending = list(self.document.roots.values())
+        while pending:
+            node = pending.pop()
+            if node.tag == "diagram":
+                return True
+            pending.extend(node.elements())
+        return False
 
     # Contenitori e blocchi
 
@@ -364,11 +377,70 @@ class _Emitter:
         self.out(r"\end{RdList}")
 
     def figure(self, node: Node) -> None:
-        captions = node.elements()
+        captions = [child for child in node.elements() if child.tag == "caption"]
         caption = wrap(self.mixed(captions[0])) if captions else ""
         width = node.attrs.get("width", "1")
+        found = [child for child in node.elements() if child.tag == "diagram"]
+        if found:
+            self.out(rf"\begin{{RdDiagram}}{{{self.accent()}}}{{{width}}}")
+            self.out(f"{{{caption}}}")
+            for line in self.diagram(found[0]):
+                self.out(line)
+            self.out(r"\end{RdDiagram}")
+            return
         self.out(rf"\RdFigure{{{node.attrs['file']}}}{{{width}}}")
         self.out(f"{{{caption}}}")
+
+    def label(self, node: Node, children: list[Node | Text] | None = None) -> str:
+        """Il testo di un elemento del diagramma, per la stessa via del testo misto."""
+        if children is not None:
+            node = Node(node.tag, {}, node.line, node.column, children)
+        return join(self.mixed(node))
+
+    def diagram(self, node: Node) -> list[str]:
+        kind = node.attrs["type"]
+        items = node.elements()
+        if kind == "sequence":
+            return diagrams.sequence([self.label(item) for item in items])
+        if kind == "timeline":
+            return diagrams.timeline(
+                [
+                    (
+                        join(
+                            plain(
+                                format_date(
+                                    datetime.date.fromisoformat(item.attrs["date"]), self.language
+                                )
+                            )
+                        ),
+                        self.label(item),
+                    )
+                    for item in items
+                ]
+            )
+        if kind == "bars":
+            return diagrams.bars([self.bar(item) for item in items])
+        return diagrams.tree(self.tree_node(items[0]))
+
+    def bar(self, node: Node) -> diagrams.Bar:
+        if "value" in node.attrs:
+            value = node.attrs["value"]
+            amount = calc.written_value("number", value)
+            shown = join(escape(format_number(value, self.language)))
+        else:
+            variable = self.document.variables[node.attrs["var"]]
+            amount = calc.written_value(variable.type, variable.value)
+            rendered = render_variable(variable, "", self.language)
+            shown = join(escape(rendered.text))
+            if rendered.mono:
+                shown = rf"\RdMono{{{shown}}}"
+        return diagrams.Bar(self.label(node), amount, shown)
+
+    def tree_node(self, node: Node) -> diagrams.TreeNode:
+        children = [child for child in node.elements() if child.tag == "node"]
+        position = node.children.index(children[0]) if children else len(node.children)
+        label = self.label(node, node.children[:position])
+        return diagrams.TreeNode(label, tuple(self.tree_node(child) for child in children))
 
     def listing(self, node: Node) -> None:
         body = "".join(child.value for child in node.children if isinstance(child, Text))

@@ -10,8 +10,11 @@
 \ProvidesPackage{regodoc}[2026/10/15 regodoc]
 
 \newcommand*\RegodocLanguage{it}
+\newif\ifrd@diagrams
 \DeclareOption{it}{\renewcommand*\RegodocLanguage{it}}
 \DeclareOption{en}{\renewcommand*\RegodocLanguage{en}}
+% document.tex la passa solo se il documento ha un diagramma: senza, TikZ non si carica.
+\DeclareOption{diagrams}{\rd@diagramstrue}
 \ProcessOptions\relax
 
 % --- PDF riproducibile (contratto, §10) ------------------------------------------------------
@@ -51,6 +54,9 @@
 \RequirePackage{pdflscape}
 % Senza pdfstartview hyperref non scrive /OpenAction, che il motore rifiuta nel PDF (§6.5).
 \RequirePackage[unicode,hidelinks,bookmarksnumbered=false,pdfstartview=]{hyperref}
+\ifrd@diagrams
+  \RequirePackage{tikz}
+\fi
 
 % Simboli dell'insieme del §5.2 della specifica che il LaTeX non conosce da sé.
 \DeclareUnicodeCharacter{2212}{\textminus}
@@ -203,6 +209,56 @@
     {\small\textbf{\rd@figurename~\arabic{rd@figure}.}\ifx\relax#3\relax\else\space#3\fi\par}
   \end{center}\medskip}
 
+% Diagrammi (specifica, §4.5). Le coordinate le calcola il motore, in centesimi della
+% larghezza della figura (\rd@du); in verticale le righe si appoggiano alla riga di sopra.
+% Il colore è quello del ruolo dato, l'accento della parte.
+\newlength\rd@du
+\newlength\rd@gap
+\setlength\rd@gap{1.2mm}
+\newcommand*\rd@diagramcaption{}
+\newenvironment{RdDiagram}[3]{% ruolo, larghezza, didascalia
+  \par\medskip
+  \stepcounter{rd@figure}%
+  \def\rd@diagramcaption{#3}%
+  \setlength\rd@du{#2\linewidth}\divide\rd@du by 100
+  \begin{center}\footnotesize
+  \begin{tikzpicture}[x=\rd@du,y=\rd@du,
+      rd@box/.style={draw=regodoc-#1,fill=regodoc-#1!8,rounded corners=2pt,inner sep=3pt},
+      rd@text/.style={inner sep=2pt},
+      rd@line/.style={draw=regodoc-#1,line width=.6pt},
+      rd@bar/.style={fill=regodoc-#1}]}{%
+  \end{tikzpicture}\par\nopagebreak\smallskip
+  {\small\textbf{\rd@figurename~\arabic{rd@figure}.}%
+    \ifx\rd@diagramcaption\@empty\else\space\rd@diagramcaption\fi\par}
+  \end{center}\medskip}
+% Una riga sotto la precedente, o in cima se la precedente è vuota.
+\newcommand\rd@row[6]{% stile, nome, precedente, x, larghezza, testo
+  \ifx\relax#3\relax
+    \node[#1,anchor=north west,text width=#5\rd@du] (#2) at (#4,0) {#6};%
+  \else
+    \node[#1,anchor=north west,text width=#5\rd@du,yshift=-\rd@gap] (#2) at (#3.south -| #4,0)
+      {#6};%
+  \fi}
+\newcommand\RdDiagramBox[4]{% nome, x, larghezza, testo
+  \node[rd@box,anchor=west,align=flush center,text width=#3\rd@du] (#1) at (#2,0) {#4};}
+\newcommand\RdDiagramArrow[2]{% da, a
+  \draw[rd@line,->] (#1) -- (#2);}
+\newcommand\RdDiagramAxis[2]{% da x, a x
+  \draw[rd@line,->] (#1,0) -- (#2,0);}
+\newcommand\RdDiagramEvent[4]{% x, larghezza, data, testo
+  \draw[rd@line] (#1,0) ++(0,-.8mm) -- ++(0,1.6mm);
+  \node[rd@text,anchor=south,align=flush center,text width=#2\rd@du,yshift=1.2mm] at (#1,0) {#4};
+  \node[rd@text,anchor=north,align=flush center,text width=#2\rd@du,yshift=-1.2mm] at (#1,0) {#3};}
+\newcommand\RdDiagramBar[6]{% nome, precedente, larghezza dell'etichetta, lunghezza, etichetta,
+  % valore
+  \rd@row{rd@text,align=flush right}{#1}{#2}{0}{#3}{#5}%
+  \fill[rd@bar] ([xshift=2\rd@du]#1.east) ++(0,-.7ex) rectangle ++(#4,1.4ex);
+  \path ([xshift=2\rd@du]#1.east) ++(#4,0) node[rd@text,anchor=west] {#6};}
+\newcommand\RdDiagramNode[5]{% nome, precedente, x, larghezza, testo
+  \rd@row{rd@box,align=flush left}{#1}{#2}{#3}{#4}{#5}}
+\newcommand\RdDiagramEdge[2]{% padre, figlio
+  \draw[rd@line] ([xshift=2\rd@du]#1.south west) |- (#2.west);}
+
 \newenvironment{RdListing}{%
   \par\medskip
   \begingroup\ttfamily\small\raggedright\parindent=0pt\relax}{%
@@ -255,6 +311,8 @@
   RdSummary,RdSection,RdList,endRdList,RdItem,RdBox,endRdBox,RdSmall,endRdSmall,RdTable,%
   endRdTable,RdCell,RdHeadEnd,RdRowEnd,RdSeparator,RdCellStart,RdLandscape,endRdLandscape,%
   RdCellEnd,RdCellR,%
+  RdDiagram,endRdDiagram,RdDiagramBox,RdDiagramArrow,RdDiagramAxis,RdDiagramEvent,%
+  RdDiagramBar,RdDiagramNode,RdDiagramEdge,%
   RdFigure,RdListing,endRdListing,RdListingLine,RdSources,endRdSources,RdSourceGroup,%
   RdSource,RdB,RdI,RdCode,RdMono,RdTone,RdLabel,RdLink,RdMail,RdDomain,RdRef,RdCite,%
   RdBreak,RdAB,RdCheckContent}

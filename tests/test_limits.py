@@ -147,6 +147,27 @@ def without_sources(files: dict[str, bytes]) -> dict[str, bytes]:
     return files
 
 
+def with_figures(body: str) -> dict[str, bytes]:
+    """L'esempio con queste figure dopo quella della rete (§4.5)."""
+    files = example_files()
+    anchor = "        <caption>Copertura misurata prima dei lavori.</caption>\n      </figure>\n"
+    part = files["parts/network.xml"].decode()
+    files["parts/network.xml"] = part.replace(anchor, anchor + body, 1).encode()
+    return files
+
+
+def tree_of(count: int) -> str:
+    """Un albero di ``count`` nodi: la radice, fino a 8 figli, poi fino a 8 nipoti per figlio."""
+    children = min(8, count - 1)
+    rest = count - 1 - children
+    branches = []
+    for index in range(children):
+        grandchildren = min(8, rest)
+        rest -= grandchildren
+        branches.append(f"<node>f{index}" + "<node>n</node>" * grandchildren + "</node>")
+    return '<figure><diagram type="tree"><node>r' + "".join(branches) + "</node></diagram></figure>"
+
+
 def with_formula(formula: str) -> dict[str, bytes]:
     """L'esempio con una variabile calcolata in più, con questa formula (§3.3)."""
     files = example_files()
@@ -237,6 +258,29 @@ BOUNDARIES = [
         "regodoc.limit.calc",
         lambda n: with_formula("(" * n + "1" + ")" * n),
         L["calc_depth"],
+    ),
+    Boundary(
+        "diagrams",
+        "regodoc.limit.diagram",
+        lambda n: with_figures(
+            '<figure><diagram type="sequence"><step>a</step><step>b</step></diagram></figure>' * n
+        ),
+        L["diagrams"],
+    ),
+    Boundary(
+        "diagram_items",
+        "regodoc.limit.diagram",
+        lambda n: with_figures(tree_of(n)),
+        L["diagram_items"],
+    ),
+    Boundary(
+        "diagram_label_characters",
+        "regodoc.limit.diagram",
+        lambda n: with_figures(
+            f'<figure><diagram type="sequence"><step>{"x" * n}</step><step>b</step></diagram>'
+            "</figure>"
+        ),
+        L["diagram_label_characters"],
     ),
     Boundary(
         "variables",

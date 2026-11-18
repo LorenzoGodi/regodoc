@@ -9,5 +9,21 @@
       <item>How to answer a request to see one's own data.</item>
       <item>How to restore a file from the copy.</item>
     </list>
+    <figure width="0.9">
+      <diagram type="sequence">
+        <step>Register explained</step>
+        <step>Data requests</step>
+        <step>Restore from the <b>copy</b></step>
+      </diagram>
+      <caption>The three sessions, in order.</caption>
+    </figure>
+    <figure>
+      <diagram type="timeline">
+        <event date="2026-09-05">Survey</event>
+        <event date="2026-09-19">Copy disk bought</event>
+        <event date="2026-10-03">Records moved</event>
+        <event date="2026-10-03">First restore test</event>
+      </diagram>
+    </figure>
   </section>
 </part>

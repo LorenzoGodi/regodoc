@@ -72,6 +72,11 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "calc_characters": 500,
         "calc_operands": 64,
         "calc_depth": 16,
+        # I diagrammi (specifica, §4.5): per documento, elementi per diagramma, caratteri per
+        # etichetta.
+        "diagrams": 40,
+        "diagram_items": 30,
+        "diagram_label_characters": 80,
         "problems": 500,
         "structure_bytes": 64 * _KIB,
         "variables_bytes": 384 * _KIB,
@@ -161,6 +166,7 @@ CAPABILITIES: Final = (
     "upgrade",
     "table.align",
     "variables.calc",
+    "figure.diagram",
 )
 
 LANGUAGES: Final = ("it", "en")
@@ -200,6 +206,8 @@ TEX_PACKAGES: Final = (
     "pdflscape",
     "tcolorbox",
     "textcomp",
+    # Solo per un documento con un diagramma (specifica, §4.5); da texlive-pictures.
+    "tikz",
     "xcolor",
 )
 

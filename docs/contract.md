@@ -16,9 +16,11 @@ dei candidati di Rego (§4.2) e, nella specifica, le regole della forma canonica
 spazi del testo misto e le immagini memorizzate senza compressione. La bozza che la precedeva,
 dichiarata come versione 0, non è servita da nessun motore: chi chiama passa `--contract 1`.
 Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, le capacità
-`table.align` e `variables.calc` (§5.2), i limiti `content.calc_characters`,
-`content.calc_operands` e `content.calc_depth` (§5.1), la chiave `layout` di `info` (§5) e i
-comandi `\RdCellEnd` e `\RdCellR` (§6.4).
+`table.align`, `variables.calc` e `figure.diagram` (§5.2), i limiti `content.calc_characters`,
+`content.calc_operands`, `content.calc_depth`, `content.diagrams`, `content.diagram_items` e
+`content.diagram_label_characters` (§5.1), la chiave `layout` di `info` (§5), il pacchetto
+`tikz` in `info.tex.packages` e i comandi `\RdCellEnd`, `\RdCellR` e quelli dei diagrammi
+(§6.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -460,6 +462,9 @@ invece di importarli dal codice del motore: la regola 1 vale anche qui.
 | `content.calc_characters` | caratteri | per formula di una variabile calcolata, dal motore 0.2; oltre, `regodoc.limit.calc` |
 | `content.calc_operands` | operandi | nomi e numeri di una formula, dal motore 0.2 |
 | `content.calc_depth` | livelli | parentesi annidate di una formula, dal motore 0.2 |
+| `content.diagrams` | diagrammi | `<diagram>` del documento, dal motore 0.2; oltre, `regodoc.limit.diagram` |
+| `content.diagram_items` | elementi | `<step>`, `<event>`, `<bar>` o `<node>` di un diagramma, dal motore 0.2 |
+| `content.diagram_label_characters` | caratteri | per etichetta di un diagramma, senza i richiami `<var/>`, dal motore 0.2 |
 | `content.section_depth`, `list_depth`, `element_depth` | livelli | annidamento |
 | `content.references` | rimandi e citazioni | elementi `<reference/>` e `<cite/>` |
 | `content.sources` | fonti | elementi `<source>` |
@@ -481,6 +486,7 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `upgrade` | `upgrade` |
 | `table.align` | l'attributo `align` di `<table>` (specifica, §4.4), dal motore 0.2: chi chiama lo scrive solo se la capacità c'è |
 | `variables.calc` | le variabili calcolate di `variables.toml` (specifica, §3.3), dal motore 0.2: chi chiama scrive una formula solo se la capacità c'è |
+| `figure.diagram` | i diagrammi di `<figure>` (specifica, §4.5), dal motore 0.2: chi chiama scrive un `<diagram>` solo se la capacità c'è |
 
 Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
 `resources.enforced` (§2.3).
@@ -615,6 +621,7 @@ da uno ostile. Ciò che deve reggere anche contro un tema ostile sta fuori da Te
 | struttura | `\RdTitlePage`, `\RdTableOfContents`, `RdLegend` con `\RdLegendItem{ruolo}{dicitura}`, `\RdOpening{ancora}`, `\RdPart{numero}{ruolo}{ancora}{titolo}`, `\RdSummary`, `\RdSection{livello}{ancora}{titolo}{titolo per i segnalibri}` |
 | blocchi | `RdList{bullet\|numbered}` con `\RdItem`, `RdBox{ruolo}{titolo}`, `RdSmall`, `RdListing` con `\RdListingLine`, `\RdFigure{percorso}{larghezza}{didascalia}`, `RdSources{titolo}` con `\RdSourceGroup` e `\RdSource` |
 | tabelle | `RdTable{corpo}{colonne}{colonne «*»}{larghezza fissa}{preambolo}`, `\RdCell{tipo}{colonne}{larghezza}{contenuto}`, `\RdHeadEnd`, `\RdRowEnd`, `\RdSeparator`, `\RdCellStart`, `\RdCellEnd`, `\RdCellR{tipo}{colonne}{larghezza}{contenuto}`, `\RdStar`, `RdLandscape` |
+| diagrammi | `RdDiagram{ruolo}{larghezza}{didascalia}`, `\RdDiagramBox{nome}{x}{larghezza}{testo}`, `\RdDiagramArrow{da}{a}`, `\RdDiagramAxis{da x}{a x}`, `\RdDiagramEvent{x}{larghezza}{data}{testo}`, `\RdDiagramBar{nome}{precedente}{larghezza dell'etichetta}{lunghezza}{etichetta}{valore}`, `\RdDiagramNode{nome}{precedente}{x}{larghezza}{testo}`, `\RdDiagramEdge{padre}{figlio}`; le misure in centesimi della larghezza della figura |
 | in linea | `\RdB`, `\RdI`, `\RdCode`, `\RdMono`, `\RdTone{ruolo}`, `\RdLabel{ruolo}{dicitura}`, `\RdLink{indirizzo}{testo}`, `\RdMail`, `\RdDomain`, `\RdRef{ancora}{testo}`, `\RdCite{ancora}{numero}`, `\RdBreak`, `\RdAB` |
 
 Dal vocabolario ai ruoli (§6.2), nel motore:

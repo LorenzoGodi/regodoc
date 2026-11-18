@@ -284,6 +284,15 @@ class VariablesFileTest(unittest.TestCase):
             [],
         )
 
+    def test_a_constant_next_to_a_count(self) -> None:
+        # L'esempio del §3.3: count più una costante è calc_type, il prodotto per uno passa.
+        base = "persone = { count = 14 }\n"
+        self.assertEqual(
+            codes(base + 'x = { count = { calc = "persone + 1" } }\n'), ["regodoc.toml.calc_type"]
+        )
+        values, problems = read(base + 'x = { count = { calc = "persone * 1 + 1" } }\n')
+        self.assertEqual((problems, values["x"]), ([], 15))
+
     def test_cycles(self) -> None:
         for text, path in (
             ('a = { number = { calc = "a + 1" } }\n', "a → a"),
