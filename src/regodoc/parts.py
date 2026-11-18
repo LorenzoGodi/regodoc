@@ -61,9 +61,9 @@ TREE_DEPTH = 4
 TREE_CHILDREN = 8
 # I limiti dei diagrammi (§4.5): diagrammi per documento, elementi per diagramma, caratteri
 # per etichetta.
-MAX_DIAGRAMS = 40
-MAX_DIAGRAM_ITEMS = 30
-MAX_LABEL_CHARACTERS = 80
+MAX_DIAGRAMS = int(CONTENT_LIMITS["diagrams"])
+MAX_DIAGRAM_ITEMS = int(CONTENT_LIMITS["diagram_items"])
+MAX_LABEL_CHARACTERS = int(CONTENT_LIMITS["diagram_label_characters"])
 # La larghezza minima di una figura con un diagramma: sotto, le etichette non stanno.
 DIAGRAM_MIN_WIDTH = 0.5
 _ITALIAN_NUMBER = re.compile(r"(?:0|[1-9]\d{0,2}(?:\.\d{3})*)(?:,\d+)?")
