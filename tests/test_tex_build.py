@@ -23,7 +23,7 @@ from regodoc import compiler
 from regodoc.text import is_allowed_char
 from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
 from tests.test_build import Workspace
-from tests.test_render import aligned_example
+from tests.test_render import aligned_example, diagram_example
 from tests.test_upgrade import current_files, old_files, test_grammar
 
 REQUIRE_TEX = os.environ.get("REGODOC_REQUIRE_TEX") == "1"
@@ -43,6 +43,17 @@ def pdf_content(pdf: bytes) -> bytes:
         except zlib.error:
             continue
     return b"\n".join(parts)
+
+
+def pdf_text(pdf: bytes) -> bytes:
+    """Il testo delle stringhe del PDF, nei flussi decompressi, senza gli spazi di TeX."""
+    found = []
+    for match in re.finditer(rb"\((?:\\.|[^\\)])*\)", pdf_content(pdf)):
+        value = re.sub(
+            rb"\\([0-7]{1,3})", lambda m: bytes([int(m.group(1), 8)]), match.group()[1:-1]
+        )
+        found.append(re.sub(rb"\\(.)", rb"\1", value))
+    return b"".join(found)
 
 
 def compile_log(package: Path, root: Path) -> str:
@@ -87,6 +98,69 @@ class ExamplesCompileTest(unittest.TestCase):
             package.write_bytes(build_zip(aligned_example()))
             log = compile_log(package, Path(folder))
         self.assertIsNone(_LOG_WARNINGS.search(log))
+
+    def test_diagram_example_compiles_twice_to_the_same_pdf(self) -> None:
+        space = Workspace(self, diagram_example())
+        pdfs = []
+        for name in ("a", "b"):
+            target = space.root / f"{name}.pdf"
+            code, out, _ = run_cli("build", str(space.package), "-o", str(target), "--json")
+            self.assertEqual(code, 0, out)
+            pdfs.append(target.read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
+        # Le etichette passano dalla via del testo misto: i caratteri speciali del LaTeX
+        # arrivano nel PDF come caratteri, mai come comandi.
+        self.assertIn(b"Stampanti\\{}%$&#_^~", pdf_text(pdfs[0]))
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / "p.regodoc"
+            package.write_bytes(build_zip(diagram_example()))
+            log = compile_log(package, Path(folder))
+            fls = (Path(folder) / "tex" / "document.fls").read_text(encoding="utf-8")
+        self.assertIsNone(_LOG_WARNINGS.search(log))
+        self.assertIn("tikz.sty", fls)
+
+    def test_a_package_without_diagrams_gives_the_pdf_without_them(self) -> None:
+        # Senza diagrammi regodoc.sty non chiede tikz: pdflatex legge gli stessi file e scrive
+        # lo stesso PDF di regodoc.sty senza il blocco dei diagrammi, cioè quello di prima di
+        # R1. TikZ in sé c'è già dalla 0.1, perché lo carica tcolorbox con [most].
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / "p.regodoc"
+            package.write_bytes(build_zip(example_files(EXAMPLE)))
+            code, out, _ = run_cli(
+                "build", str(package), "-o", str(root / "new"), "--format", "latex"
+            )
+            self.assertEqual(code, 0, out)
+            shutil.copytree(root / "new", root / "old")
+            sty = (root / "old" / "regodoc.sty").read_text(encoding="utf-8")
+            start = sty.index("% Diagrammi (specifica")
+            end = sty.index("\\newenvironment{RdListing}")
+            sty = sty[:start] + sty[end:]
+            sty = sty.replace("\\ifrd@diagrams\n  \\RequirePackage{tikz}\n\\fi\n", "")
+            guarded = (
+                "%\n  RdDiagram,endRdDiagram,RdDiagramBox,RdDiagramArrow,RdDiagramAxis,"
+                "RdDiagramEvent,%\n  RdDiagramBar,RdDiagramNode,RdDiagramEdge,%"
+            )
+            self.assertIn(guarded, sty)
+            sty = sty.replace(guarded, "%")
+            self.assertNotIn("tikz", sty)
+            (root / "old" / "regodoc.sty").write_text(sty, encoding="utf-8")
+            pdfs = []
+            read = []
+            for name, count in (("new", compiler.GUARDED), ("old", compiler.GUARDED - 9)):
+                home = root / f"home-{name}"
+                home.mkdir()
+                assert PDFLATEX is not None
+                with mock.patch.object(compiler, "GUARDED", count):
+                    compiler.compile_pdf(root / name, home, 1791158400, PDFLATEX)
+                pdfs.append((root / name / "document.pdf").read_bytes())
+                fls = (root / name / "document.fls").read_text(encoding="utf-8")
+                read.append(
+                    sorted({line for line in fls.split("\n") if line.startswith("INPUT /")})
+                )
+        self.assertEqual(pdfs[0], pdfs[1])
+        self.assertEqual(read[0], read[1])
+        self.assertTrue(any("tcolorbox" in line for line in read[0]))
 
     def test_a_package_without_align_gives_the_pdf_of_0_1(self) -> None:
         # Lo stesso document.tex compilato con regodoc.sty di oggi e con regodoc.sty senza le
@@ -313,6 +387,10 @@ class ExternalThemeTest(unittest.TestCase):
     def test_content_commands_cannot_be_redefined(self) -> None:
         error = self.assert_refused(r"\renewcommand\RdB[1]{#1}", "regodoc.theme.redefined")
         self.assertIn("\\RdB", error["message"])
+
+    def test_diagram_commands_cannot_be_redefined(self) -> None:
+        error = self.assert_refused(r"\renewcommand\RdDiagramBox[4]{}", "regodoc.theme.redefined")
+        self.assertIn("\\RdDiagramBox", error["message"])
 
     def test_undeclared_package_is_refused(self) -> None:
         self.assert_refused(r"\RequirePackage{eso-pic}", "regodoc.theme.package")

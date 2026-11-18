@@ -200,6 +200,8 @@ TEX_PACKAGES: Final = (
     "pdflscape",
     "tcolorbox",
     "textcomp",
+    # Solo per un documento con un diagramma (specifica, §4.5); da texlive-pictures.
+    "tikz",
     "xcolor",
 )
 

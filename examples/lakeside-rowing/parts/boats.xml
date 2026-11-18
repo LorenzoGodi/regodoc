@@ -30,5 +30,13 @@
     <box type="warning">
       <p>The worn hull of <i>Kingfisher</i> should be checked before the first regatta.</p>
     </box>
+    <figure width="0.7">
+      <diagram type="bars">
+        <bar var="crewSeats">Seats in an <i>eight</i></bar>
+        <bar value="4">Seats in a four</bar>
+        <bar value="1">Seats in a single scull</bar>
+      </diagram>
+      <caption>Seats per boat class.</caption>
+    </figure>
   </section>
 </part>

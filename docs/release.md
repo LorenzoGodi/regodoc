@@ -152,7 +152,8 @@ digest, con i pacchetti apt, senza i raccomandati:
 
 ```text
 lmodern texlive-latex-base texlive-latex-recommended texlive-latex-extra
-texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-science
+texlive-fonts-recommended texlive-fonts-extra texlive-lang-italian texlive-pictures
+texlive-science
 ```
 
 Le versioni apt non sono fissate: la riproducibilità dei PDF si verifica sull'immagine con due

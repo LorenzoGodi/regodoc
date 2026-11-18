@@ -85,6 +85,7 @@ class VocabularyCoverageTest(unittest.TestCase):
             "tone.type": parts.TONE_TYPES,
             "var.form": parts.VAR_FORMS,
             "table.orientation": parts.ORIENTATIONS,
+            "diagram.type": parts.DIAGRAM_TYPES,
             "row.type": ("total",),
         }
         for key, values in groups.items():

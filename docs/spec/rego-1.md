@@ -458,7 +458,10 @@ Il formato delle parti è XML a vocabolario chiuso (decisione 24).
 | `<box>` | dove è ammesso un blocco | `<p>` e `<list>` | `type`: `status`, `note`, `warning`, `critical`; obbligatorio |
 | `<small>` | dove è ammesso un blocco | `<p>` e `<list>` | — |
 | `<table>` | dove è ammesso un blocco | §4.4 | `columns`, obbligatorio; `align` e `orientation` facoltativi |
-| `<figure>` | dove è ammesso un blocco | `<caption>` facoltativa | `file`, obbligatorio; `width` facoltativo |
+| `<figure>` | dove è ammesso un blocco | un `<diagram>` se non ha `file` (dal motore 0.2, §4.5); `<caption>` facoltativa | `file`, obbligatorio senza `<diagram>`; `width` facoltativo |
+| `<diagram>` | in `<figure>` | `<step>`, `<event>`, `<bar>` o `<node>`, secondo il tipo (§4.5) | `type`, obbligatorio |
+| `<step>`, `<event>`, `<bar>` | in `<diagram>` | testo misto con `<b>`, `<i>`, `<code>` e `<var/>` | `<event>`: `date`; `<bar>`: `value` o `var` |
+| `<node>` | in `<diagram type="tree">` e in un altro `<node>` | testo misto con `<b>`, `<i>`, `<code>` e `<var/>`, poi i `<node>` figli | nessuno |
 | `<listing>` | dove è ammesso un blocco | solo testo, spazi conservati | — |
 | `<sources>` | dove è ammesso un blocco, al massimo una volta nel documento | solo `<group>` oppure solo `<source>` | `id` facoltativo |
 
@@ -591,6 +594,51 @@ Regole:
 - `<caption>`: testo misto senza `<break/>`.
 - Le figure si numerano da sole («Figura 3.», «Figure 3.») nell'ordine del documento.
 - Un'immagine del pacchetto mai usata produce un avviso.
+
+**Diagrammi.** Dal motore 0.2 una figura può avere, al posto dell'immagine, un diagramma
+descritto con dati, che il motore disegna con TikZ (§10: un'aggiunta dentro `rego/1`, che un
+motore 0.1 rifiuta come elemento sconosciuto).
+
+```xml
+<figure width="0.9">
+  <diagram type="sequence">
+    <step>Richiesta del preventivo</step>
+    <step>Sopralluogo del <var name="worksStart"/></step>
+    <step>Installazione</step>
+  </diagram>
+  <caption>Le fasi del lavoro.</caption>
+</figure>
+```
+
+- `<figure>` ha `file` oppure un `<diagram>`, mai tutti e due, e al più un `<diagram>`. Con un
+  diagramma `width` va da `0.5` a `1`: più stretto, le etichette non ci stanno. La didascalia
+  e la numerazione sono quelle di ogni figura.
+- `<diagram type="…">` ha quattro tipi:
+
+| Tipo | Figli | Regole | Disegno |
+|---|---|---|---|
+| `sequence` | `<step>` | da 2 a 8 | scatole in fila, da sinistra, con le frecce |
+| `timeline` | `<event date="AAAA-MM-GG">` | da 2 a 12, date esistenti in ordine non decrescente | un asse con gli eventi a passo uguale nell'ordine, il testo sopra e la data sotto |
+| `bars` | `<bar value="…">` o `<bar var="…">` | da 1 a 12; esattamente uno dei due attributi; tutte dello stesso tipo | una barra orizzontale per riga, da zero, in scala lineare fino al valore più grande, con il valore accanto |
+| `tree` | `<node>` | una sola radice, al massimo 4 livelli, al massimo 8 figli per nodo | un nodo per riga, i figli rientrati sotto il padre, con un tratto dal padre a ogni figlio |
+
+- `value` è un numero italiano non negativo (§3.1) ed è del tipo `number`; `var` richiama una
+  variabile numerica senza intervallo, scritta o calcolata, non negativa. Accanto alla barra
+  si stampa il valore come lo stamperebbe `<var/>`. Barre di tipi diversi sono un errore.
+- Il testo di `<step>`, `<event>`, `<bar>` e di `<node>` è testo misto con `<b>`, `<i>`,
+  `<code>` e `<var/>`, al massimo 80 caratteri, senza contare i richiami `<var/>`. In un
+  `<node>` il testo viene prima dei nodi figli.
+- Al massimo 40 diagrammi per documento e 30 elementi per diagramma, i nodi dell'albero
+  contati tutti; oltre è l'errore `regodoc.limit.diagram`, come un'etichetta troppo lunga.
+  Gli altri problemi propri dei diagrammi sono `regodoc.xml.diagram`.
+- Il colore è quello del ruolo dell'accento della parte, come per i riquadri `status`, e un
+  tema lo cambia con la sua tavolozza.
+- Le posizioni le calcola il motore, non TikZ: in orizzontale tutte, in centesimi della
+  larghezza della figura; in verticale le righe di un albero e di un diagramma a barre si
+  appoggiano alla riga di sopra, perché l'altezza di un testo su più righe la conosce solo
+  TeX. Lo stesso pacchetto dà sempre lo stesso testo LaTeX.
+- TikZ si carica solo se il documento ha almeno un diagramma: un documento senza diagrammi
+  è composto come dal motore 0.1.
 
 `<listing>` conserva spazi e a capo così come sono. Un a capo subito dopo `<listing>` e uno
 subito prima di `</listing>` si ignorano. I caratteri `<` e `&` si scrivono `&lt;` e `&amp;`.
@@ -1035,6 +1083,7 @@ non bloccano il pacchetto.
 | `regodoc.xml.cell_mixed` | §4.4 |
 | `regodoc.xml.figure_file` | §4.5 |
 | `regodoc.xml.caption` | §4.5 |
+| `regodoc.xml.diagram` | §4.5 |
 | `regodoc.xml.missing_image` | §4.5, §6.4 passo 11 |
 | `regodoc.xml.id` | §1.5, §4.6 |
 | `regodoc.xml.duplicate_id` | §4.6, §6.2 passo 8 (voce ripetuta di `structure.toml`), §6.4 passo 11 |
@@ -1061,6 +1110,7 @@ non bloccano il pacchetto.
 | `regodoc.limit.calc` | §3.3, §7.2 |
 | `regodoc.limit.characters` | §7.2 |
 | `regodoc.limit.depth` | §6.3, §7.2 |
+| `regodoc.limit.diagram` | §4.5 |
 | `regodoc.limit.images` | §6.4 passo 10, §7.2 |
 | `regodoc.limit.image_size` | §6.4 passo 10, §7.2 |
 | `regodoc.limit.table_rows` | §4.4, §7.2 |
@@ -1150,7 +1200,9 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
   e in coda escono dall'elemento, dove valgono uno spazio; il titolo di `<source>` li perde (in
   `<address>` uno spazio è un errore). Un `<item>` con un elenco annidato ha il testo sulla
   riga d'apertura, l'elenco rientrato sotto e `</item>` su una riga sua; una cella senza testo
-  è `<cell/>`.
+  è `<cell/>`. Allo stesso modo un `<node>` con figli ha il suo testo sulla riga d'apertura, i
+  figli rientrati sotto e `</node>` su una riga sua; `<step>`, `<event>` e `<bar>` sono testo
+  misto su una riga.
 - **TOML**: chiavi di `structure.toml` nell'ordine della tabella del §2; `key = value` con
   uno spazio per parte attorno a `=`; una riga vuota prima di ogni tabella, nessun'altra riga
   vuota; una variabile per riga, nell'ordine scritto dall'autore, nella forma
@@ -1327,7 +1379,7 @@ nuova del motore o con una grammatica nuova.
 | Interruzioni di pagina e controllo dell'impaginazione | decide il tema | — |
 | Indice analitico e glossario | non usati nei documenti di Rego | — |
 | Testo in Markdown, modifiche parziali, importazione di singoli file | decisione 22 | il pacchetto completo |
-| Diagrammi descritti con dati (sequenza, linea del tempo, barre, albero) | prima estensione prevista dopo la 4.0 | `<figure>` PNG o JPEG |
+| Diagrammi diversi dai quattro tipi del §4.5, e distanze proporzionali alle date | i quattro tipi ci sono dal motore 0.2 | `<figure>` PNG o JPEG |
 
 ---
 
@@ -1400,6 +1452,8 @@ ha letto la bozza: il motore non la legge.
 | `<cella unisci>` | `<cell span>` |
 | `<separatore/>` | `<separator/>` |
 | `<figura file larghezza>` | `<figure file width>` |
+| — | dal motore 0.2 (§4.5), `<diagram type>` |
+| — | `<step>`, `<event date>`, `<bar value var>`, `<node>` |
 | `<didascalia>` | `<caption>` |
 | `<codice>` | `<listing>` |
 | `<fonti>` | `<sources>` |

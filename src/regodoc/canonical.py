@@ -33,10 +33,13 @@ ATTRIBUTE_ORDER = {
     "table": ("columns", "align", "orientation"),
     "reference": ("to", "through"),
     "var": ("name", "form"),
+    "diagram": ("type",),
+    "event": ("date",),
+    "bar": ("value", "var"),
 }
 
 # Blocchi che sono sempre testo misto (§4.2); <item> e <cell> lo sono a seconda del contenuto.
-_MIXED = frozenset({"p", "summary", "title", "caption"})
+_MIXED = frozenset({"p", "summary", "title", "caption", "step", "event", "bar"})
 _GROUPS = frozenset({"b", "i", "tone", "link"})
 
 # Chiavi di structure.toml nell'ordine della tabella del §2.
@@ -185,6 +188,27 @@ def _write(node: Node, depth: int, lines: list[str]) -> None:
             lines.append(f"{indent}</item>")
             return
         lines.append(f"{indent}<item>{_mixed(node.children)}</item>")
+        return
+    if node.tag == "node":
+        # Un nodo dell'albero (§4.5): il testo sulla riga d'apertura, i figli sotto, come un
+        # <item> con un elenco annidato.
+        children = node.children
+        position = next(
+            (
+                index
+                for index, child in enumerate(children)
+                if isinstance(child, Node) and child.tag == "node"
+            ),
+            len(children),
+        )
+        if position == len(children):
+            lines.append(f"{indent}<node>{_mixed(children)}</node>")
+            return
+        lines.append(f"{indent}<node>{_mixed(children[:position])}")
+        for child in children[position:]:
+            if isinstance(child, Node):
+                _write(child, depth + 1, lines)
+        lines.append(f"{indent}</node>")
         return
     if _is_mixed(node):
         text = _mixed(node.children)

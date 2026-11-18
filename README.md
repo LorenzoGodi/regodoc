@@ -19,7 +19,8 @@ e TeX Live.
 - Python 3.12 o successivo, senza altre dipendenze.
 - Per produrre PDF: pdflatex di TeX Live con i pacchetti Debian `lmodern`,
   `texlive-latex-base`, `texlive-latex-recommended`, `texlive-latex-extra`,
-  `texlive-fonts-recommended`, `texlive-fonts-extra`, `texlive-lang-italian` e
+  `texlive-fonts-recommended`, `texlive-fonts-extra`, `texlive-lang-italian`,
+  `texlive-pictures` (TikZ, per i diagrammi; `texlive-latex-extra` lo porta già con sé) e
   `texlive-science`. Il motore non usa pacchetti LaTeX fuori da questo insieme.
 - La riproducibilità dei PDF byte per byte è provata con TeX Live 2023 di Ubuntu e nella CI su
   Debian trixie con TeX Live 2024, le cui versioni apt però non sono fissate: chi usa il
