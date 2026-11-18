@@ -375,6 +375,11 @@ spese = { eur = "50" }
 totale = { eur = { calc = "canone + spese" } }   # non "canone + 50"
 ```
 
+La stessa regola vale fra gli scalari: con `persone = { count = 14 }`, `persone + 1` è
+`regodoc.toml.calc_type`, perché `count` e `number` sono tipi diversi, mentre `persone * 1 + 1`
+passa, perché il prodotto di due scalari è `number`. Le due formule danno 15; chi vuole un
+conteggio scrive anche l'uno come variabile `count`.
+
 **Arrotondamento.** Si arrotonda solo alla fine di ogni variabile, al mezzo superiore in
 valore assoluto (0,005 → 0,01, −0,005 → −0,01): `eur` ai centesimi, gli altri tipi a due
 decimali, `percent` sulla percentuale stampata. Gli zeri finali cadono (3,50 si stampa 3,5);
