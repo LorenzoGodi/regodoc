@@ -275,3 +275,107 @@ def _skip_scan(data: bytes, offset: int) -> int:
             offset = position + 2
             continue
         return position
+
+
+# --- Metadati tolti, per la forma canonica di rego/2 (decisione 15) -------------------------
+
+# Il JFIF minimo: versione 1.01, densità 1:1 senza unità, nessuna miniatura.
+JFIF_MINIMAL = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+# L'APP14 «Adobe» ridotto ai suoi 12 byte: versione 100, flag a zero; resta la trasformazione
+# dei colori, che decide come si leggono i pixel dei JPEG a 3 e a 4 componenti.
+_ADOBE = b"\xff\xee\x00\x0eAdobe\x00\x64\x00\x00\x00\x00"
+# I blocchi del PNG che restano: quelli critici e la trasparenza, che fa parte dei pixel.
+_PNG_KEPT = (b"IHDR", b"PLTE", b"tRNS")
+
+
+def strip_image(path: str, data: bytes) -> tuple[bytes, list[str]]:
+    """L'immagine senza metadati, a pixel invariati, e l'elenco di ciò che è stato tolto o
+    ridotto, senza ripetizioni. ``data`` è un'immagine già controllata da ``check_image``;
+    un'immagine che non si legge torna com'è, perché la validazione l'ha già rifiutata."""
+    try:
+        if path.endswith(".png"):
+            return _strip_png(data)
+        return _strip_jpeg(data)
+    except (_Bad, struct.error, IndexError):
+        return data, []
+
+
+def _strip_jpeg(data: bytes) -> tuple[bytes, list[str]]:
+    out = [b"\xff\xd8"]
+    removed: list[str] = []
+    jfif = adobe = False
+    offset = 2
+    while True:
+        if data[offset] != 0xFF:
+            raise _Bad("segmento non valido")
+        marker = data[offset + 1]
+        if marker == 0xFF:
+            _note(removed, "riempimento fra i segmenti")
+            offset += 1
+            continue
+        if marker == 0xD9:
+            out.append(b"\xff\xd9")
+            break
+        if marker in _STANDALONE:
+            out.append(data[offset : offset + 2])
+            offset += 2
+            continue
+        (length,) = struct.unpack_from(">H", data, offset + 2)
+        end = offset + 2 + length
+        segment = data[offset:end]
+        body = segment[4:]
+        if marker == 0xE0 and body.startswith(b"JFIF\x00") and not jfif:
+            jfif = True
+            out.append(JFIF_MINIMAL)
+            if segment != JFIF_MINIMAL:
+                _note(removed, "APP0 JFIF ridotto al minimo")
+        elif marker == 0xEE and body.startswith(b"Adobe") and len(body) >= 12 and not adobe:
+            adobe = True
+            reduced = _ADOBE + body[11:12]
+            out.append(reduced)
+            if segment != reduced:
+                _note(removed, "APP14 Adobe ridotto ai suoi 12 byte")
+        elif 0xE0 <= marker <= 0xEF:
+            _note(removed, f"APP{marker - 0xE0}")
+        elif marker == 0xFE:
+            _note(removed, "COM")
+        else:
+            out.append(segment)
+        offset = end
+        if marker == 0xDA:
+            scan_end = _skip_scan(data, offset)
+            out.append(data[offset:scan_end])
+            offset = scan_end
+    return b"".join(out), sorted(removed)
+
+
+def _strip_png(data: bytes) -> tuple[bytes, list[str]]:
+    kept: list[bytes] = []
+    pixels: list[bytes] = []
+    removed: list[str] = []
+    offset = len(PNG_SIGNATURE)
+    while True:
+        length, kind = struct.unpack_from(">I4s", data, offset)
+        body = data[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+        if kind == b"IEND":
+            break
+        if kind == b"IDAT":
+            pixels.append(body)
+        elif kind in _PNG_KEPT:
+            kept.append(_chunk(kind, body))
+        else:
+            _note(removed, kind.decode("latin-1"))
+    # I dati compressi dei pixel in un solo IDAT, senza ricomprimerli.
+    out = [PNG_SIGNATURE, *kept, _chunk(b"IDAT", b"".join(pixels)), _chunk(b"IEND", b"")]
+    return b"".join(out), sorted(removed)
+
+
+def _chunk(kind: bytes, body: bytes) -> bytes:
+    crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+
+def _note(removed: list[str], name: str) -> None:
+    if name not in removed:
+        removed.append(name)
