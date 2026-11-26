@@ -163,6 +163,11 @@ class ValidationTest(unittest.TestCase):
             "<bar>a</bar>": ["regodoc.xml.diagram"],
             '<bar value="-2">a</bar>': ["regodoc.xml.attribute_value"],
             '<bar value="2.5">a</bar>': ["regodoc.xml.attribute_value"],
+            # Il limite dei numeri del §3.1, 10^15, vale anche per «value».
+            '<bar value="1.000.000.000.000.000">a</bar>': [],
+            '<bar value="1.000.000.000.000.000,01">a</bar>': ["regodoc.xml.attribute_value"],
+            '<bar value="1.000.000.000.000.001">a</bar>': ["regodoc.xml.attribute_value"],
+            '<bar value="1.000.000.000.000.000.000">a</bar>': ["regodoc.xml.attribute_value"],
             '<bar value="2">a</bar><bar var="workstations">b</bar>': ["regodoc.xml.diagram"],
             '<bar var="altre">a</bar><bar var="quota">b</bar>': ["regodoc.xml.diagram"],
             '<bar var="meno">a</bar>': ["regodoc.xml.diagram"],

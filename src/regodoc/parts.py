@@ -13,6 +13,7 @@ import re
 import urllib.parse
 import xml.parsers.expat
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 from regodoc.declaration import CONTENT_LIMITS
 from regodoc.diagnostics import Collector
@@ -64,9 +65,16 @@ TREE_CHILDREN = 8
 MAX_DIAGRAMS = int(CONTENT_LIMITS["diagrams"])
 MAX_DIAGRAM_ITEMS = int(CONTENT_LIMITS["diagram_items"])
 MAX_LABEL_CHARACTERS = int(CONTENT_LIMITS["diagram_label_characters"])
+MAX_NUMBER = int(CONTENT_LIMITS["number_abs_max"])
 # La larghezza minima di una figura con un diagramma: sotto, le etichette non stanno.
 DIAGRAM_MIN_WIDTH = 0.5
 _ITALIAN_NUMBER = re.compile(r"(?:0|[1-9]\d{0,2}(?:\.\d{3})*)(?:,\d+)?")
+
+
+def _italian_value(text: str) -> Fraction:
+    """Il valore esatto di un numero italiano già controllato: 1.000,5 vale 2001/2."""
+    return Fraction(text.replace(".", "").replace(",", "."))
+
 
 _COLUMN = re.compile(r"\*|(?P<n>\d{1,2}(?:\.\d{1,2})?)cm")
 _WIDTH = re.compile(r"(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?)")
@@ -974,6 +982,13 @@ class PartChecker:
                         item,
                         "regodoc.xml.attribute_value",
                         f"«value» di <bar> vuole un numero italiano non negativo, non «{value}»",
+                    )
+                elif _italian_value(value) > MAX_NUMBER:
+                    # Lo stesso limite dei numeri delle variabili (specifica, §3.1).
+                    self.at(
+                        item,
+                        "regodoc.xml.attribute_value",
+                        f"«value» di <bar> vale più di {MAX_NUMBER}, il massimo dei numeri",
                     )
                 else:
                     kinds.add("number")
