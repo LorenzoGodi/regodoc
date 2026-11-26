@@ -113,7 +113,7 @@ non ha la forma `N.N.N` o `N.N.N.devN`.
 ## La versione fissata in Rego
 
 Rego non installa il wheel: usa una copia vendorizzata di `src/regodoc` presa dal tag
-`v0.1.0`, in `tools/regodoc` del suo repository, con `LICENSE`, un manifesto con il commit e
+`v0.2.0`, in `tools/regodoc` del suo repository, con `LICENSE`, un manifesto con il commit e
 l'impronta di ogni file e uno script che la verifica; la gestisce Rego. L'installazione del
 wheel con la sua impronta, qui sotto, vale per gli altri usi del motore. Per Rego valgono
 comunque il controllo di `info`, il `--contract` e la sezione «Immagine di Rego» per i
@@ -124,7 +124,7 @@ requisiti che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS
 release:
 
 ```text
-regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.1.0/regodoc-0.1.0-py3-none-any.whl \
+regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.2.0/regodoc-0.2.0-py3-none-any.whl \
     --hash=sha256:<impronta del wheel>
 ```
 
@@ -183,15 +183,15 @@ chiamata:
 `tools/check_install.py` fa esattamente questo, ed è il riferimento da cui copiare:
 
 ```sh
-python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.1.0
+python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.2.0
 ```
 
 **Controllo di `info`.** All'avvio del servizio, o alla costruzione dell'immagine, Rego legge
-`info` e confronta almeno questi campi; per la 0.1.0 i valori attesi sono:
+`info` e confronta almeno questi campi; per la 0.2.0 i valori attesi sono:
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "contract": 1,
   "contracts": [1],
   "expat_min": "2.6.0",
