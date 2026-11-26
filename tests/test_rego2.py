@@ -8,7 +8,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from regodoc import declaration, grammars, images
+from regodoc import compiler, declaration, grammars, images
 from regodoc.cli import ExitCode
 from tests.support import (
     LONG_EXAMPLE,
@@ -19,6 +19,7 @@ from tests.support import (
     validate_bytes,
     with_metadata,
 )
+from tests.test_tex_build import REQUIRE_TEX, pdf_content
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "tests" / "data" / "golden" / "rego1-canon-0.2.0.json"
@@ -171,6 +172,34 @@ class CanonTest(Workspace):
             self.assertEqual(code, ExitCode.OK)
             outputs.append(out.read_bytes())
         self.assertEqual(outputs[0], outputs[1])
+
+
+class BuildTest(Workspace):
+    def test_build_writes_clean_images_in_every_grammar(self) -> None:
+        for grammar in ("rego/1", "rego/2"):
+            with self.subTest(grammar):
+                dirty = with_metadata(example_files(LONG_EXAMPLE), grammar)
+                out = self.folder / grammar.replace("/", "-")
+                package = self.archive(dirty, f"{grammar.replace('/', '-')}.regodoc")
+                code, report = self.command("build", package, "-o", out, "--format", "latex")
+                self.assertEqual(code, ExitCode.OK, report["errors"])
+                clean = example_files(LONG_EXAMPLE)
+                for path in ("images/landing-stage.jpg", "images/shed-plan.png"):
+                    self.assertEqual((out / path).read_bytes(), clean[path], path)
+
+    @unittest.skipUnless(compiler.find_pdflatex() or REQUIRE_TEX, "pdflatex non disponibile")
+    def test_the_pdf_carries_no_metadata(self) -> None:
+        # pdfTeX copia il JPEG nel PDF così com'è: senza la pulizia, l'Exif ci arriverebbe.
+        for grammar in ("rego/1", "rego/2"):
+            with self.subTest(grammar):
+                dirty = with_metadata(example_files(LONG_EXAMPLE), grammar)
+                name = grammar.replace("/", "-")
+                target = self.folder / f"{name}.pdf"
+                code, report = self.command(
+                    "build", self.archive(dirty, f"{name}.regodoc"), "-o", target
+                )
+                self.assertEqual(code, ExitCode.OK, report["errors"])
+                self.assertNotIn(METADATA_SIGNATURE, pdf_content(target.read_bytes()))
 
 
 if __name__ == "__main__":

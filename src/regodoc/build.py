@@ -21,6 +21,7 @@ from regodoc.compiler import (
 )
 from regodoc.diagnostics import Collector, Severity
 from regodoc.header import Header, HeaderError, choose_date, read_header
+from regodoc.images import strip_image
 from regodoc.outputs import (
     OutputError,
     check_output,
@@ -175,7 +176,9 @@ def _prepare(doc: Path, home: Path, text: str, theme: Theme, validation: Validat
     package = validation.current.files if validation.current is not None else {}
     for path, data in package.items():
         if path.startswith("images/"):
-            files[path] = data
+            # Senza metadati in ogni grammatica: il PDF non porta ciò che la forma canonica
+            # di rego/2 toglie (decisione 15). I pixel restano quelli ricevuti.
+            files[path] = strip_image(path, data)[0]
     for path in sorted(files, key=lambda p: p.encode("utf-8")):
         destination = doc / path
         destination.parent.mkdir(parents=True, exist_ok=True)
