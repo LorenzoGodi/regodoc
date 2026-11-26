@@ -132,7 +132,7 @@ requisiti che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS
 release:
 
 ```text
-regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.2.0/regodoc-0.2.0-py3-none-any.whl \
+regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.3.0/regodoc-0.3.0-py3-none-any.whl \
     --hash=sha256:<impronta del wheel>
 ```
 
@@ -191,7 +191,7 @@ chiamata:
 `tools/check_install.py` fa esattamente questo, ed è il riferimento da cui copiare:
 
 ```sh
-python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.2.0
+python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.3.0
 ```
 
 **Controllo di `info`.** All'avvio del servizio, o alla costruzione dell'immagine, Rego legge

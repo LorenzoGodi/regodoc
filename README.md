@@ -8,13 +8,13 @@ per il PDF serve TeX Live.
 Rego lo usa come dipendenza con versione fissata. Chiunque può usarlo da solo, con Python
 e TeX Live.
 
-> **Stato:** versione 0.2.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`
-> e `upgrade`. Rispetto alla 0.1.0, la 0.2 aggiunge l'allineamento delle colonne delle
-> tabelle, le variabili calcolate e i diagrammi, dentro la stessa grammatica `rego/1` e lo
-> stesso contratto 1. La specifica del formato è in
-> [`docs/spec/rego-1.md`](docs/spec/rego-1.md). Due pacchetti d'esempio, sintetici, sono in
-> `examples/`: `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`, lungo, in inglese,
-> con tutto il vocabolario.
+> **Stato:** versione 0.3.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`
+> e `upgrade`. La 0.2 ha aggiunto l'allineamento delle colonne delle tabelle, le variabili
+> calcolate e i diagrammi. La 0.3 apre la grammatica `rego/2`, che toglie i metadati delle
+> immagini a pixel invariati, e legge ancora `rego/1`; il contratto resta 1. La specifica dei
+> due formati è in [`docs/spec/rego-1.md`](docs/spec/rego-1.md). Due pacchetti d'esempio,
+> sintetici, sono in `examples/`: `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`,
+> lungo, in inglese, con tutto il vocabolario.
 
 ## Requisiti
 

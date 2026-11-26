@@ -8,7 +8,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from regodoc import compiler, declaration, grammars, images
+from regodoc import __version__, compiler, declaration, grammars, images
 from regodoc.cli import ExitCode
 from tests.support import (
     LONG_EXAMPLE,
@@ -143,7 +143,7 @@ class CanonTest(Workspace):
         del sums["manifest.json"]
         self.assertEqual(sums, golden["sha256"])
         manifest = json.loads(files["manifest.json"])
-        self.assertEqual(manifest.pop("generator")["version"], "0.3.0.dev0")
+        self.assertEqual(manifest.pop("generator")["version"], __version__)
         self.assertEqual(manifest, golden["manifesto_senza_generator"])
         self.assertIn(METADATA_SIGNATURE, files["images/landing-stage.jpg"])
         self.assertIn(b"`rego/1`", files["README.md"])
