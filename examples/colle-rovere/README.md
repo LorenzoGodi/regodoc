@@ -18,5 +18,5 @@ indietro non conta, e ciò che vi si modifica va perso.
 3. controlla il pacchetto con `regodoc validate` e ricostruisci l'archivio con
    `regodoc canon`.
 
-Le regole del formato sono nella specifica `rego/1` del progetto regodoc:
+Le regole del formato sono nella specifica `rego/2` del progetto regodoc:
 https://github.com/LorenzoGodi/regodoc/blob/main/docs/spec/rego-1.md

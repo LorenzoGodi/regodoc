@@ -110,6 +110,31 @@ def jpeg(width: int = 4, height: int = 4, sof: int = 0xC0, precision: int = 8) -
     )
 
 
+# Una firma sintetica nei metadati delle immagini: le prove la cercano dove non deve stare.
+METADATA_SIGNATURE = b"Firma-sintetica-dei-metadati-4242"
+
+
+def with_metadata(files: dict[str, bytes], grammar: str) -> dict[str, bytes]:
+    """Il pacchetto con i metadati nelle immagini, nella grammatica ``grammar``: Exif e un
+    commento in ogni JPEG, dopo il JFIF; un blocco di testo in ogni PNG, dopo IHDR."""
+    out = dict(files)
+    out["manifest.json"] = files["manifest.json"].replace(b'"rego/2"', f'"{grammar}"'.encode())
+    for path, data in files.items():
+        if path.endswith(".jpg"):
+            exif = b"\xff\xe1" + struct.pack(">H", len(METADATA_SIGNATURE) + 8)
+            exif += b"Exif\x00\x00" + METADATA_SIGNATURE
+            comment = b"\xff\xfe" + struct.pack(">H", len(METADATA_SIGNATURE) + 2)
+            comment += METADATA_SIGNATURE
+            jfif_end = 4 + struct.unpack_from(">H", data, 4)[0]
+            out[path] = data[:jfif_end] + exif + comment + data[jfif_end:]
+        elif path.endswith(".png"):
+            body = b"Comment\x00" + METADATA_SIGNATURE
+            crc = zlib.crc32(b"tEXt" + body) & 0xFFFFFFFF
+            text = struct.pack(">I", len(body)) + b"tEXt" + body + struct.pack(">I", crc)
+            out[path] = data[:33] + text + data[33:]
+    return out
+
+
 def run_cli(*argv: str) -> tuple[int, str, str]:
     """Esegue il comando nel processo e restituisce codice, stdout e stderr."""
     out, err = io.TextIOWrapper(io.BytesIO(), "utf-8"), io.TextIOWrapper(io.BytesIO(), "utf-8")

@@ -111,7 +111,8 @@ class Workspace(unittest.TestCase):
 
 class RegistryTest(unittest.TestCase):
     def test_test_grammar_never_reaches_the_engine(self) -> None:
-        self.assertEqual(grammars.STEPS, {})
+        # Il registro ha solo il passo vero, da rego/1 a rego/2.
+        self.assertEqual(list(grammars.STEPS), ["rego/1"])
         self.assertEqual(grammars.readable(), declaration.GRAMMARS_READ)
         read = declaration.describe()["grammars"]["read"]  # type: ignore[index]
         self.assertNotIn(TEST_GRAMMAR, read)
@@ -158,7 +159,7 @@ class UpgradeTest(Workspace):
         with test_grammar():
             code, report = self.command("upgrade", self.archive(old_files()), "-o", output)
         self.assertEqual(code, ExitCode.OK, report["errors"])
-        self.assertEqual((report["grammar_in"], report["grammar"]), (TEST_GRAMMAR, "rego/1"))
+        self.assertEqual((report["grammar_in"], report["grammar"]), (TEST_GRAMMAR, "rego/2"))
         self.assertEqual(
             [w["code"] for w in report["warnings"]],  # type: ignore[union-attr, index]
             ["regodoc.grammar.upgraded"],
@@ -169,13 +170,13 @@ class UpgradeTest(Workspace):
             for item in report["files"]:  # type: ignore[union-attr]
                 path = item["path"]  # type: ignore[index]
                 self.assertEqual(archive.read(path), expected[path], path)
-        self.assertEqual(manifest["grammar"], "rego/1")
+        self.assertEqual(manifest["grammar"], "rego/2")
         self.assertEqual(manifest["document"], "doc-9")
         # L'uscita è già corrente: aggiornarla di nuovo dà gli stessi byte.
         again = self.folder / "again.regodoc"
         code, report = self.command("upgrade", output, "-o", again)
         self.assertEqual(code, ExitCode.OK)
-        self.assertEqual(report["grammar_in"], "rego/1")
+        self.assertEqual(report["grammar_in"], "rego/2")
         self.assertEqual(again.read_bytes(), output.read_bytes())
 
     def test_current_package_gives_the_bytes_of_canon(self) -> None:
@@ -262,7 +263,7 @@ class ReadingOldGrammarsTest(Workspace):
         files["manifest.json"] = json.dumps(
             {
                 "format": "regodoc",
-                "grammar": "rego/2",
+                "grammar": "rego/3",
                 "generator": {"engine": "regodoc", "version": "9.0.0"},
             }
         ).encode("utf-8")
@@ -271,7 +272,7 @@ class ReadingOldGrammarsTest(Workspace):
         self.assertEqual(code, ExitCode.REFUSED)
         error = report["errors"][0]  # type: ignore[index]
         self.assertEqual(error["code"], "regodoc.manifest.grammar_newer")
-        for words in ("rego/2", "regodoc 9.0.0", f"{TEST_GRAMMAR}, rego/1"):
+        for words in ("rego/3", "regodoc 9.0.0", TEST_GRAMMAR, "rego/1, ", "rego/2"):
             self.assertIn(words, error["message"])
 
 

@@ -1,0 +1,61 @@
+{
+  "manifesto_senza_generator": {
+    "files": {
+      "README.md": "sha256:193abfb6cc868ddb53b56da9acd3627f4be541d570c7b370721da9cdfc155366",
+      "images/landing-stage.jpg": "sha256:c75fff94f2321aadb4d18098335edd3c97b98b8e60ccc2a5e1b7812400579346",
+      "images/shed-plan.png": "sha256:aa62c56b45ee19b377d8b6b63951f6daf9078e7ad79c09f47e57381e0ece6794",
+      "parts/appendix.xml": "sha256:49f568c57c94d1b9d48344b460529954127ce531f64d528d114082fddb7000c2",
+      "parts/archive.xml": "sha256:928ec82f8723a3e873c54b18c943cc1e38af57212637308200e29c22418c5011",
+      "parts/boats.xml": "sha256:2a835bfcfca0b01855fa0399c21af0abc38490298f175923bc318e18f9603071",
+      "parts/brief.xml": "sha256:a32d08d72268e4004473105f343ff703f46c4ea4bb5746be8f045eb3922bea91",
+      "parts/budget.xml": "sha256:8969e9987de702afe5ae21d2b9693ea05b575eaa739eb00d5e12a450955189dc",
+      "parts/members.xml": "sha256:f9500ee17599b357c7156e0c3f0ba98d52daadd985fa225dbadb6197530ce779",
+      "parts/network.xml": "sha256:7a98da758dd0585064fd2ec4ad84f52d57e6a5b113cd250718f6faf44ea20b0a",
+      "parts/reading-guide.xml": "sha256:e9afbe57981ecfd936961522304a6bb1c93e159a77eabdee20f0188c59cae556",
+      "parts/shed.xml": "sha256:01e378b2658ebf8b33ed59b2e0f352a31448e2bf0a3ea11f0899ccf754334c0d",
+      "parts/training.xml": "sha256:780fe0fb3b0abc5667b113a1d4c4fd94d45a775ca4f58d62f1e2b87a2e0d7f01",
+      "structure.toml": "sha256:3d0e6be8e401d8c4b8bbf43f73265890f1da87095661675fdb9eb98770f5badd",
+      "variables.toml": "sha256:8f06744dd387d7ddec95738884bb00fc265840a6bf8119189fb97129be1f7e2c"
+    },
+    "format": "regodoc",
+    "grammar": "rego/1"
+  },
+  "ordine": [
+    "mimetype",
+    "manifest.json",
+    "README.md",
+    "structure.toml",
+    "variables.toml",
+    "parts/brief.xml",
+    "parts/reading-guide.xml",
+    "parts/members.xml",
+    "parts/boats.xml",
+    "parts/shed.xml",
+    "parts/network.xml",
+    "parts/archive.xml",
+    "parts/budget.xml",
+    "parts/training.xml",
+    "parts/appendix.xml",
+    "images/landing-stage.jpg",
+    "images/shed-plan.png"
+  ],
+  "origine": "canon del motore 0.2.0 (794a2a1) sul pacchetto di with_metadata(lakeside-rowing, rego/1)",
+  "sha256": {
+    "README.md": "193abfb6cc868ddb53b56da9acd3627f4be541d570c7b370721da9cdfc155366",
+    "images/landing-stage.jpg": "c75fff94f2321aadb4d18098335edd3c97b98b8e60ccc2a5e1b7812400579346",
+    "images/shed-plan.png": "aa62c56b45ee19b377d8b6b63951f6daf9078e7ad79c09f47e57381e0ece6794",
+    "mimetype": "7cd253cdfe3c0e5ba501e1d976d315c03d5777709f4a7738aab591219947d5c5",
+    "parts/appendix.xml": "49f568c57c94d1b9d48344b460529954127ce531f64d528d114082fddb7000c2",
+    "parts/archive.xml": "928ec82f8723a3e873c54b18c943cc1e38af57212637308200e29c22418c5011",
+    "parts/boats.xml": "2a835bfcfca0b01855fa0399c21af0abc38490298f175923bc318e18f9603071",
+    "parts/brief.xml": "a32d08d72268e4004473105f343ff703f46c4ea4bb5746be8f045eb3922bea91",
+    "parts/budget.xml": "8969e9987de702afe5ae21d2b9693ea05b575eaa739eb00d5e12a450955189dc",
+    "parts/members.xml": "f9500ee17599b357c7156e0c3f0ba98d52daadd985fa225dbadb6197530ce779",
+    "parts/network.xml": "7a98da758dd0585064fd2ec4ad84f52d57e6a5b113cd250718f6faf44ea20b0a",
+    "parts/reading-guide.xml": "e9afbe57981ecfd936961522304a6bb1c93e159a77eabdee20f0188c59cae556",
+    "parts/shed.xml": "01e378b2658ebf8b33ed59b2e0f352a31448e2bf0a3ea11f0899ccf754334c0d",
+    "parts/training.xml": "780fe0fb3b0abc5667b113a1d4c4fd94d45a775ca4f58d62f1e2b87a2e0d7f01",
+    "structure.toml": "3d0e6be8e401d8c4b8bbf43f73265890f1da87095661675fdb9eb98770f5badd",
+    "variables.toml": "8f06744dd387d7ddec95738884bb00fc265840a6bf8119189fb97129be1f7e2c"
+  }
+}

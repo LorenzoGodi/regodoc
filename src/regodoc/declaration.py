@@ -33,8 +33,8 @@ CONTRACTS: Final = (1,)
 EXPAT_MIN: Final = (2, 6, 0)
 
 # Grammatica scritta dal motore e grammatiche che sa leggere, dalla più vecchia.
-GRAMMAR_CURRENT: Final = "rego/1"
-GRAMMARS_READ: Final = ("rego/1",)
+GRAMMAR_CURRENT: Final = "rego/2"
+GRAMMARS_READ: Final = ("rego/1", "rego/2")
 
 _KIB: Final = 1024
 _MIB: Final = 1024 * _KIB

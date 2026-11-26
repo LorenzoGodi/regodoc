@@ -11,7 +11,8 @@ così gli errori trovati dopo l'aggiornamento indicano la riga del file ricevuto
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from regodoc.declaration import GRAMMAR_CURRENT
+from regodoc.declaration import CONTENT_LIMITS, GRAMMAR_CURRENT
+from regodoc.images import strip_image
 
 # I file della busta: non sono contenuto e nessun passo li riceve.
 ENVELOPE = frozenset({"mimetype", "manifest.json", "README.md"})
@@ -26,10 +27,25 @@ class Step:
     upgrade: Callable[[Mapping[str, bytes]], dict[str, bytes]]
 
 
-# Un passo per grammatica precedente. rego/1 è la prima grammatica pubblicata: la catena è
-# vuota finché non nasce rego/2. Le prove vi aggiungono una grammatica fittizia per la loro
-# durata.
-STEPS: dict[str, Step] = {}
+# Le grammatiche la cui forma canonica scrive le immagini così come sono: in rego/2 le
+# immagini sono senza metadati (specifica, §13).
+VERBATIM_IMAGES = frozenset({"rego/1"})
+
+
+def rego1_to_rego2(files: Mapping[str, bytes]) -> dict[str, bytes]:
+    """Il passo da rego/1 a rego/2: le immagini senza metadati, a pixel invariati; il resto
+    com'è. Un'immagine oltre il limite di dimensione resta com'è, e la rifiuta la validazione."""
+    result = {}
+    for path, data in files.items():
+        if path.startswith("images/") and len(data) <= CONTENT_LIMITS["image_bytes"]:
+            data = strip_image(path, data)[0]  # noqa: PLW2901
+        result[path] = data
+    return result
+
+
+# Un passo per grammatica precedente, da rego/1, la prima pubblicata. Le prove vi aggiungono
+# una grammatica fittizia per la loro durata.
+STEPS: dict[str, Step] = {"rego/1": Step("rego/1", "rego/2", rego1_to_rego2)}
 
 
 def readable() -> tuple[str, ...]:

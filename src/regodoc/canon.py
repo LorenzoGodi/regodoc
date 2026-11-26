@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from regodoc import __version__, canonical, limits
-from regodoc.declaration import ENGINE_NAME, GRAMMAR_CURRENT
+from regodoc.declaration import ENGINE_NAME, GRAMMAR_CURRENT, GRAMMARS_READ
 from regodoc.diagnostics import clip
 from regodoc.outputs import OutputError, check_output, described, temporary_name, write_file
 from regodoc.validate import DIGEST, DOCUMENT, Validation, files_digest, validate_package
@@ -74,7 +74,9 @@ def run(
         outcome.summary["grammar_in"] = validation.grammar
     if report.has_errors() or (strict and report.strict_warnings):
         return outcome
-    if validation.upgraded is not None and not upgrade:
+    # canon non aggiorna: scrive la forma canonica della grammatica ricevuta, se il motore la
+    # sa ancora scrivere (contratto, §8), cioè se è fra quelle che dichiara di leggere.
+    if validation.upgraded is not None and not upgrade and validation.grammar not in GRAMMARS_READ:
         report.error(
             "regodoc.manifest.grammar_old",
             f"canon non scrive più la grammatica «{validation.grammar}»: «regodoc upgrade» "
@@ -91,7 +93,7 @@ def run(
     if base_version is None and isinstance(manifest.get("base_version"), str):
         base_version = str(manifest["base_version"])
     grammar = GRAMMAR_CURRENT if upgrade else str(validation.grammar)
-    content = canonical.content_files(validation)
+    content = canonical.content_files(validation, grammar)
     files = canonical.package_files(
         content,
         grammar=grammar,

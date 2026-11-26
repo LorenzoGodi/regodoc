@@ -55,7 +55,7 @@ class ExampleTest(unittest.TestCase):
     def test_example_is_valid_without_warnings(self) -> None:
         validation = validate_files(example_files())
         self.assertEqual(codes(validation), [], [str(d) for d in validation.report.items])
-        self.assertEqual(validation.grammar, "rego/1")
+        self.assertEqual(validation.grammar, "rego/2")
 
     def test_example_structure(self) -> None:
         validation = validate_files(example_files())
@@ -250,39 +250,39 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(self.manifest("{"), ["regodoc.manifest.syntax"])
 
     def test_duplicate_key(self) -> None:
-        text = '{"format": "regodoc", "grammar": "rego/1", "grammar": "rego/1"}'
+        text = '{"format": "regodoc", "grammar": "rego/2", "grammar": "rego/2"}'
         self.assertEqual(self.manifest(text), ["regodoc.manifest.syntax"])
 
     def test_nan(self) -> None:
-        text = '{"format": "regodoc", "grammar": "rego/1", "generator": NaN}'
+        text = '{"format": "regodoc", "grammar": "rego/2", "generator": NaN}'
         self.assertEqual(self.manifest(text), ["regodoc.manifest.syntax"])
 
     def test_unknown_key(self) -> None:
-        text = '{"format": "regodoc", "grammar": "rego/1", "author": "x"}'
+        text = '{"format": "regodoc", "grammar": "rego/2", "author": "x"}'
         self.assertEqual(self.manifest(text), ["regodoc.manifest.unknown_key"])
 
     def test_format(self) -> None:
         self.assertEqual(
-            self.manifest('{"format": "odt", "grammar": "rego/1"}'), ["regodoc.manifest.format"]
+            self.manifest('{"format": "odt", "grammar": "rego/2"}'), ["regodoc.manifest.format"]
         )
 
     def test_newer_grammar(self) -> None:
-        text = '{"format": "regodoc", "grammar": "rego/2"}'
+        text = '{"format": "regodoc", "grammar": "rego/3"}'
         self.assertEqual(self.manifest(text), ["regodoc.manifest.grammar_newer"])
         message = validate_files(with_file("manifest.json", text)).report.errors[0].message
-        self.assertIn("«rego/2»", message)
+        self.assertIn("«rego/3»", message)
         self.assertIn("rego/1", message)
         self.assertNotIn("scritto da", message)
         # Con un generator valido il messaggio nomina il motore che ha scritto il pacchetto;
         # con uno sbagliato no.
         written = (
-            '{"format": "regodoc", "grammar": "rego/2", '
+            '{"format": "regodoc", "grammar": "rego/3", '
             '"generator": {"engine": "regodoc", "version": "0.9.0"}}'
         )
         message = validate_files(with_file("manifest.json", written)).report.errors[0].message
         self.assertIn("scritto da regodoc 0.9.0", message)
         self.assertIn("questo motore (", message)
-        broken = '{"format": "regodoc", "grammar": "rego/2", "generator": {"version": "0.9.0"}}'
+        broken = '{"format": "regodoc", "grammar": "rego/3", "generator": {"version": "0.9.0"}}'
         message = validate_files(with_file("manifest.json", broken)).report.errors[0].message
         self.assertNotIn("scritto da", message)
 
@@ -296,7 +296,7 @@ class ManifestTest(unittest.TestCase):
             '{"engine": "   ", "version": "1"}',
         ):
             with self.subTest(generator):
-                text = f'{{"format": "regodoc", "grammar": "rego/1", "generator": {generator}}}'
+                text = f'{{"format": "regodoc", "grammar": "rego/2", "generator": {generator}}}'
                 self.assertEqual(self.manifest(text), ["regodoc.manifest.value"])
 
     def test_bad_grammar(self) -> None:
@@ -307,17 +307,17 @@ class ManifestTest(unittest.TestCase):
 
     def test_optional_values(self) -> None:
         good = (
-            '{"format": "regodoc", "grammar": "rego/1", "document": "doc-1", '
+            '{"format": "regodoc", "grammar": "rego/2", "document": "doc-1", '
             '"base_version": "sha256:' + "a" * 64 + '", '
             '"files": {"structure.toml": "sha256:' + "b" * 64 + '"}, '
             '"generator": {"engine": "regodoc", "version": "0.1.0"}}'
         )
         self.assertEqual(self.manifest(good), [])
         for text in (
-            '{"format": "regodoc", "grammar": "rego/1", "base_version": "sha1:00"}',
-            '{"format": "regodoc", "grammar": "rego/1", "document": "../x"}',
-            '{"format": "regodoc", "grammar": "rego/1", "files": {"../x": "sha256:00"}}',
-            '{"format": "regodoc", "grammar": "rego/1", "generator": {"name": "x"}}',
+            '{"format": "regodoc", "grammar": "rego/2", "base_version": "sha1:00"}',
+            '{"format": "regodoc", "grammar": "rego/2", "document": "../x"}',
+            '{"format": "regodoc", "grammar": "rego/2", "files": {"../x": "sha256:00"}}',
+            '{"format": "regodoc", "grammar": "rego/2", "generator": {"name": "x"}}',
         ):
             with self.subTest(text):
                 self.assertEqual(self.manifest(text), ["regodoc.manifest.value"])
@@ -514,7 +514,7 @@ class CollectAndContinueTest(unittest.TestCase):
         self.assertIn("regodoc.xml.unknown_variable", found)
 
     def test_manifest_errors_do_not_stop_the_reading(self) -> None:
-        manifest = '{"format": "regodoc", "grammar": "rego/1", "extra": 1}'
+        manifest = '{"format": "regodoc", "grammar": "rego/2", "extra": 1}'
         files = with_part(section('<p><var name="nowhere"/></p>'))
         files["manifest.json"] = manifest.encode()
         found = errors(files)
@@ -527,7 +527,7 @@ class CollectAndContinueTest(unittest.TestCase):
         self.assertEqual(errors(files), ["regodoc.package.missing"])
 
     def test_format_stops_the_reading(self) -> None:
-        for manifest in ('{"format": "altro", "grammar": "rego/1"}', '{"grammar": "rego/1"}'):
+        for manifest in ('{"format": "altro", "grammar": "rego/2"}', '{"grammar": "rego/2"}'):
             with self.subTest(manifest):
                 files = with_part(section('<p><var name="nowhere"/></p>'))
                 files["manifest.json"] = manifest.encode()
@@ -1037,9 +1037,17 @@ class ImageTest(unittest.TestCase):
         self.assertIn("regodoc.image.structure", jpeg_codes(jpeg() + b"x"))
 
     def test_metadata_and_unused_are_warnings(self) -> None:
+        dirty = png(extra=[(b"tEXt", b"Autore\x00X")])
+        # In rego/2 l'avviso dice che cosa toglie la forma canonica; in rego/1, che le
+        # immagini li portano. In rego/1 c'è anche l'avviso informativo dell'aggiornamento.
+        self.assertEqual(self.image("images/coverage.png", dirty), ["regodoc.image.stripped"])
+        message = validate_files(with_file("images/coverage.png", dirty)).report.items[0].message
+        self.assertIn("tEXt", message)
+        old = with_file("images/coverage.png", dirty)
+        old["manifest.json"] = old["manifest.json"].replace(b"rego/2", b"rego/1")
         self.assertEqual(
-            self.image("images/coverage.png", png(extra=[(b"tEXt", b"Autore\x00X")])),
-            ["regodoc.image.metadata"],
+            sorted(d.code for d in validate_files(old).report.items),
+            ["regodoc.grammar.upgraded", "regodoc.image.metadata"],
         )
         self.assertEqual(self.image("images/spare.png", png()), ["regodoc.image.unused"])
 

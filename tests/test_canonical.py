@@ -368,7 +368,7 @@ class ArchiveTest(unittest.TestCase):
         assert validation.structure is not None
         return canonical.package_files(
             canonical.content_files(validation),
-            grammar="rego/1",
+            grammar="rego/2",
             title=str(validation.structure.header["title"]),
             language=validation.structure.language,
             document="doc-1",

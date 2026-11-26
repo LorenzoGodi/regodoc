@@ -225,7 +225,16 @@ def _validate(path: Path, result: Validation, data: bytes | None) -> None:
     result.variables = variables.valid if variables is not None else {}
     declared = variables.declared if variables is not None else set()
     in_formulas = variables.in_formulas if variables is not None else set()
-    result.roots = _check_parts(package, structure, result.variables, declared, in_formulas, report)
+    result.roots = _check_parts(
+        package,
+        structure,
+        result.variables,
+        declared,
+        in_formulas,
+        report,
+        originals=result.package,
+        stripping=result.grammar not in grammars.VERBATIM_IMAGES,
+    )
 
 
 def _check_manifest(
@@ -342,6 +351,9 @@ def _check_parts(
     declared: set[str] | None,
     in_formulas: set[str],
     report: Collector,
+    *,
+    originals: PackageFiles,
+    stripping: bool,
 ) -> dict[str, Node]:
     roots: dict[str, Node] = {}
     entries = {entry.id: entry for entry in structure.entries}
@@ -392,8 +404,11 @@ def _check_parts(
     # I pixel di tutte le immagini hanno un tetto comune (§7.2): ogni immagine prende la sua
     # parte dal budget che resta.
     budget = int(CONTENT_LIMITS["images_pixel_bytes"])
+    # Le immagini si controllano come le ha scritte chi ha fatto il pacchetto, anche quando
+    # l'aggiornamento in memoria le ha già pulite: gli avvisi parlano dei file ricevuti.
     for path in sorted(images):
-        budget -= check_image(path, package.files[path], report, budget)
+        data = originals.files.get(path, package.files[path])
+        budget -= check_image(path, data, report, budget, stripping=stripping)
     # Il controllore delle parti segna da sé gli elementi in cui non è sceso.
     context.complete = context.complete and complete
     _check_uses(context, images, complete=context.complete)

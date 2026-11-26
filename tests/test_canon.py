@@ -75,7 +75,7 @@ class CanonCommandTest(unittest.TestCase):
         files["manifest.json"] = json.dumps(
             {
                 "format": "regodoc",
-                "grammar": "rego/1",
+                "grammar": "rego/2",
                 "document": "doc-7",
                 "base_version": DIGEST,
                 "files": {"structure.toml": "sha256:" + "00" * 32},

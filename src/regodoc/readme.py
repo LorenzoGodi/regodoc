@@ -7,6 +7,8 @@ ben sotto il limite di 64 KiB. In lettura il motore lo ignora.
 import re
 from typing import Final
 
+from regodoc.declaration import GRAMMAR_CURRENT
+
 SPECIFICATION: Final = "https://github.com/LorenzoGodi/regodoc/blob/main/docs/spec/rego-1.md"
 
 # Caratteri che in Markdown cambierebbero il titolo: si scrivono con la barra rovescia.
@@ -33,7 +35,7 @@ indietro non conta, e ciò che vi si modifica va perso.
 3. controlla il pacchetto con `regodoc validate` e ricostruisci l'archivio con
    `regodoc canon`.
 
-Le regole del formato sono nella specifica `rego/1` del progetto regodoc:
+Le regole del formato sono nella specifica `{grammar}` del progetto regodoc:
 {specification}
 """,
     "en": """# .regodoc package: {title}
@@ -57,13 +59,14 @@ read back, and anything changed here is lost.
 3. check the package with `regodoc validate` and rebuild the archive with
    `regodoc canon`.
 
-The format is described in the `rego/1` specification of the regodoc project:
+The format is described in the `{grammar}` specification of the regodoc project:
 {specification}
 """,
 }
 
 
-def render_readme(title: str, language: str) -> str:
-    """Il testo di ``README.md`` per un documento con questo titolo e questa lingua."""
+def render_readme(title: str, language: str, grammar: str = GRAMMAR_CURRENT) -> str:
+    """Il testo di ``README.md`` per un documento con questo titolo e questa lingua, nella
+    forma canonica di ``grammar``: il file nomina la grammatica del manifesto."""
     escaped = _MARKDOWN.sub(r"\\\1", " ".join(title.split()))
-    return _TEXTS[language].format(title=escaped, specification=SPECIFICATION)
+    return _TEXTS[language].format(title=escaped, specification=SPECIFICATION, grammar=grammar)

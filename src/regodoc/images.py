@@ -53,11 +53,20 @@ def pixel_bytes(width: int, height: int, depth: int, color: int) -> int:
     return width * height * -(-depth * _PNG_CHANNELS[color] // 8)
 
 
-def check_image(path: str, data: bytes, report: Collector, budget: int | None = None) -> int:
+def check_image(
+    path: str,
+    data: bytes,
+    report: Collector,
+    budget: int | None = None,
+    *,
+    stripping: bool = False,
+) -> int:
     """Verifica un'immagine del pacchetto e registra errori e avvisi.
 
     Restituisce i byte dei pixel di un PNG valido, che contano nel totale delle immagini;
-    ``budget`` è quanto ne resta. Per un JPEG o un'immagine rifiutata restituisce 0.
+    ``budget`` è quanto ne resta. Per un JPEG o un'immagine rifiutata restituisce 0. Con
+    ``stripping``, per le grammatiche la cui forma canonica toglie i metadati, l'avviso dice
+    che cosa toglie: ``regodoc.image.stripped`` al posto di ``regodoc.image.metadata``.
     """
     limit = CONTENT_LIMITS["image_bytes"]
     if len(data) > limit:
@@ -99,6 +108,15 @@ def check_image(path: str, data: bytes, report: Collector, budget: int | None = 
     except (struct.error, IndexError):
         report.error("regodoc.image.structure", "il file è troncato", path)
         return 0
+    if stripping:
+        removed = strip_image(path, data)[1]
+        if removed:
+            report.warning(
+                "regodoc.image.stripped",
+                f"la forma canonica toglie i metadati, a pixel invariati: {', '.join(removed)}",
+                path,
+            )
+        return used
     for note in notes:
         report.warning("regodoc.image.metadata", note, path)
     return used

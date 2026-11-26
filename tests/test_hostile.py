@@ -89,7 +89,7 @@ class TomlTest(unittest.TestCase):
 
 class ManifestTest(unittest.TestCase):
     def test_surrogate_in_a_manifest_key(self) -> None:
-        manifest = b'{"format": "regodoc", "grammar": "rego/1", "\\ud800": 1}'
+        manifest = b'{"format": "regodoc", "grammar": "rego/2", "\\ud800": 1}'
         files = with_file("manifest.json", manifest)
         with tempfile.TemporaryDirectory() as folder:
             package = Path(folder) / "p.regodoc"
@@ -291,7 +291,7 @@ class ResidualTest(unittest.TestCase):
 
     def test_python_messages_never_reach_the_report(self) -> None:
         cases = {
-            b'{"format": "regodoc", "grammar": "rego/1", "x": '
+            b'{"format": "regodoc", "grammar": "rego/2", "x": '
             + b"9" * 5000
             + b"}": "troppe cifre",
             b'{"format": "regodoc", "x": ' + b"[" * 30_000 + b"]" * 30_000 + b"}": "annidamento",

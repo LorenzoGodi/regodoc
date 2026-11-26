@@ -82,7 +82,7 @@ class ValidateCommandTest(unittest.TestCase):
         report = json.loads(out)
         self.assertTrue(report["ok"])
         self.assertEqual(report["exit_code"], 0)
-        self.assertEqual(report["grammar"], "rego/1")
+        self.assertEqual(report["grammar"], "rego/2")
         self.assertEqual(report["engine"]["version"], __version__)
 
     def test_refused_and_strict(self) -> None:

@@ -17,9 +17,10 @@ import zlib
 from collections.abc import Iterable
 from pathlib import Path
 
-from regodoc import __version__, calc
+from regodoc import __version__, calc, grammars
 from regodoc.declaration import CONTENT_LIMITS, ENGINE_NAME, PACKAGE_MIMETYPE
 from regodoc.diagnostics import Collector, Diagnostic
+from regodoc.images import strip_image
 from regodoc.parts import XML_DECLARATION, Comment, Node, Text
 from regodoc.readme import render_readme
 from regodoc.validate import Validation, canonical_files, validate_package
@@ -305,12 +306,16 @@ def _variable_value(value: object) -> str:
     return _toml_value(value)
 
 
-def content_files(validation: Validation) -> list[tuple[str, bytes]]:
-    """I file di contenuto di un pacchetto valido in forma canonica, nell'ordine del §9:
-    i TOML e le parti riscritti, le immagini così come sono."""
+def content_files(validation: Validation, grammar: str | None = None) -> list[tuple[str, bytes]]:
+    """I file di contenuto di un pacchetto valido nella forma canonica di ``grammar``,
+    nell'ordine del §9: i TOML e le parti riscritti; le immagini senza metadati, o così come
+    le ha ricevute il motore nelle grammatiche che le scrivono così (rego/1)."""
     package = validation.current
     if package is None or validation.report.errors:
         raise ValueError("solo un pacchetto valido ha una forma canonica")
+    received = validation.package.files if validation.package is not None else package.files
+    if grammar is None:
+        grammar = str(validation.grammar)
     out: list[tuple[str, bytes]] = []
     for path, data in canonical_files(package, validation.structure):
         if path == "structure.toml":
@@ -321,8 +326,10 @@ def content_files(validation: Validation) -> list[tuple[str, bytes]]:
                 out.append((path, text))
         elif path.startswith("parts/"):
             out.append((path, part_xml(validation.roots[path.removeprefix("parts/")[:-4]])))
+        elif grammar in grammars.VERBATIM_IMAGES:
+            out.append((path, received.get(path, data)))
         else:
-            out.append((path, data))
+            out.append((path, strip_image(path, data)[0]))
     return out
 
 
@@ -346,7 +353,7 @@ def package_files(
 ) -> list[tuple[str, bytes]]:
     """Tutti i file dell'archivio canonico nel loro ordine (§9): ``mimetype``, manifesto,
     ``README.md``, poi i file di contenuto, già canonici e già in ordine."""
-    readme = render_readme(title, language).encode("utf-8")
+    readme = render_readme(title, language, grammar).encode("utf-8")
     hashed = [("README.md", readme), *content]
     manifest: dict[str, object] = {"format": "regodoc", "grammar": grammar}
     if document is not None:

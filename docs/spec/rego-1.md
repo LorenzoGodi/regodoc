@@ -1,4 +1,4 @@
-# Formato `.regodoc`, grammatica `rego/1`
+# Formato `.regodoc`, grammatiche `rego/1` e `rego/2`
 
 Stato: **bozza per l'approvazione**, ottobre 2026. Diventa normativa quando è approvata in
 blocco, dopo la lettura avversaria dei paragrafi 6 e 7.
@@ -13,6 +13,10 @@ nell'[appendice A](#appendice-a-corrispondenza-dei-nomi); l'[appendice B](#appen
 elenca dove è applicata ciascuna decisione. «Decisione N» indica una delle decisioni sul
 formato verificate una per una il 12/10/2026; «decisione AN» uno dei punti aperti chiusi lo
 stesso giorno.
+
+`rego/2`, la grammatica corrente dal motore 0.3, ha lo stesso vocabolario di `rego/1` e cambia
+una sola regola della forma canonica: le immagini sono scritte senza metadati (§13). Dove
+questa specifica dice `rego/1`, vale anche per `rego/2`, salvo il §13.
 
 ## 0. Convenzioni
 
@@ -88,14 +92,14 @@ chiavi e nessun'altra:
 ```json
 {
   "format": "regodoc",
-  "grammar": "rego/1",
+  "grammar": "rego/2",
   "document": "doc-2026-0042",
   "base_version": "sha256:9f2c…",
   "files": {
     "structure.toml": "sha256:4a1d…",
     "parts/network.xml": "sha256:77b0…"
   },
-  "generator": { "engine": "regodoc", "version": "0.1.0" }
+  "generator": { "engine": "regodoc", "version": "0.3.0" }
 }
 ```
 
@@ -121,7 +125,8 @@ Sono errori: chiavi ripetute, chiavi non previste, valori di tipo sbagliato, `Na
 ### 1.4 `README.md`
 
 Il motore lo genera a ogni esportazione, nella lingua del documento, con le istruzioni per
-modificare il pacchetto e rimetterlo insieme. In lettura il suo contenuto è ignorato: conta
+modificare il pacchetto e rimetterlo insieme, e con il nome della grammatica del manifesto.
+In lettura il suo contenuto è ignorato: conta
 solo per i limiti dell'involucro (§7.1) e per il proprio limite di 64 KiB (§7.2).
 
 ### 1.5 Nomi
@@ -877,7 +882,7 @@ Nessuna espressione regolare con backtracking esponenziale gira su testo arbitra
 
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
-| 10. Immagini | struttura di ogni immagine; dei PNG anche i pixel compressi, senza conservarli (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` |
+| 10. Immagini | struttura di ogni immagine; dei PNG anche i pixel compressi, senza conservarli (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` in `rego/1`, `regodoc.image.stripped` in `rego/2` |
 | 11. Rimandi e totali | id unici; rimandi, citazioni, variabili e figure verso oggetti che esistono e del tipo giusto; totali del §7.2 | raccoglie tutti | `regodoc.xml.duplicate_id`, `.unknown_id`, `.reference_target`, `.reference_through`, `.cite_target`, `.unknown_variable`, `.var_form`, `.missing_image`, `regodoc.package.missing_part`, `.orphan_part`, `regodoc.limit.characters`, `.references`, `.sources`; avvisi `regodoc.toml.unused_variable`, `regodoc.image.unused` |
 
 Gli avvisi sulle variabili e sulle immagini mai usate si danno solo se il pacchetto è letto per
@@ -892,11 +897,14 @@ intero (§6): con una parte non letta, «mai usata» potrebbe essere falso.
   per tutte). Sono ammessi i blocchi `IHDR`, `PLTE`, `IDAT`, `IEND`,
   `tRNS`, `gAMA`, `cHRM`, `sRGB`, `iCCP` e `pHYs`. Gli altri blocchi ancillari, per esempio
   testo, data o animazione, producono un avviso e non finiscono nel PDF; un blocco critico
-  sconosciuto è un errore.
+  sconosciuto è un errore. In `rego/2` l'avviso è `regodoc.image.stripped` e nomina tutti i
+  blocchi che la forma canonica toglie (§13).
 - **JPEG**: `SOI` in testa, segmenti ben formati, un solo frame `SOF0`, `SOF1` o `SOF2` con
   precisione 8 bit, 1, 3 o 4 componenti, larghezza e altezza da 1 a 6.000 pixel, `EOI` in coda
   e nient'altro dopo. I segmenti di metadati da `APP1` ad `APP15` e i commenti `COM` producono
-  un avviso; `APP0` (JFIF) no. Le codifiche senza perdita, aritmetiche o a 12 bit sono errori.
+  un avviso; `APP0` (JFIF) no. In `rego/2` l'avviso è `regodoc.image.stripped` e nomina ciò
+  che la forma canonica toglie o riduce, `APP0` compreso (§13). Le codifiche senza perdita,
+  aritmetiche o a 12 bit sono errori.
 - L'estensione deve corrispondere alla firma. SVG, PDF e ogni altro formato sono rifiutati.
 
 ### 6.5 Risorse ed esecuzione
@@ -1103,7 +1111,8 @@ non bloccano il pacchetto.
 | `regodoc.image.format` | §4.5, §6.4 passo 10 |
 | `regodoc.image.extension` | §6.4 passo 10 |
 | `regodoc.image.structure` | §6.4 passo 10 |
-| `regodoc.image.metadata` | avviso; §6.4 passo 10 |
+| `regodoc.image.metadata` | avviso, in `rego/1`; §6.4 passo 10 |
+| `regodoc.image.stripped` | avviso, in `rego/2`; §6.4 passo 10, §13 |
 | `regodoc.image.unused` | avviso; §6.4 passo 11 |
 | `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
@@ -1180,7 +1189,8 @@ grammatica resta la stessa in tutte le versioni del motore (contratto, §8).
 
 - **Archivio**: `mimetype` per prima, poi `manifest.json`, `README.md`, `structure.toml`,
   `variables.toml`, le parti nell'ordine di `structure.toml`, le immagini in ordine
-  alfabetico. Nessuna voce di cartella. `mimetype` e le immagini memorizzate senza
+  alfabetico, in `rego/1` così come sono e in `rego/2` senza metadati (§13). Nessuna voce
+  di cartella. `mimetype` e le immagini memorizzate senza
   compressione, perché un PNG piatto ricompresso supererebbe il rapporto di espansione delle
   immagini (§7.1); tutte le altre voci compresse con «deflate» al livello 9; data di
   modifica fissa, 1980-01-01 00:00; versione «creata da» 3.0
@@ -1229,20 +1239,24 @@ rifiuterebbe l'uscita.
 
 ## 10. Grammatiche
 
-Il manifesto dichiara la grammatica: `"grammar": "rego/1"`.
+Il manifesto dichiara la grammatica: `"grammar": "rego/2"`. Il motore 0.3 legge `rego/1` e
+`rego/2`; la grammatica corrente è `rego/2` (§13).
 
 - Dentro `rego/1` si può solo aggiungere: un elemento, un attributo o un valore nuovo era
   prima un errore, quindi i file esistenti non cambiano significato.
-- Un cambiamento incompatibile apre `rego/2`, con un aggiornatore automatico da `rego/1`.
+- Un cambiamento incompatibile apre una grammatica nuova, con un aggiornatore automatico
+  dalla precedente: così è nata `rego/2`, che cambia la forma canonica delle immagini (§13).
 - Il motore legge **tutte** le grammatiche precedenti e le porta alla forma canonica della
   grammatica corrente con una catena di aggiornatori sempre inclusa nel motore: `regodoc
   upgrade` (decisione 16bis). Chi conserva le versioni registra l'aggiornamento come
   versione nuova, tracciata, mai come riscrittura silenziosa.
 - `regodoc validate` e `regodoc build` leggono una grammatica precedente aggiornandola in
   memoria, con l'avviso informativo `regodoc.grammar.upgraded`; gli errori trovati dopo
-  l'aggiornamento lo dicono nel messaggio. `regodoc canon` scrive solo la grammatica del
-  pacchetto: su una precedente rifiuta con `regodoc.manifest.grammar_old` e rimanda a
-  `regodoc upgrade`.
+  l'aggiornamento lo dicono nel messaggio. `regodoc canon` non aggiorna mai: scrive la forma
+  canonica della grammatica del pacchetto, che resta la stessa in ogni versione del motore.
+  Su una grammatica che il motore non sa più scrivere rifiuta con
+  `regodoc.manifest.grammar_old` e rimanda a `regodoc upgrade`; il motore 0.3 scrive sia
+  `rego/1` sia `rego/2`.
 - Un pacchetto con una grammatica più nuova di quella del motore è rifiutato
   (`regodoc.manifest.grammar_newer`), con un messaggio che indica la grammatica del pacchetto
   e quelle che il motore sa leggere.
@@ -1381,6 +1395,48 @@ nuova del motore o con una grammatica nuova.
 | Indice analitico e glossario | non usati nei documenti di Rego | — |
 | Testo in Markdown, modifiche parziali, importazione di singoli file | decisione 22 | il pacchetto completo |
 | Diagrammi diversi dai quattro tipi del §4.5, e distanze proporzionali alle date | i quattro tipi ci sono dal motore 0.2 | `<figure>` PNG o JPEG |
+
+---
+
+## 13. La grammatica `rego/2`
+
+`rego/2` nasce con il motore 0.3 dalla decisione 15: chi riceve un'immagine non la ricodifica,
+e ne toglie i metadati la forma canonica. Una fotografia porta spesso in `APP1` (Exif) la
+posizione, il numero di serie e una miniatura, e un segmento può arrivare a 64 KiB di byte
+arbitrari: in `rego/1` passano con l'avviso del §6.4, la forma canonica li copia e il PDF li
+include. Il vocabolario, le regole e i limiti sono quelli di `rego/1`; cambia solo la forma
+canonica delle immagini, che il §8 del contratto fissa per grammatica. Per questo serve una
+grammatica nuova e non un'aggiunta dentro `rego/1`.
+
+**Le immagini nella forma canonica di `rego/2`.** Nessuna ricodifica: i pixel decodificati
+sono quelli dell'originale.
+
+- **JPEG**: restano, nello stesso ordine e byte per byte, i segmenti che non sono `APPn` o
+  `COM`, con il flusso compresso di ogni scansione: `DQT`, `DHT`, `SOF`, `DRI`, `SOS` e i
+  marcatori `RSTn` dentro il flusso. Il riempimento `FF` fra i segmenti va via. Un `APP0`
+  JFIF diventa il JFIF minimo di 16 byte (versione 1.01, densità 1:1 senza unità, nessuna
+  miniatura); un `APP14` Adobe diventa i suoi 12 byte, con versione 100, flag a zero e la
+  trasformazione dei colori dell'originale, che decide come si leggono i pixel dei JPEG a 3 e
+  a 4 componenti. Si scrivono solo se l'originale li aveva, il primo di ciascuno: un JFIF in
+  più cambierebbe la lettura di un JPEG CMYK. Ogni altro `APPn`, JFXX compreso, e ogni `COM`
+  sparisce.
+- **PNG**: restano `IHDR`, `PLTE`, `tRNS` e `IEND`, con i dati compressi dei pixel in un solo
+  `IDAT`, senza ricomprimerli, e i CRC ricalcolati. Ogni altro blocco sparisce: anche i
+  profili e le informazioni di colore (`iCCP`, `sRGB`, `gAMA`, `cHRM`) e la densità (`pHYs`).
+  Il PDF di regodoc non li usa: pdfTeX non incorpora i profili e applica la gamma solo se il
+  tema lo chiede, e la larghezza di una figura la dà sempre `width`. Un motore che gestisca i
+  profili di colore aprirà `rego/3`.
+
+Togliere i metadati due volte dà gli stessi byte. Una validazione di un pacchetto `rego/2`
+con metadati dà l'avviso `regodoc.image.stripped`, che li nomina; con `--strict` conta come
+errore, come `regodoc.image.metadata` in `rego/1`.
+
+**Da `rego/1` a `rego/2`.** L'aggiornatore toglie i metadati delle immagini nello stesso modo
+e non cambia nessun altro file: le parti, i TOML e le immagini senza metadati restano byte per
+byte. `regodoc canon` su un pacchetto `rego/1` scrive ancora la forma canonica di `rego/1`,
+con le immagini come sono (§10), e `regodoc upgrade` lo porta a `rego/2`. `regodoc build`
+scrive nella cartella di compilazione le immagini senza metadati in tutte e due le
+grammatiche: il PDF non è forma canonica, e non porta mai i metadati delle immagini.
 
 ---
 

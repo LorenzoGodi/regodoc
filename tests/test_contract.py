@@ -303,7 +303,7 @@ class ReportContractTest(unittest.TestCase):
         self.assertEqual(code, ExitCode.OK)
         self.assertLessEqual(MINIMAL | PACKAGE, set(report))
         self.assertIsNone(report["input"])  # una cartella
-        self.assertEqual(report["grammar"], "rego/1")
+        self.assertEqual(report["grammar"], "rego/2")
         paths = [f["path"] for f in report["files"]]
         self.assertEqual(
             paths,
@@ -345,8 +345,8 @@ class ReportContractTest(unittest.TestCase):
     def test_manifest_fields_are_returned_only_when_well_formed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             for manifest, document in (
-                ('{"format": "regodoc", "grammar": "rego/1", "document": "doc-7"}', "doc-7"),
-                ('{"format": "regodoc", "grammar": "rego/1", "document": "../x"}', None),
+                ('{"format": "regodoc", "grammar": "rego/2", "document": "doc-7"}', "doc-7"),
+                ('{"format": "regodoc", "grammar": "rego/2", "document": "../x"}', None),
             ):
                 files = {**example_files(), "manifest.json": manifest.encode()}
                 archive = Path(tmp) / "p.regodoc"
@@ -369,7 +369,7 @@ class ReportContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for generator, expected in cases:
                 with self.subTest(generator=str(generator)[:40]):
-                    manifest = {"format": "regodoc", "grammar": "rego/1", "generator": generator}
+                    manifest = {"format": "regodoc", "grammar": "rego/2", "generator": generator}
                     files = {**example_files(), "manifest.json": json.dumps(manifest).encode()}
                     archive = Path(tmp) / "p.regodoc"
                     archive.write_bytes(build_zip(files))

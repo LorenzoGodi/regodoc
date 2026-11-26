@@ -19,5 +19,5 @@ read back, and anything changed here is lost.
 3. check the package with `regodoc validate` and rebuild the archive with
    `regodoc canon`.
 
-The format is described in the `rego/1` specification of the regodoc project:
+The format is described in the `rego/2` specification of the regodoc project:
 https://github.com/LorenzoGodi/regodoc/blob/main/docs/spec/rego-1.md
