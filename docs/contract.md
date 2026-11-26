@@ -20,14 +20,15 @@ Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, le capacit�
 `content.calc_operands`, `content.calc_depth`, `content.diagrams`, `content.diagram_items` e
 `content.diagram_label_characters` (§5.1), la chiave `layout` di `info` (§5), il pacchetto
 `tikz` in `info.tex.packages` e i comandi `\RdCellEnd`, `\RdCellR` e quelli dei diagrammi
-(§6.4).
+(§6.4). Il motore 0.3 apre, nello stesso modo, la grammatica `rego/2` con il suo aggiornatore
+da `rego/1` e l'avviso `regodoc.image.stripped` (§8; specifica, §13).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
 scrive un tema esterno e come il motore tratta le grammatiche precedenti. Il formato del
-pacchetto è nella [specifica `rego/1`](spec/rego-1.md). Nel testo, «chi chiama» è il
-programma che usa il motore; Rego, il gestionale per cui il motore è nato, è l'esempio
-ricorrente.
+pacchetto è nella [specifica di `rego/1` e `rego/2`](spec/rego-1.md). Nel testo, «chi
+chiama» è il programma che usa il motore; Rego, il gestionale per cui il motore è nato, è
+l'esempio ricorrente.
 
 Il contratto ha un numero di versione, un intero. **Finché il numero non cambia, chi chiama il
 motore non cambia.** Tutto ciò che il motore può aggiungere senza cambiarlo è elencato al §9.
@@ -696,7 +697,11 @@ Questa è l'unica tabella normativa dei codici d'uscita: il README e la specific
 
 - Il manifesto di ogni pacchetto dichiara la grammatica. Il motore legge tutte quelle in
   `grammars.read` e le porta alla corrente con una catena di aggiornatori, uno per passo
-  (`rego/1` → `rego/2` → …), sempre inclusa nel motore.
+  (`rego/1` → `rego/2` → …), sempre inclusa nel motore. Dal motore 0.3 la grammatica
+  corrente è `rego/2`, che toglie i metadati delle immagini (specifica, §13); il motore 0.3
+  legge e scrive `rego/1` e `rego/2`. In `rego/2` un'immagine con metadati dà l'avviso
+  `regodoc.image.stripped`, che nomina ciò che la forma canonica toglie a pixel invariati;
+  con `--strict` conta come errore, come `regodoc.image.metadata` in `rego/1`.
 - **La forma canonica di una grammatica è fissa fra le versioni del motore**: due versioni del
   motore scrivono gli stessi byte per gli stessi file di quella grammatica. Altrimenti chi
   confronta le impronte vedrebbe modifiche che nessuno ha fatto.
