@@ -75,13 +75,15 @@ tag va sul commit del rilascio, non sulla testa.
    Lo strumento estrae i file del commit con `git archive`, quindi basta un checkout di `main`
    anche non pulito. Se le impronte non coincidono, il rilascio si ferma.
 3. **Pubblicare.** Crea il tag annotato `v<versione>` su quel commit, non sulla testa di
-   `main`, e lo spinge; per la 0.1.0 e per la 0.2.0:
+   `main`, e lo spinge; per la 0.1.0, la 0.2.0 e la 0.3.0:
 
    ```sh
    git tag -a v0.1.0 2a7d943 -m "regodoc 0.1.0"
    git push origin v0.1.0
    git tag -a v0.2.0 794a2a1 -m "regodoc 0.2.0"
    git push origin v0.2.0
+   git tag -a v0.3.0 ea0a224 -m "regodoc 0.3.0"
+   git push origin v0.3.0
    ```
 
    Poi crea la release su GitHub da quel tag con i due file e `SHA256SUMS` della
@@ -93,6 +95,7 @@ tag va sul commit del rilascio, non sulla testa.
 |---|---|---|---|
 | 0.1.0 | `2a7d943` | L7 | vedi sotto |
 | 0.2.0 | `794a2a1` | L16 | vedi sotto |
+| 0.3.0 | `ea0a224` | L18 | vedi sotto |
 
 ```text
 a96095e8de0098e1cb1e6fc2a5232bb7a83555178b802f3503f07f7316636c49  regodoc-0.1.0-py3-none-any.whl
@@ -102,6 +105,11 @@ a96095e8de0098e1cb1e6fc2a5232bb7a83555178b802f3503f07f7316636c49  regodoc-0.1.0-
 ```text
 7a3185ff62d06bfda71d7a5758295866d568b8fd7ec5d837fa737db80c2bfcfb  regodoc-0.2.0-py3-none-any.whl
 57304ecd103d8967e4b44136dce40f2f472e052185b87a82577e28ecb504572b  regodoc-0.2.0.tar.gz
+```
+
+```text
+1c18fac696931fa6505f852c504750d8ac729fc80b623ac8d7142a68f6257248  regodoc-0.3.0-py3-none-any.whl
+e620dc996d5c1232206968ee62c1a13db14175628a45053a284d3b3d16bdf4e8  regodoc-0.3.0.tar.gz
 ```
 
 Una prova del job del pacchetto ricostruisce a ogni commit i commit dei rilasci di questa
@@ -120,9 +128,11 @@ non ha la forma `N.N.N` o `N.N.N.devN`.
 
 ## La versione fissata in Rego
 
-Rego non installa il wheel: usa una copia vendorizzata di `src/regodoc` presa dal tag
-`v0.2.0`, in `tools/regodoc` del suo repository, con `LICENSE`, un manifesto con il commit e
-l'impronta di ogni file e uno script che la verifica; la gestisce Rego. L'installazione del
+Rego non installa il wheel: usa una copia vendorizzata di `src/regodoc`, in `tools/regodoc`
+del suo repository, con `LICENSE`, un manifesto con il commit e l'impronta di ogni file e uno
+script che la verifica; la gestisce Rego. La copia viene da un tag di rilascio solo dal pin di
+F5-o, con il tag `v0.2.0`; la versione che fissa la sceglie Rego, che la sposta alla 0.3.0
+dopo il rilascio. L'installazione del
 wheel con la sua impronta, qui sotto, vale per gli altri usi del motore. Per Rego valgono
 comunque il controllo di `info`, il `--contract` e la sezione «Immagine di Rego» per i
 pacchetti TeX, l'ambiente, l'avvio e il limite di tempo.
