@@ -1116,6 +1116,12 @@ non bloccano il pacchetto.
 | `regodoc.image.metadata` | avviso, in `rego/1`; §6.4 passo 10 |
 | `regodoc.image.stripped` | avviso, in `rego/2`; §6.4 passo 10, §13 |
 | `regodoc.image.unused` | avviso; §6.4 passo 11 |
+| `regodoc.image.pdf_structure` | figura in PDF, `rego/2`; §13 |
+| `regodoc.image.pdf_pages` | figura in PDF, `rego/2`; §13 |
+| `regodoc.image.pdf_active` | figura in PDF, `rego/2`; §13 |
+| `regodoc.image.pdf_metadata` | figura in PDF, `rego/2`; §13 |
+| `regodoc.image.pdf_filter` | figura in PDF, `rego/2`; §13 |
+| `regodoc.image.pdf_font` | figura in PDF, `rego/2`; §13 |
 | `regodoc.markdown.syntax` | ingresso Markdown, `md-1.md` §2, §3 e §5 |
 | `regodoc.markdown.heading` | ingresso Markdown, `md-1.md` §3 e §5 |
 | `regodoc.markdown.html` | ingresso Markdown, `md-1.md` §5 |
@@ -1124,6 +1130,7 @@ non bloccano il pacchetto.
 | `regodoc.markdown.remote_image` | ingresso Markdown, `md-1.md` §5 |
 | `regodoc.markdown.unsupported` | ingresso Markdown, `md-1.md` §5 |
 | `regodoc.limit.markdown` | ingresso Markdown, `md-1.md` §2 e §7 |
+| `regodoc.limit.pdf` | figura in PDF, `rego/2`; §13 |
 | `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
 | `regodoc.limit.variables` | §7.2 |
@@ -1447,6 +1454,45 @@ byte. `regodoc canon` su un pacchetto `rego/1` scrive ancora la forma canonica d
 con le immagini come sono (§10), e `regodoc upgrade` lo porta a `rego/2`. `regodoc build`
 scrive nella cartella di compilazione le immagini senza metadati in tutte e due le
 grammatiche: il PDF non è forma canonica, e non porta mai i metadati delle immagini.
+
+**Le figure in PDF vettoriale.** Dal motore 0.5 (lotto L20) una figura di `rego/2` può essere
+un PDF di una pagina, in `images/` con estensione `.pdf`; in `rego/1` resta un errore. Un
+motore 0.4 la rifiuta come un'estensione che non conosce. Il motore non ripulisce il PDF e
+non ne esegue nulla: lo legge come dati e lo accetta solo nella forma che lo strumento di
+pulizia di chi chiama scrive, altrimenti lo rifiuta con un motivo. La forma canonica lo copia
+byte per byte. Le regole, nell'ordine in cui si controllano:
+
+- **Dimensione**: al massimo 4 MiB (`regodoc.limit.pdf`).
+- **Struttura** (`regodoc.image.pdf_structure`): l'intestazione `%PDF-1.0` … `%PDF-2.0`; dopo
+  l'ultimo `%%EOF` solo spazi; una sola tabella xref classica, dove dice `startxref`, con il
+  trailer subito dopo; nessuna revisione in più (`/Prev`, un secondo trailer), nessun flusso
+  xref (`/XRefStm`, `/Type /XRef`), nessun flusso di oggetti (`/Type /ObjStm`), nessuna
+  cifratura (`/Encrypt`); ogni oggetto all'offset che la tabella dichiara, con il numero
+  giusto; ogni flusso lungo quanto dice `/Length` e chiuso da `endstream`. Al massimo 20 000
+  oggetti e 32 livelli di dizionari e array annidati (`regodoc.limit.pdf`).
+- **Contenuto attivo o nascosto** (`regodoc.image.pdf_active`): nessuno dei nomi `JavaScript`,
+  `JS`, `OpenAction`, `AA`, `Launch`, `SubmitForm`, `ImportData`, `RichMedia`, `EmbeddedFile`,
+  `EmbeddedFiles`, `XFA`, `Annots`, `AcroForm`, `URI`, `GoToR`, `GoToE`, `FileAttachment`,
+  `Sound`, `Movie`, `Rendition`, `3D`, `Names` e `OCProperties`, dovunque compaia e comunque
+  sia scritto: `/J#53` è `/JS`.
+- **Metadati** (`regodoc.image.pdf_metadata`): nessun `/Metadata` e nessun `/PieceInfo`; il
+  dizionario `/Info` del trailer assente o vuoto. Il motore li rifiuta e non li toglie, perché
+  toglierli vorrebbe dire riscrivere il PDF.
+- **Pagine** (`regodoc.image.pdf_pages`): la radice delle pagine ha `/Count 1` e un solo
+  figlio, che è la pagina. La sua `/MediaBox`, propria o della radice, ha quattro numeri e lati
+  fra 1 e 5000 punti; altrimenti è un errore di struttura.
+- **Filtri** (`regodoc.image.pdf_filter`): solo `FlateDecode`, `DCTDecode`, `ASCIIHexDecode`,
+  `ASCII85Decode` e `RunLengthDecode`. `JBIG2Decode`, `JPXDecode`, `LZWDecode`,
+  `CCITTFaxDecode`, `Crypt` e ogni altro nome sono rifiutati: sono i decodificatori con più
+  difetti nella storia dei lettori PDF. I flussi si decodificano contati, senza conservarli:
+  insieme al massimo 64 MiB (`regodoc.limit.pdf`); un flusso che non si decodifica è un errore
+  di struttura.
+- **Font** (`regodoc.image.pdf_font`): ogni font è incorporato. Un font semplice ha un
+  `/FontDescriptor` con `/FontFile`, `/FontFile2` o `/FontFile3`; un `Type0` ha un
+  `/DescendantFonts` con un font incorporato; un `Type3` ha i suoi `/CharProcs`.
+
+Il controllo si fa nella validazione (§6.4 passo 10), un errore per immagine, e il tempo cresce
+in modo lineare con il file: il lettore degli oggetti usa una pila e non la ricorsione.
 
 ---
 
