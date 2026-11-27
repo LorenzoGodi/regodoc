@@ -828,7 +828,7 @@ class PartChecker:
                 self.at(
                     node,
                     "regodoc.xml.figure_file",
-                    f"«{path}» non è un percorso d'immagine valido: images/<nome>.png, .jpg o .pdf",
+                    f"«{path}» non è un percorso d'immagine valido: images/<nome>.png o .jpg",
                 )
             else:
                 self.context.uses.append(Use("figure", path, "", self.file, node.line, node.column))

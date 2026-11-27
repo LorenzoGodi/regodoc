@@ -1,5 +1,4 @@
-"""Verifica strutturale delle immagini PNG e JPEG (specifica §6.4); le figure in PDF le
-controlla pdffigure (§13).
+"""Verifica strutturale delle immagini PNG e JPEG (specifica §6.4).
 
 I pixel dei JPEG non si decodificano. Quelli dei PNG si decomprimono, senza conservarli: il
 flusso deve essere zlib valido e dare esattamente le righe che l'intestazione dichiara, perché
@@ -9,7 +8,6 @@ pdfTeX li decomprime a sua volta e un flusso sbagliato fermerebbe la compilazion
 import struct
 import zlib
 
-from regodoc import pdffigure
 from regodoc.declaration import CONTENT_LIMITS
 from regodoc.diagnostics import Collector
 
@@ -62,19 +60,14 @@ def check_image(
     budget: int | None = None,
     *,
     stripping: bool = False,
-    vector: bool = False,
 ) -> int:
     """Verifica un'immagine del pacchetto e registra errori e avvisi.
 
     Restituisce i byte dei pixel di un PNG valido, che contano nel totale delle immagini;
     ``budget`` è quanto ne resta. Per un JPEG o un'immagine rifiutata restituisce 0. Con
     ``stripping``, per le grammatiche la cui forma canonica toglie i metadati, l'avviso dice
-    che cosa toglie: ``regodoc.image.stripped`` al posto di ``regodoc.image.metadata``. Con
-    ``vector``, per le grammatiche che le ammettono, una figura può essere un PDF.
+    che cosa toglie: ``regodoc.image.stripped`` al posto di ``regodoc.image.metadata``.
     """
-    if path.endswith(".pdf"):
-        _check_vector(path, data, report, allowed=vector)
-        return 0
     limit = CONTENT_LIMITS["image_bytes"]
     if len(data) > limit:
         report.error(
@@ -87,13 +80,11 @@ def check_image(
     is_jpeg = data.startswith(b"\xff\xd8\xff")
     expected_png = path.endswith(".png")
     if not (is_png or is_jpeg):
-        if not vector:
-            detail = "SVG, PDF e altri formati non sono ammessi in rego/1"
-        elif data.startswith(b"%PDF-"):
-            detail = "è un PDF, che come figura vuole l'estensione .pdf"
-        else:
-            detail = "SVG e altri formati non sono ammessi; i PDF hanno l'estensione .pdf"
-        report.error("regodoc.image.format", f"il file non è né PNG né JPEG: {detail}", path)
+        report.error(
+            "regodoc.image.format",
+            "il file non è né PNG né JPEG: SVG, PDF e altri formati non sono ammessi",
+            path,
+        )
         return 0
     if is_png != expected_png:
         report.error(
@@ -129,28 +120,6 @@ def check_image(
     for note in notes:
         report.warning("regodoc.image.metadata", note, path)
     return used
-
-
-def _check_vector(path: str, data: bytes, report: Collector, *, allowed: bool) -> None:
-    """Una figura in PDF vettoriale: solo nelle grammatiche che la ammettono (§13)."""
-    if not allowed:
-        report.error(
-            "regodoc.image.format",
-            "una figura in PDF chiede la grammatica rego/2: in rego/1 le figure sono PNG o JPEG",
-            path,
-        )
-        return
-    if data.startswith((PNG_SIGNATURE, b"\xff\xd8\xff")):
-        report.error(
-            "regodoc.image.extension",
-            "l'estensione non corrisponde al contenuto del file",
-            path,
-        )
-        return
-    try:
-        pdffigure.check(data)
-    except pdffigure.Problem as problem:
-        report.error(problem.code, str(problem), path)
 
 
 def _check_size(width: int, height: int) -> None:
@@ -341,9 +310,6 @@ def strip_image(path: str, data: bytes) -> tuple[bytes, list[str]]:
     """L'immagine senza metadati, a pixel invariati, e l'elenco di ciò che è stato tolto o
     ridotto, senza ripetizioni. ``data`` è un'immagine già controllata da ``check_image``;
     un'immagine che non si legge torna com'è, perché la validazione l'ha già rifiutata."""
-    if path.endswith(".pdf"):
-        # Il PDF arriva già pulito e si copia così com'è: il motore lo controlla soltanto.
-        return data, []
     try:
         if path.endswith(".png"):
             return _strip_png(data)

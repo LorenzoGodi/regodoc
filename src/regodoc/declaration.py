@@ -99,14 +99,6 @@ CONTENT_LIMITS: Final = MappingProxyType(
         # L'ingresso Markdown di import (md-1.md, §7).
         "markdown_bytes": 2 * _MIB,
         "markdown_line_characters": 10_000,
-        # Le figure in PDF vettoriale di rego/2 (specifica, §13): byte del file, oggetti, byte
-        # dei flussi decodificati, contati senza conservarli.
-        "pdf_bytes": 4 * _MIB,
-        # Tutte le figure in PDF del pacchetto: il lettore costa circa un microsecondo per
-        # token, e il tetto tiene validate nel suo tempo dichiarato.
-        "pdf_total_bytes": 16 * _MIB,
-        "pdf_objects": 20_000,
-        "pdf_stream_bytes": 64 * _MIB,
     }
 )
 
@@ -180,7 +172,6 @@ CAPABILITIES: Final = (
     "variables.calc",
     "figure.diagram",
     "import.markdown",
-    "figure.pdf",
 )
 
 # I formati d'ingresso di import e le versioni che il motore legge (md-1.md).
@@ -199,9 +190,7 @@ ID_PATTERN: Final = (
 )
 _IMAGE_NAME = r"(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])[.])[a-z0-9](?:[a-z0-9]|-(?!-)){0,63}(?<!-)"
 PART_PATTERN: Final = rf"parts/(?P<id>{ID_PATTERN})\.xml"
-IMAGE_PATTERN: Final = rf"images/(?P<name>{_IMAGE_NAME})\.(?:png|jpg|jpeg|pdf)"
-# Le immagini a pixel: tutte quelle di rego/1 e dell'ingresso Markdown (md-1.md, §1).
-RASTER_PATTERN: Final = rf"images/(?P<name>{_IMAGE_NAME})\.(?:png|jpg|jpeg)"
+IMAGE_PATTERN: Final = rf"images/(?P<name>{_IMAGE_NAME})\.(?:png|jpg|jpeg)"
 
 # Passate di pdflatex che build può eseguire: due per indice e rimandi, una in più per le
 # citazioni, una di riserva per i riferimenti che si spostano.

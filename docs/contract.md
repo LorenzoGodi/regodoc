@@ -25,13 +25,7 @@ da `rego/1` e l'avviso `regodoc.image.stripped` (§8; specifica, §13). Il motor
 comando `import`, con l'ingresso Markdown `md/1` (§2.1 e §3.4; `spec/md-1.md`), la chiave
 `imports` di `info` (§5), la capacità `import.markdown` (§5.2), i limiti
 `content.markdown_bytes` e `content.markdown_line_characters` (§5.1), il tempo di `import`
-(§2.3) e la famiglia di codici `regodoc.markdown.*` (§4.4). Il motore 0.5 aggiunge dentro
-`rego/2` le figure in PDF vettoriale (specifica, §13), con l'estensione `.pdf` in
-`layout.image_path` (§5), la capacità `figure.pdf` (§5.2), i limiti `content.pdf_bytes`,
-`content.pdf_total_bytes`, `content.pdf_objects` e `content.pdf_stream_bytes` (§5.1) e i codici
-`regodoc.image.pdf_structure`, `.pdf_pages`, `.pdf_active`, `.pdf_metadata`, `.pdf_filter`,
-`.pdf_font` e `regodoc.limit.pdf` (§4.4; specifica, §8.1). Un pacchetto senza figure in PDF ha
-la stessa forma canonica e lo stesso PDF di prima (§8).
+(§2.3) e la famiglia di codici `regodoc.markdown.*` (§4.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -462,7 +456,7 @@ codice d'uscita:
 | `commands` | per ciascun comando, `ready` oppure `draft` (non ancora disponibile, codice 3) |
 | `capabilities` | le capacità di questa versione (§5.2) |
 | `languages` | le lingue del documento supportate |
-| `layout` | la disposizione del pacchetto (specifica, §1.1), dal motore 0.2: `fixed_files`, i file fissi; `folders`, le cartelle; `part_path` e `image_path`, i percorsi ammessi di parti e immagini come espressioni regolari nella sintassi del modulo `re` di Python, da confrontare con il percorso intero, con i gruppi `id` e `name`; dal motore 0.5 `image_path` ammette anche `.pdf`, che solo `rego/2` accetta (specifica, §13) |
+| `layout` | la disposizione del pacchetto (specifica, §1.1), dal motore 0.2: `fixed_files`, i file fissi; `folders`, le cartelle; `part_path` e `image_path`, i percorsi ammessi di parti e immagini come espressioni regolari nella sintassi del modulo `re` di Python, da confrontare con il percorso intero, con i gruppi `id` e `name` |
 | `passes` | `min` e `max` delle passate di pdflatex che `build` può eseguire |
 | `tex` | `packages`: i pacchetti LaTeX che il motore e il tema neutro caricano |
 | `theme` | `contracts`, le versioni del contratto del tema supportate; `roles`, i ruoli della tavolozza; `hooks`, gli agganci (§6); `limits`, `files` e `bytes` della cartella del tema (§3.3) |
@@ -506,10 +500,6 @@ invece di importarli dal codice del motore: la regola 1 vale anche qui.
 | `content.listing_line_characters` | caratteri | per riga di un `<listing>` |
 | `content.markdown_bytes` | byte | dimensione di `document.md` per `import`, dal motore 0.4; oltre, `regodoc.limit.markdown` |
 | `content.markdown_line_characters` | caratteri | per riga di `document.md`, dal motore 0.4 |
-| `content.pdf_bytes` | byte | dimensione di una figura in PDF di `rego/2`, dal motore 0.5; oltre, `regodoc.limit.pdf` |
-| `content.pdf_total_bytes` | byte | tutte le figure in PDF del pacchetto, dal motore 0.5; la figura che lo supera ha `regodoc.limit.pdf` |
-| `content.pdf_objects` | oggetti | righe usate della tabella xref di una figura in PDF, dal motore 0.5 |
-| `content.pdf_stream_bytes` | byte | tutti i flussi di una figura in PDF, decodificati e contati senza conservarli, dal motore 0.5 |
 | `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura con `regodoc.limit.problems` e gli avvisi si contano in `warnings_omitted` (§4.4) |
 
 ### 5.2 Capacità
@@ -528,7 +518,6 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `variables.calc` | le variabili calcolate di `variables.toml` (specifica, §3.3), dal motore 0.2: chi chiama scrive una formula solo se la capacità c'è |
 | `figure.diagram` | i diagrammi di `<figure>` (specifica, §4.5), dal motore 0.2: chi chiama scrive un `<diagram>` solo se la capacità c'è |
 | `import.markdown` | `import --from markdown` con l'ingresso `md/1` (§3.4), dal motore 0.4 |
-| `figure.pdf` | le figure in PDF vettoriale di `rego/2` (specifica, §13), dal motore 0.5: chi chiama mette un `.pdf` in `images/` solo se la capacità c'è, e solo dopo il suo strumento di pulizia |
 
 Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
 `resources.enforced` (§2.3).

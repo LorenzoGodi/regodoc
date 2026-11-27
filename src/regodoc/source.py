@@ -26,7 +26,6 @@ from regodoc.declaration import (
     IMAGE_PATTERN,
     PACKAGE_MIMETYPE,
     PART_PATTERN,
-    RASTER_PATTERN,
 )
 from regodoc.diagnostics import Collector
 
@@ -58,7 +57,6 @@ _FLAG_STRONG_ENCRYPTION = 0x0040
 # La disposizione del §1.1 sta nella dichiarazione, che la espone in info.layout.
 PART_PATH = re.compile(PART_PATTERN)
 IMAGE_PATH = re.compile(IMAGE_PATTERN)
-RASTER_PATH = re.compile(RASTER_PATTERN)
 ID = re.compile(ID_PATTERN)
 _PATH_CHARS = re.compile(r"[a-z0-9._/-]+")
 # File che i sistemi operativi aggiungono da soli (§1.6): ignorati in una cartella, rifiutati
@@ -92,10 +90,9 @@ class Layout:
     folders: frozenset[str]
     parts: bool
     mimetype: bool
-    images: re.Pattern[str]
 
     def allows(self, path: str) -> bool:
-        if path in self.files or self.images.fullmatch(path):
+        if path in self.files or IMAGE_PATH.fullmatch(path):
             return True
         return self.parts and bool(PART_PATH.fullmatch(path))
 
@@ -107,16 +104,8 @@ class Layout:
         return f"la voce «{name}» non è prevista: l'ingresso ha document.md e images/"
 
 
-PACKAGE = Layout(
-    frozenset(FIXED_FILES), frozenset(FOLDERS), parts=True, mimetype=True, images=IMAGE_PATH
-)
-MARKDOWN = Layout(
-    frozenset({"document.md"}),
-    frozenset({"images"}),
-    parts=False,
-    mimetype=False,
-    images=RASTER_PATH,
-)
+PACKAGE = Layout(frozenset(FIXED_FILES), frozenset(FOLDERS), parts=True, mimetype=True)
+MARKDOWN = Layout(frozenset({"document.md"}), frozenset({"images"}), parts=False, mimetype=False)
 
 
 def is_system_file(path: str) -> bool:
@@ -146,9 +135,7 @@ def _layout_message(name: str) -> str:
     if name.startswith("parts/"):
         return f"«{name}» non è un nome di parte valido: serve parts/<id>.xml (§1.5)"
     if name.startswith("images/"):
-        return (
-            f"«{name}» non è un nome d'immagine valido: serve images/<nome>.png, .jpg o .pdf (§1.5)"
-        )
+        return f"«{name}» non è un nome d'immagine valido: serve images/<nome>.png o .jpg (§1.5)"
     return f"la voce «{name}» non è prevista dalla disposizione del pacchetto (§1.1)"
 
 

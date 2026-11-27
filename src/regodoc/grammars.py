@@ -30,9 +30,6 @@ class Step:
 # Le grammatiche la cui forma canonica scrive le immagini così come sono: in rego/2 le
 # immagini sono senza metadati (specifica, §13).
 VERBATIM_IMAGES = frozenset({"rego/1"})
-# Le grammatiche con le sole immagini a pixel: le figure in PDF vettoriale nascono con rego/2
-# (specifica, §13).
-RASTER_ONLY = frozenset({"rego/1"})
 
 
 def rego1_to_rego2(files: Mapping[str, bytes]) -> dict[str, bytes]:
