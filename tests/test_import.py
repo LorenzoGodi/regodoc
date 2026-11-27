@@ -1,13 +1,14 @@
 """La conversione da Markdown md/1 a pacchetto (docs/spec/md-1.md, §1, §3 e §6)."""
 
 import io
+import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from regodoc import importer
-from tests.support import EXAMPLE, validate_bytes
+from regodoc import declaration, importer
+from tests.support import EXAMPLE, run_cli, validate_bytes
 
 PNG = (EXAMPLE / "images" / "coverage.png").read_bytes()
 
@@ -255,6 +256,55 @@ class RefusalTest(Workspace):
         outcome, target = self.run_import(self.folder(files, "in2"), "s.regodoc", strict=True)
         self.assertEqual(outcome.exit_code, 1)
         self.assertFalse(target.exists())
+
+
+class CommandTest(Workspace):
+    def command(self, *argv: object) -> tuple[int, dict[str, object]]:
+        code, out, _ = run_cli("--contract", "1", "import", *(str(a) for a in argv), "--json")
+        return code, json.loads(out)
+
+    def test_written_and_reported(self) -> None:
+        target = self.root / "out.regodoc"
+        code, report = self.command("--from", "markdown", self.folder(bundle()), "-o", target)
+        self.assertEqual(code, 0, report["errors"])
+        self.assertEqual(
+            (report["command"], report["grammar"], report["input"]), ("import", "rego/2", None)
+        )
+        self.assertEqual(
+            report["files_sha256"], validate_bytes(target.read_bytes()).summary()["files_sha256"]
+        )
+
+    def test_refused_with_the_markdown_line(self) -> None:
+        target = self.root / "out.regodoc"
+        source = self.folder(bundle("# T\n\n## P\n\n[x](https://example.com)\n", {}))
+        code, report = self.command("--from", "markdown", source, "-o", target)
+        self.assertEqual(code, 1)
+        self.assertFalse(target.exists())
+        error = report["errors"][0]  # type: ignore[index]
+        self.assertEqual(
+            (error["code"], error["file"], error["line"], error["column"]),  # type: ignore[index]
+            ("regodoc.markdown.link", "document.md", 5, 1),
+        )
+
+    def test_usage(self) -> None:
+        source = self.folder(bundle())
+        for argv in (
+            (source, "-o", self.root / "o.regodoc"),
+            ("--from", "html", source, "-o", self.root / "o.regodoc"),
+            ("--from", "markdown", self.root / "assente", "-o", self.root / "o.regodoc"),
+            ("--from", "markdown", source, "-o", self.root / "o.regodoc", "--document", "../x"),
+            ("--from", "markdown", source, "-o", self.root / "o.regodoc", "--language", "fr"),
+        ):
+            with self.subTest(argv):
+                code, report = self.command(*argv)
+                self.assertEqual(code, 2)
+                self.assertEqual(report["exit_code"], 2)
+
+    def test_declared(self) -> None:
+        info = declaration.describe()
+        self.assertEqual(info["commands"]["import"], "ready")  # type: ignore[index]
+        self.assertEqual(info["imports"], {"markdown": ["md/1"]})
+        self.assertIn("import.markdown", info["capabilities"])  # type: ignore[operator]
 
 
 if __name__ == "__main__":

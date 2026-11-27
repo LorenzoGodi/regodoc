@@ -260,6 +260,16 @@ class EncodingTest(unittest.TestCase):
         self.assertEqual([p.code for p in md.read(long).problems], ["regodoc.limit.markdown"])
         fits = ("# T\n\n## P\n\n" + "x" * md.MAX_LINE + "\n").encode()
         self.assertEqual(md.read(fits).problems, [])
+        # Un file di esattamente MAX_BYTES byte passa, uno in più no.
+        head = b"# T\n\n## P\n\n"
+        line = b"x" * 999 + b"\n"
+        body = line * ((md.MAX_BYTES - len(head)) // len(line))
+        exact = head + body + b"y" * (md.MAX_BYTES - len(head) - len(body) - 1) + b"\n"
+        self.assertEqual(len(exact), md.MAX_BYTES)
+        self.assertEqual(md.read(exact).problems, [])
+        self.assertEqual(
+            [p.code for p in md.read(exact + b"z").problems], ["regodoc.limit.markdown"]
+        )
 
 
 class HostileTest(unittest.TestCase):

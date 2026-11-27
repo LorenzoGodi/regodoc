@@ -96,6 +96,9 @@ CONTENT_LIMITS: Final = MappingProxyType(
         "sources": 500,
         "href_characters": 2000,
         "listing_line_characters": 200,
+        # L'ingresso Markdown di import (md-1.md, §7).
+        "markdown_bytes": 2 * _MIB,
+        "markdown_line_characters": 10_000,
     }
 )
 
@@ -108,6 +111,7 @@ COMMANDS: Final = MappingProxyType(
         "canon": "ready",
         "build": "ready",
         "upgrade": "ready",
+        "import": "ready",
     }
 )
 
@@ -116,7 +120,7 @@ COMMANDS: Final = MappingProxyType(
 RESOURCES: Final = MappingProxyType(
     {
         "time_seconds": MappingProxyType(
-            {"info": 5, "validate": 30, "canon": 60, "build": 300, "upgrade": 60}
+            {"info": 5, "validate": 30, "canon": 60, "build": 300, "upgrade": 60, "import": 60}
         ),
         "memory_bytes": 1024 * _MIB,
         # I sistemi dove il motore limita da sé la memoria, con RLIMIT_AS: altrove il
@@ -167,7 +171,11 @@ CAPABILITIES: Final = (
     "table.align",
     "variables.calc",
     "figure.diagram",
+    "import.markdown",
 )
+
+# I formati d'ingresso di import e le versioni che il motore legge (md-1.md).
+IMPORTS: Final = MappingProxyType({"markdown": ("md/1",)})
 
 LANGUAGES: Final = ("it", "en")
 
@@ -225,6 +233,7 @@ def describe() -> dict[str, object]:
         "contracts": list(CONTRACTS),
         "package": {"mimetype": PACKAGE_MIMETYPE, "extension": PACKAGE_EXTENSION},
         "grammars": {"current": GRAMMAR_CURRENT, "read": list(GRAMMARS_READ)},
+        "imports": {name: list(versions) for name, versions in IMPORTS.items()},
         "limits": {
             "envelope": dict(ENVELOPE_LIMITS),
             "content": dict(CONTENT_LIMITS),

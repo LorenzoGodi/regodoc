@@ -12,11 +12,12 @@ import bisect
 import re
 from dataclasses import dataclass, field
 
+from regodoc.declaration import CONTENT_LIMITS
 from regodoc.source import IMAGE_PATH
 
-# I limiti del file: la dimensione e i caratteri di una riga.
-MAX_BYTES = 2 * 1024 * 1024
-MAX_LINE = 10_000
+# I limiti del file: la dimensione e i caratteri di una riga (md-1.md, §7).
+MAX_BYTES = int(CONTENT_LIMITS["markdown_bytes"])
+MAX_LINE = int(CONTENT_LIMITS["markdown_line_characters"])
 # Le enfasi aperte insieme: il pacchetto non ammette <b> in <b> né <i> in <i>, quindi oltre
 # poche annidature c'è un errore comunque; il tetto tiene lineare l'appaiamento.
 MAX_OPEN_EMPHASIS = 8

@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path, PurePath
 from typing import IO, NoReturn
 
-from regodoc import __version__, build, canon, declaration, limits
+from regodoc import __version__, build, canon, declaration, importer, limits
 from regodoc.diagnostics import Collector, Severity, clip, os_message, sanitize
 from regodoc.outputs import OutputError
 from regodoc.validate import Validation, validate_package
@@ -231,6 +231,27 @@ def build_parser() -> ItalianArgumentParser:
     _add_output(upgrade)
     _add_json(upgrade)
     upgrade.set_defaults(handler=_cmd_upgrade)
+
+    importing = commands.add_parser(
+        "import", help="converte un documento Markdown in un pacchetto (md-1.md)"
+    )
+    importing.add_argument(
+        "--from",
+        dest="source_format",
+        choices=tuple(declaration.IMPORTS),
+        required=True,
+        help="formato d'ingresso",
+    )
+    importing.add_argument("package", metavar="INGRESSO", help="archivio .zip o cartella")
+    _add_output(importing)
+    importing.add_argument(
+        "--language", choices=declaration.LANGUAGES, default="it", help="lingua del documento"
+    )
+    importing.add_argument(
+        "--document", metavar="ID", help="identificatore da scrivere nel manifesto"
+    )
+    _add_json(importing)
+    importing.set_defaults(handler=_cmd_import)
 
     return parser
 
@@ -469,6 +490,11 @@ def _rewrite(command: str, args: argparse.Namespace) -> ExitCode:
             "regodoc.environment",
             f"non posso leggere «{_shown(args.package)}»: permesso negato",
         )
+    return _write_outcome(command, args, outcome)
+
+
+def _write_outcome(command: str, args: argparse.Namespace, outcome: canon.Outcome) -> ExitCode:
+    """Il rapporto di ``canon``, ``upgrade`` e ``import`` (contratto, §4.2)."""
     code = ExitCode(outcome.exit_code)
     validation = outcome.validation
     collector = validation.report
@@ -492,6 +518,38 @@ def _rewrite(command: str, args: argparse.Namespace) -> ExitCode:
         verdict = "uscita scritta" if code is ExitCode.OK else "nessuna uscita"
         _write(sys.stderr, f"regodoc: {verdict} (codice {int(code)})\n")
     return code
+
+
+def _cmd_import(args: argparse.Namespace) -> ExitCode:
+    """``import --from markdown``: un pacchetto canonico da un documento Markdown (md-1.md)."""
+    command = "import"
+    path = Path(args.package)
+    problem = _package_problem(path, args.package)
+    if problem is None:
+        problem = canon.check_options(args.document, None)
+    if problem is not None:
+        return _finish(args.json, command, ExitCode.USAGE, "regodoc.usage", problem)
+    try:
+        outcome = importer.run(
+            path,
+            args.output,
+            language=args.language,
+            document_id=args.document,
+            strict=args.strict,
+        )
+    except OutputError as error:
+        code = ExitCode.ENVIRONMENT if error.environment else ExitCode.USAGE
+        kind = "regodoc.environment" if error.environment else "regodoc.usage"
+        return _finish(args.json, command, code, kind, error.message)
+    except PermissionError:
+        return _finish(
+            args.json,
+            command,
+            ExitCode.ENVIRONMENT,
+            "regodoc.environment",
+            f"non posso leggere «{_shown(args.package)}»: permesso negato",
+        )
+    return _write_outcome(command, args, outcome)
 
 
 def _package_problem(path: Path, given: str) -> str | None:

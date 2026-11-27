@@ -21,7 +21,11 @@ Il motore 0.2 aggiunge, nei modi del §9 e senza cambiare il numero, le capacit�
 `content.diagram_label_characters` (§5.1), la chiave `layout` di `info` (§5), il pacchetto
 `tikz` in `info.tex.packages` e i comandi `\RdCellEnd`, `\RdCellR` e quelli dei diagrammi
 (§6.4). Il motore 0.3 apre, nello stesso modo, la grammatica `rego/2` con il suo aggiornatore
-da `rego/1` e l'avviso `regodoc.image.stripped` (§8; specifica, §13).
+da `rego/1` e l'avviso `regodoc.image.stripped` (§8; specifica, §13). Il motore 0.4 aggiunge il
+comando `import`, con l'ingresso Markdown `md/1` (§2.1 e §3.4; `spec/md-1.md`), la chiave
+`imports` di `info` (§5), la capacità `import.markdown` (§5.2), i limiti
+`content.markdown_bytes` e `content.markdown_line_characters` (§5.1), il tempo di `import`
+(§2.3) e la famiglia di codici `regodoc.markdown.*` (§4.4).
 
 Questo documento dice come un programma usa il motore: come lo chiama, che cosa gli passa,
 che cosa riceve, come legge ciò che il motore sa fare e quali sono i suoi limiti, come si
@@ -69,6 +73,7 @@ JSON (§4.1): chi chiama da un programma usa `info`.
 | `canon` | `PACCHETTO -o ARCHIVIO [--document ID] [--base-version IMPRONTA] [--files-dir CARTELLA]` | l'archivio in forma canonica, con `README.md` e manifesto scritti dal motore | da archivio o cartella; `--document` e `--base-version` scrivono i campi del manifesto (specifica, §1.3), e senza di loro restano i valori del manifesto d'ingresso, se ci sono; `--files-dir` scrive anche i file di contenuto canonici uno per uno, nella cartella data, che deve essere vuota |
 | `build` | `PACCHETTO -o FILE [--format pdf\|latex] [--header JSON] [--theme CARTELLA]` | PDF, oppure una cartella con il LaTeX | solo archivi |
 | `upgrade` | `PACCHETTO -o ARCHIVIO` | l'archivio nella grammatica corrente, in forma canonica | solo archivi |
+| `import` | `--from markdown INGRESSO -o ARCHIVIO [--language it\|en] [--document ID]` | un pacchetto nella grammatica corrente, in forma canonica, con `README.md` e manifesto scritti dal motore | dal motore 0.4; l'ingresso è un archivio `.zip` o una cartella con `document.md` e `images/` (§3.4); `--language` sceglie la lingua del documento, `it` se manca; `--document` scrive il campo del manifesto come in `canon` |
 
 Opzioni comuni:
 
@@ -151,7 +156,9 @@ elenca i sistemi dove il motore limita da sé la memoria, ed è vuoto quando `en
     riga, i casi delle parti escono dai 384 KiB nella forma canonica e `canon` li rifiuta;
     ognuno ha una variante più corta che sta nei limiti e passa per intero, e si misura anche
     quella. Con un tema esterno `build` compila una volta in più, per il controllo dei
-    pacchetti del §6.1: da mezzo secondo a circa 1,5 s.
+    pacchetti del §6.1: da mezzo secondo a circa 1,5 s. `import` legge il Markdown in tempo
+    lineare e poi fa il lavoro di `canon` sul pacchetto generato, che sta negli stessi limiti:
+    dichiara gli stessi 60 s.
   - **SIGALRM e SIGINT.** Il motore usa `SIGALRM` per il tempo: un `SIGALRM` mandato da
     fuori durante un comando lo ferma come un tempo scaduto, con il codice 3 e
     `regodoc.limit.time`. Un `SIGINT` interrompe il comando con il codice 130 e il rapporto;
@@ -256,6 +263,24 @@ tema neutro. Regole della cartella:
 Il motore legge la cartella senza seguire collegamenti e la copia nella propria cartella di
 lavoro. Un tema mancante, illeggibile o sbagliato ferma `build` con il codice 2 e un errore
 `regodoc.theme.*`.
+
+### 3.4 L'ingresso Markdown (`import`)
+
+Dal motore 0.4, `import --from markdown` converte un file Markdown nel formato `md/1`
+(`spec/md-1.md`) in un pacchetto. L'ingresso è un archivio `.zip` o una cartella con
+`document.md` e, se il testo richiama figure, la cartella `images/`; nessun altro file e
+nessun `mimetype`. Chi chiama non apre l'ingresso e non ne controlla nulla oltre alla
+dimensione, al massimo `limits.envelope.compressed_bytes`: il motore lo legge con le stesse
+difese e gli stessi limiti dell'involucro di un pacchetto, e lo rifiuta con i codici
+`regodoc.archive.*` e `regodoc.markdown.*`.
+
+Il rapporto ha la forma di quello di `canon` (§4.2), con `input` a `null`. I problemi del
+Markdown, e quelli che la validazione trova nel pacchetto generato, portano `file`
+`"document.md"` con la riga del Markdown da cui viene il blocco; i problemi delle immagini
+portano il loro percorso. L'uscita esiste solo con il codice 0, come per `canon`. Lo stesso
+ingresso con le stesse opzioni dà sempre gli stessi byte. L'importazione di una parte sola in
+un documento che esiste già resta a chi chiama: il motore converte sempre un documento
+intero.
 
 ## 4. Il rapporto
 
@@ -395,7 +420,8 @@ Con i campi del §4.2 per 200 file, un rapporto resta sotto 1 MiB.
 **Codici.** Il codice è normativo, il testo del messaggio no. Famiglie: `regodoc.archive.*`,
 `regodoc.package.*`, `regodoc.manifest.*`, `regodoc.grammar.*`, `regodoc.toml.*`,
 `regodoc.xml.*`, `regodoc.text.*`, `regodoc.image.*`, `regodoc.limit.*`, `regodoc.header.*`,
-`regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`; fuori dalle famiglie: `regodoc.usage`,
+`regodoc.theme.*`, `regodoc.tex.*`, `regodoc.pdf.*`, `regodoc.markdown.*` (dal motore 0.4, per
+`import`); fuori dalle famiglie: `regodoc.usage`,
 `regodoc.environment`, `regodoc.not_implemented`, `regodoc.interrupted`, `regodoc.internal`.
 
 Chi chiama sceglie l'azione **prima dal codice d'uscita** (§7). I codici d'errore e d'avviso
@@ -424,6 +450,7 @@ codice d'uscita:
 | `contracts` | le versioni del contratto supportate da `--contract` |
 | `package` | `mimetype` ed `extension` del pacchetto (`application/vnd.regodoc.document`, `.regodoc`), per la firma del §3.1 |
 | `grammars` | `current`, la grammatica che il motore scrive, e `read`, quelle che sa leggere, dalla più vecchia |
+| `imports` | dal motore 0.4: per ogni formato d'ingresso di `import`, le versioni che il motore legge; oggi `{"markdown": ["md/1"]}` |
 | `limits` | `envelope` e `content`, tabella del §5.1 |
 | `resources` | `time_seconds` per comando, `memory_bytes`, `memory_enforced_on` (i sistemi dove il motore applica da sé il limite di memoria: vuoto quando `enforced` è `false`) ed `enforced` (§2.3) |
 | `commands` | per ciascun comando, `ready` oppure `draft` (non ancora disponibile, codice 3) |
@@ -471,6 +498,8 @@ invece di importarli dal codice del motore: la regola 1 vale anche qui.
 | `content.sources` | fonti | elementi `<source>` |
 | `content.href_characters` | caratteri | per `href` |
 | `content.listing_line_characters` | caratteri | per riga di un `<listing>` |
+| `content.markdown_bytes` | byte | dimensione di `document.md` per `import`, dal motore 0.4; oltre, `regodoc.limit.markdown` |
+| `content.markdown_line_characters` | caratteri | per riga di `document.md`, dal motore 0.4 |
 | `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura con `regodoc.limit.problems` e gli avvisi si contano in `warnings_omitted` (§4.4) |
 
 ### 5.2 Capacità
@@ -488,6 +517,7 @@ Stringhe stabili; una capacità nuova è un'aggiunta compatibile.
 | `table.align` | l'attributo `align` di `<table>` (specifica, §4.4), dal motore 0.2: chi chiama lo scrive solo se la capacità c'è |
 | `variables.calc` | le variabili calcolate di `variables.toml` (specifica, §3.3), dal motore 0.2: chi chiama scrive una formula solo se la capacità c'è |
 | `figure.diagram` | i diagrammi di `<figure>` (specifica, §4.5), dal motore 0.2: chi chiama scrive un `<diagram>` solo se la capacità c'è |
+| `import.markdown` | `import --from markdown` con l'ingresso `md/1` (§3.4), dal motore 0.4 |
 
 Se il motore applica da sé i limiti di risorse non è una capacità: lo dice solo
 `resources.enforced` (§2.3).

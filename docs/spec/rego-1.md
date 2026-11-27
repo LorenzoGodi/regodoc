@@ -963,6 +963,8 @@ grammatica.
 | Fonti | 500 | `content.sources` |
 | `href` | 2.000 caratteri | `content.href_characters` |
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
+| `document.md` dell'ingresso Markdown, dal motore 0.4 (`md-1.md`, §7) | 2 MiB | `content.markdown_bytes` |
+| Riga di `document.md`, dal motore 0.4 | 10.000 caratteri | `content.markdown_line_characters` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
 | Diagrammi (§4.5) | 40 per documento, 30 elementi per diagramma, 80 caratteri per etichetta; oltre è `regodoc.limit.diagram` | `content.diagrams`, `content.diagram_items`, `content.diagram_label_characters` |
 | Formula di una variabile calcolata (§3.3) | 500 caratteri, 64 operandi, 16 livelli di parentesi; oltre è `regodoc.limit.calc` | `content.calc_characters`, `content.calc_operands`, `content.calc_depth` |

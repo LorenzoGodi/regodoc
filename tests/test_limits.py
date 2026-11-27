@@ -354,6 +354,8 @@ class ContentBoundaryTest(unittest.TestCase):
             "table_columns_normal_size",  # tocca la resa, non la validazione
             "image_pixel_bytes",  # sotto, al passo intero di byte per pixel
             "images_pixel_bytes",  # sotto
+            "markdown_bytes",  # test_markdown, EncodingTest, sul file d'ingresso di import
+            "markdown_line_characters",  # test_markdown, EncodingTest
         }
         self.assertEqual(sorted(set(L) - covered), [])
 

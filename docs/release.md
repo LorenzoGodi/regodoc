@@ -205,11 +205,11 @@ python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.3.0
 ```
 
 **Controllo di `info`.** All'avvio del servizio, o alla costruzione dell'immagine, Rego legge
-`info` e confronta almeno questi campi; per la 0.3.0 i valori attesi sono:
+`info` e confronta almeno questi campi; per la 0.4.0 i valori attesi sono:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "contract": 1,
   "contracts": [1],
   "expat_min": "2.6.0",
@@ -217,6 +217,7 @@ python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.3.0
   "commands": {
     "build": "ready",
     "canon": "ready",
+    "import": "ready",
     "info": "ready",
     "upgrade": "ready",
     "validate": "ready"
@@ -225,13 +226,16 @@ python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.3.0
     "enforced": true,
     "memory_bytes": 1073741824,
     "memory_enforced_on": ["linux"],
-    "time_seconds": {"build": 300, "canon": 60, "info": 5, "upgrade": 60, "validate": 30}
+    "time_seconds": {
+      "build": 300, "canon": 60, "import": 60, "info": 5, "upgrade": 60, "validate": 30
+    }
   }
 }
 ```
 
-Per la 0.2.0, la versione fissata in Rego finché non la sposta alla 0.3.0, valgono gli stessi
-valori con `"version": "0.2.0"` e `"grammars": {"current": "rego/1", "read": ["rego/1"]}`.
+Per la 0.3.0, la versione fissata in Rego finché non la sposta alla 0.4.0, valgono gli stessi
+valori con `"version": "0.3.0"` e senza `import`, né in `commands` né in `time_seconds`; per
+la 0.2.0, anche con `"grammars": {"current": "rego/1", "read": ["rego/1"]}`.
 
 `expat` dipende dalla libreria dell'interprete e non ha un valore atteso: deve essere almeno
 `expat_min`, confrontando le versioni come numeri (`2.10.0` è più recente di `2.6.0`). Un
