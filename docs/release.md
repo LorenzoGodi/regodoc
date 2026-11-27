@@ -150,7 +150,7 @@ requisiti che porta l'indirizzo del file e la sua impronta, presa da `SHA256SUMS
 release:
 
 ```text
-regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.4.0/regodoc-0.4.0-py3-none-any.whl \
+regodoc @ https://github.com/LorenzoGodi/regodoc/releases/download/v0.5.0/regodoc-0.5.0-py3-none-any.whl \
     --hash=sha256:<impronta del wheel>
 ```
 
@@ -209,15 +209,15 @@ chiamata:
 `tools/check_install.py` fa esattamente questo, ed è il riferimento da cui copiare:
 
 ```sh
-python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.4.0
+python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.5.0
 ```
 
 **Controllo di `info`.** All'avvio del servizio, o alla costruzione dell'immagine, Rego legge
-`info` e confronta almeno questi campi; per la 0.4.0 i valori attesi sono:
+`info` e confronta almeno questi campi; per la 0.5.0 i valori attesi sono:
 
 ```json
 {
-  "version": "0.4.0",
+  "version": "0.5.0",
   "contract": 1,
   "contracts": [1],
   "expat_min": "2.6.0",
@@ -241,9 +241,11 @@ python3 tools/check_install.py --python /opt/regodoc/bin/python --version 0.4.0
 }
 ```
 
-Per la 0.3.0, la versione fissata in Rego finché non la sposta alla 0.4.0, valgono gli stessi
-valori con `"version": "0.3.0"` e senza `import`, né in `commands` né in `time_seconds`; per
-la 0.2.0, anche con `"grammars": {"current": "rego/1", "read": ["rego/1"]}`.
+Per la 0.4.0 valgono gli stessi valori con `"version": "0.4.0"`: le figure in PDF della 0.5
+cambiano le capacità e i limiti, non questi campi. Per la 0.3.0, la versione fissata in Rego
+finché non la sposta, valgono gli stessi valori con `"version": "0.3.0"` e senza `import`, né
+in `commands` né in `time_seconds`; per la 0.2.0, anche con
+`"grammars": {"current": "rego/1", "read": ["rego/1"]}`.
 
 `expat` dipende dalla libreria dell'interprete e non ha un valore atteso: deve essere almeno
 `expat_min`, confrontando le versioni come numeri (`2.10.0` è più recente di `2.6.0`). Un

@@ -8,11 +8,13 @@ per il PDF serve TeX Live.
 Rego lo usa come dipendenza con versione fissata. Chiunque può usarlo da solo, con Python
 e TeX Live.
 
-> **Stato:** versione 0.4.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`,
+> **Stato:** versione 0.5.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`,
 > `upgrade` e `import`. La 0.2 ha aggiunto l'allineamento delle colonne delle tabelle, le
 > variabili calcolate e i diagrammi. La 0.3 apre la grammatica `rego/2`, che toglie i metadati
 > delle immagini a pixel invariati, e legge ancora `rego/1`. La 0.4 aggiunge `import`, che
 > converte un documento Markdown nudo in un pacchetto ([`docs/spec/md-1.md`](docs/spec/md-1.md)).
+> La 0.5 ammette in `rego/2` le figure in PDF vettoriale di una pagina, che il motore controlla
+> e non ripulisce.
 > Il contratto resta 1. La specifica dei due formati del pacchetto è in
 > [`docs/spec/rego-1.md`](docs/spec/rego-1.md). In `examples/` ci sono due pacchetti
 > d'esempio sintetici, `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`, lungo, in
