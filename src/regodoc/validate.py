@@ -234,6 +234,7 @@ def _validate(path: Path, result: Validation, data: bytes | None) -> None:
         report,
         originals=result.package,
         stripping=result.grammar not in grammars.VERBATIM_IMAGES,
+        vector=result.grammar not in grammars.RASTER_ONLY,
     )
 
 
@@ -354,6 +355,7 @@ def _check_parts(
     *,
     originals: PackageFiles,
     stripping: bool,
+    vector: bool,
 ) -> dict[str, Node]:
     roots: dict[str, Node] = {}
     entries = {entry.id: entry for entry in structure.entries}
@@ -408,7 +410,7 @@ def _check_parts(
     # l'aggiornamento in memoria le ha già pulite: gli avvisi parlano dei file ricevuti.
     for path in sorted(images):
         data = originals.files.get(path, package.files[path])
-        budget -= check_image(path, data, report, budget, stripping=stripping)
+        budget -= check_image(path, data, report, budget, stripping=stripping, vector=vector)
     # Il controllore delle parti segna da sé gli elementi in cui non è sceso.
     context.complete = context.complete and complete
     _check_uses(context, images, complete=context.complete)

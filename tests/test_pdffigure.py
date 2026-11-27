@@ -6,59 +6,9 @@ import time
 import unittest
 import zlib
 
-from regodoc import pdffigure
-
-DRAWING = b"0.2 0.4 0.8 rg 10 10 80 40 re f 1 w 0 0 m 100 60 l S"
-
-
-def pdf(
-    objects: dict[int, bytes],
-    *,
-    trailer: bytes = b"",
-    version: bytes = b"1.4",
-    tail: bytes = b"",
-    newline: bytes = b"\n",
-) -> bytes:
-    """Un PDF con questi oggetti e la tabella xref giusta: l'oggetto 1 è il catalogo. Gli a capo
-    fuori dagli oggetti sono `newline`; le righe della tabella xref restano di 20 byte."""
-    nl = newline
-    entry_end = b" \n" if nl == b"\n" else b"\r\n"
-    out = bytearray(b"%PDF-" + version + nl + b"%\xe2\xe3\xcf\xd3" + nl)
-    offsets: dict[int, int] = {}
-    for number in sorted(objects):
-        offsets[number] = len(out)
-        out += b"%d 0 obj" % number + nl + objects[number] + nl + b"endobj" + nl
-    xref = len(out)
-    size = max(objects) + 1
-    out += b"xref" + nl + b"0 %d" % size + nl + b"0000000000 65535 f" + entry_end
-    for number in range(1, size):
-        if number in offsets:
-            out += b"%010d 00000 n" % offsets[number] + entry_end
-        else:
-            out += b"0000000000 00000 f" + entry_end
-    out += b"trailer" + nl + b"<< /Size %d /Root 1 0 R " % size + trailer + b">>" + nl
-    out += b"startxref" + nl + b"%d" % xref + nl + b"%%EOF" + nl + tail
-    return bytes(out)
-
-
-def stream(body: bytes, extra: bytes = b"") -> bytes:
-    return b"<< /Length %d " % len(body) + extra + b">>\nstream\n" + body + b"\nendstream"
-
-
-def figure(
-    page_extra: bytes = b"", resources: bytes = b"", content: bytes = DRAWING
-) -> dict[int, bytes]:
-    return {
-        1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 120] /Contents 4 0 R "
-        + b"/Resources << "
-        + resources
-        + b">> "
-        + page_extra
-        + b">>",
-        4: stream(zlib.compress(content), b"/Filter /FlateDecode "),
-    }
+from regodoc import compiler, pdffigure
+from tests.support import DRAWING, pdf, stream
+from tests.support import pdf_figure as figure
 
 
 def with_font(font: bytes, *more: tuple[int, bytes]) -> dict[int, bytes]:
@@ -134,6 +84,11 @@ class AcceptedTest(unittest.TestCase):
 
 
 class RefusedTest(unittest.TestCase):
+    def test_the_output_names_are_refused_too(self) -> None:
+        # I nomi che il motore non lascia uscire nel suo PDF non entrano neppure da una figura;
+        # /ObjStm è un errore di struttura.
+        self.assertLessEqual(compiler.ACTIVE_NAMES - {"ObjStm"}, pdffigure.ACTIVE)
+
     def test_structure(self) -> None:
         good = pdf(figure())
         xref = good.rindex(b"\nxref") + 1
@@ -249,13 +204,36 @@ class RefusedTest(unittest.TestCase):
 
 class LimitsTest(unittest.TestCase):
     def test_size(self) -> None:
-        big = pdf(figure()) + b"%" * pdffigure.MAX_BYTES
-        self.assertEqual(code(big), "regodoc.limit.pdf")
+        # Al limite passa, un byte oltre no: il riempimento è una stringa dentro un oggetto.
+        def sized(total: int) -> bytes:
+            # Il numero dopo startxref si allunga con il file: si corregge una seconda volta.
+            data = b""
+            filler = total - len(pdf({**figure(), 5: b"()"}))
+            for _ in range(2):
+                data = pdf({**figure(), 5: b"(" + b"x" * filler + b")"})
+                filler -= len(data) - total
+            return data
+
+        self.assertEqual(len(sized(pdffigure.MAX_BYTES)), pdffigure.MAX_BYTES)
+        self.assertIsNone(code(sized(pdffigure.MAX_BYTES)))
+        self.assertEqual(code(sized(pdffigure.MAX_BYTES + 1)), "regodoc.limit.pdf")
 
     def test_objects(self) -> None:
-        many = figure()
-        many.update({n: b"0" for n in range(5, pdffigure.MAX_OBJECTS + 10)})
-        self.assertEqual(code(pdf(many)), "regodoc.limit.pdf")
+        # Gli oggetti da 1 a MAX_OBJECTS; la riga 0 della tabella xref non è un oggetto.
+        def objects(last: int) -> dict[int, bytes]:
+            return {**figure(), **{n: b"0" for n in range(5, last + 1)}}
+
+        self.assertIsNone(code(pdf(objects(pdffigure.MAX_OBJECTS))))
+        self.assertEqual(code(pdf(objects(pdffigure.MAX_OBJECTS + 1))), "regodoc.limit.pdf")
+
+    def test_stream_bytes(self) -> None:
+        # Contano tutti i flussi decodificati: il disegno della pagina e il riempimento.
+        def decoded(total: int) -> bytes:
+            filler = zlib.compress(b" " * (total - len(DRAWING)), 9)
+            return pdf({**figure(), 5: stream(filler, b"/Filter /FlateDecode ")})
+
+        self.assertIsNone(code(decoded(pdffigure.MAX_STREAM_BYTES)))
+        self.assertEqual(code(decoded(pdffigure.MAX_STREAM_BYTES + 1)), "regodoc.limit.pdf")
 
     def test_depth(self) -> None:
         deep = figure()
@@ -264,6 +242,14 @@ class LimitsTest(unittest.TestCase):
         fits = figure()
         fits[5] = b"[" * pdffigure.MAX_DEPTH + b"]" * pdffigure.MAX_DEPTH
         self.assertIsNone(code(pdf(fits)))
+
+    def test_the_budget_counts_every_filter(self) -> None:
+        # Un flusso ASCIIHex non supera il tetto da solo, ma dopo la bomba sì.
+        half = zlib.compress(b"\x00" * (pdffigure.MAX_STREAM_BYTES - 100), 9)
+        objects = figure()
+        objects[5] = stream(half, b"/Filter /FlateDecode ")
+        objects[6] = stream(b"00" * 200 + b">", b"/Filter /ASCIIHexDecode ")
+        self.assertEqual(code(pdf(objects)), "regodoc.limit.pdf")
 
     def test_decompression_bombs(self) -> None:
         bomb = zlib.compress(b"\x00" * (pdffigure.MAX_STREAM_BYTES + 1), 9)

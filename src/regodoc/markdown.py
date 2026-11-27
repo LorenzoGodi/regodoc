@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 
 from regodoc.declaration import CONTENT_LIMITS
-from regodoc.source import IMAGE_PATH
+from regodoc.source import RASTER_PATH
 
 # I limiti del file: la dimensione e i caratteri di una riga (md-1.md, §7).
 MAX_BYTES = int(CONTENT_LIMITS["markdown_bytes"])
@@ -446,7 +446,7 @@ class _Reader:
                 column,
             )
             return
-        if not IMAGE_PATH.fullmatch(path):
+        if not RASTER_PATH.fullmatch(path):
             self.problem(
                 "regodoc.markdown.image",
                 f"«{_clip(path)}» non è un'immagine ammessa: images/nome.png, .jpg o .jpeg",

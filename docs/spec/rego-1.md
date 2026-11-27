@@ -55,7 +55,7 @@ Un `.regodoc` è un archivio ZIP con questi file e nessun altro:
 | `structure.toml` | sì | l'autore | intestazione, lingua, ordine e attributi delle parti (§2) |
 | `variables.toml` | no | l'autore | valori nominati (§3) |
 | `parts/<id>.xml` | almeno uno | l'autore | il testo: un file per apertura o per parte (§4) |
-| `images/<nome>.png`, `.jpg` o `.jpeg` | no | l'autore | figure (§4.5) |
+| `images/<nome>.png`, `.jpg` o `.jpeg`; `.pdf` in `rego/2` | no | l'autore | figure (§4.5, §13) |
 
 Sono ammesse anche le voci di cartella `parts/` e `images/`, vuote; non contano nel limite dei
 200 file (§7.1). Qualunque altra voce è un errore, comprese quelle che i sistemi operativi
@@ -135,7 +135,7 @@ solo per i limiti dell'involucro (§7.1) e per il proprio limite di 64 KiB (§7.
 |---|---|
 | id di aperture, parti, sezioni e fonti | `[a-z][a-z0-9-]{0,47}` |
 | nome di un'immagine, senza estensione | `[a-z0-9][a-z0-9-]{0,63}` |
-| estensione di un'immagine | `.png`, `.jpg` o `.jpeg`, in minuscolo |
+| estensione di un'immagine | `.png`, `.jpg` o `.jpeg`, in minuscolo; in `rego/2` anche `.pdf`, una figura vettoriale (§13) |
 | nome di una variabile | `[a-z][A-Za-z0-9]{0,47}` (camelCase) |
 
 Un id o un nome d'immagine non può finire con `-`, non può contenere `--` e non può essere un
@@ -592,7 +592,8 @@ Regole:
 ```
 
 - `file` è il percorso completo dell'immagine nel pacchetto, in `images/`, e il file deve
-  esistere. Sono ammessi solo PNG e JPEG (decisione 15).
+  esistere. Sono ammessi PNG e JPEG (decisione 15) e, dal motore 0.5 e solo in `rego/2`, un
+  PDF vettoriale di una pagina (§13).
 - `width` è una frazione della larghezza del testo: un numero da `0.1` a `1`, con il punto e
   al massimo due decimali. Se manca vale `1` (decisione 32). Il punto, e non la virgola,
   perché è un parametro tecnico come le misure delle colonne, non un valore stampato.
@@ -882,7 +883,7 @@ Nessuna espressione regolare con backtracking esponenziale gira su testo arbitra
 
 | Passo | Che cosa controlla | Al primo errore | Codici |
 |---|---|---|---|
-| 10. Immagini | struttura di ogni immagine; dei PNG anche i pixel compressi, senza conservarli (sotto); al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `regodoc.limit.images`, `.image_size`; avviso `regodoc.image.metadata` in `rego/1`, `regodoc.image.stripped` in `rego/2` |
+| 10. Immagini | struttura di ogni immagine; dei PNG anche i pixel compressi, senza conservarli (sotto); delle figure in PDF le regole del §13; al massimo 80 immagini, ognuna al massimo 8 MiB | raccoglie, un errore per immagine | `regodoc.image.format`, `.extension`, `.structure`, `.pdf_structure`, `.pdf_pages`, `.pdf_active`, `.pdf_metadata`, `.pdf_filter`, `.pdf_font`, `regodoc.limit.images`, `.image_size`, `.pdf`; avviso `regodoc.image.metadata` in `rego/1`, `regodoc.image.stripped` in `rego/2` |
 | 11. Rimandi e totali | id unici; rimandi, citazioni, variabili e figure verso oggetti che esistono e del tipo giusto; totali del §7.2 | raccoglie tutti | `regodoc.xml.duplicate_id`, `.unknown_id`, `.reference_target`, `.reference_through`, `.cite_target`, `.unknown_variable`, `.var_form`, `.missing_image`, `regodoc.package.missing_part`, `.orphan_part`, `regodoc.limit.characters`, `.references`, `.sources`; avvisi `regodoc.toml.unused_variable`, `regodoc.image.unused` |
 
 Gli avvisi sulle variabili e sulle immagini mai usate si danno solo se il pacchetto è letto per
@@ -965,6 +966,7 @@ grammatica.
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
 | `document.md` dell'ingresso Markdown, dal motore 0.4 (`md-1.md`, §7) | 2 MiB | `content.markdown_bytes` |
 | Riga di `document.md`, dal motore 0.4 | 10.000 caratteri | `content.markdown_line_characters` |
+| Figura in PDF di `rego/2`, dal motore 0.5 (§13) | 4 MiB, 20.000 oggetti, 64 MiB di flussi decodificati | `content.pdf_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
 | Diagrammi (§4.5) | 40 per documento, 30 elementi per diagramma, 80 caratteri per etichetta; oltre è `regodoc.limit.diagram` | `content.diagrams`, `content.diagram_items`, `content.diagram_label_characters` |
 | Formula di una variabile calcolata (§3.3) | 500 caratteri, 64 operandi, 16 livelli di parentesi; oltre è `regodoc.limit.calc` | `content.calc_characters`, `content.calc_operands`, `content.calc_depth` |
@@ -1456,11 +1458,15 @@ scrive nella cartella di compilazione le immagini senza metadati in tutte e due 
 grammatiche: il PDF non è forma canonica, e non porta mai i metadati delle immagini.
 
 **Le figure in PDF vettoriale.** Dal motore 0.5 (lotto L20) una figura di `rego/2` può essere
-un PDF di una pagina, in `images/` con estensione `.pdf`; in `rego/1` resta un errore. Un
-motore 0.4 la rifiuta come un'estensione che non conosce. Il motore non ripulisce il PDF e
-non ne esegue nulla: lo legge come dati e lo accetta solo nella forma che lo strumento di
-pulizia di chi chiama scrive, altrimenti lo rifiuta con un motivo. La forma canonica lo copia
-byte per byte. Le regole, nell'ordine in cui si controllano:
+un PDF di una pagina, in `images/` con estensione `.pdf`. Un motore 0.4 la rifiuta come
+un'estensione che non conosce. In un pacchetto `rego/1` resta un errore,
+`regodoc.image.format`, e l'aggiornatore non la porta in `rego/2`: il pacchetto rifiutato non
+si aggiorna. Il motore non ripulisce il PDF e non ne esegue nulla: lo legge come dati e lo
+accetta solo nella forma che lo strumento di pulizia di chi chiama scrive, altrimenti lo
+rifiuta con un motivo. La forma canonica lo copia byte per byte, memorizzato come le altre
+immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'estensione `.pdf` è
+`regodoc.image.extension`; un PDF con l'estensione di un'immagine a pixel resta
+`regodoc.image.format`. Le regole, nell'ordine in cui si controllano:
 
 - **Dimensione**: al massimo 4 MiB (`regodoc.limit.pdf`).
 - **Struttura** (`regodoc.image.pdf_structure`): l'intestazione `%PDF-1.0` … `%PDF-2.0`; dopo

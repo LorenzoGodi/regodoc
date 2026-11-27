@@ -23,10 +23,12 @@ import re
 import zlib
 from dataclasses import dataclass
 
+from regodoc.declaration import CONTENT_LIMITS
+
 # I limiti di un PDF (specifica, §7.2).
-MAX_BYTES = 4 * 1024 * 1024
-MAX_OBJECTS = 20_000
-MAX_STREAM_BYTES = 64 * 1024 * 1024
+MAX_BYTES = int(CONTENT_LIMITS["pdf_bytes"])
+MAX_OBJECTS = int(CONTENT_LIMITS["pdf_objects"])
+MAX_STREAM_BYTES = int(CONTENT_LIMITS["pdf_stream_bytes"])
 MAX_DEPTH = 32
 MAX_SIDE = 5000  # punti tipografici, poco meno di 1,8 m
 
@@ -427,22 +429,26 @@ def _check_streams(document: _Document) -> None:
             if name == "DCTDecode":
                 break  # i dati JPEG restano compressi: pdfTeX li copia così
             data = _decode(name, data, budget)
+        if len(data) > budget:
+            raise _over()
         budget -= len(data)
 
 
-def _decode(name: str, data: bytes, budget: int) -> bytes:
-    def over() -> Problem:
-        return Problem(
-            "regodoc.limit.pdf",
-            f"i flussi del PDF decompressi superano {MAX_STREAM_BYTES // (1024 * 1024)} MiB",
-        )
+def _over() -> Problem:
+    return Problem(
+        "regodoc.limit.pdf",
+        f"i flussi del PDF decompressi superano {MAX_STREAM_BYTES // (1024 * 1024)} MiB",
+    )
 
+
+def _decode(name: str, data: bytes, budget: int) -> bytes:
+    """Un filtro applicato a ``data``; Flate e RunLength si fermano oltre ``budget`` byte."""
     try:
         if name == "FlateDecode":
             inflater = zlib.decompressobj()
             out = inflater.decompress(data, budget + 1)
             if len(out) > budget or inflater.unconsumed_tail:
-                raise over()
+                raise _over()
             return out
         if name == "ASCIIHexDecode":
             digits = bytes(b for b in data.split(b">", 1)[0] if b not in _WHITESPACE)
@@ -465,7 +471,7 @@ def _decode(name: str, data: bytes, budget: int) -> bytes:
                 chunk = data[position + 1 : position + 2] * (257 - length)
                 position += 2
             if len(out) + len(chunk) > budget:
-                raise over()
+                raise _over()
             out += chunk
         return bytes(out)
     except (zlib.error, binascii.Error, ValueError) as error:
