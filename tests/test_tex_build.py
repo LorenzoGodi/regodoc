@@ -21,7 +21,17 @@ from unittest import mock
 from regodoc import build as build_module
 from regodoc import compiler
 from regodoc.text import is_allowed_char
-from tests.support import EXAMPLE, LONG_EXAMPLE, build_zip, example_files, run_cli
+from tests.support import (
+    DRAWING,
+    EXAMPLE,
+    LONG_EXAMPLE,
+    build_zip,
+    example_files,
+    pdf_figure,
+    run_cli,
+    vector_files,
+)
+from tests.support import pdf as figure_pdf
 from tests.test_build import Workspace
 from tests.test_render import aligned_example, diagram_example
 from tests.test_upgrade import current_files, old_files, test_grammar
@@ -261,6 +271,67 @@ def secret_file(test: unittest.TestCase) -> Path:
     path = Path(folder.name) / "secret.txt"
     path.write_text(LEAK_MARK + "\n")
     return path
+
+
+@unittest.skipUnless(PDFLATEX or REQUIRE_TEX, "pdflatex non disponibile")
+class VectorFigureTest(unittest.TestCase):
+    """Le figure in PDF vettoriale di rego/2 (specifica, §13) nel PDF di build."""
+
+    def test_a_pdf_figure_compiles_without_warnings(self) -> None:
+        # Anche un PDF 2.0 dentro l'uscita 1.5: il motore l'ha già controllato.
+        for version in (b"1.4", b"2.0"):
+            with self.subTest(version), tempfile.TemporaryDirectory() as folder:
+                package = Path(folder) / "p.regodoc"
+                figure = figure_pdf(pdf_figure(), version=version)
+                package.write_bytes(build_zip(vector_files(example_files(), figure)))
+                log = compile_log(package, Path(folder))
+                self.assertIn("images/coverage.pdf", log)
+                self.assertEqual([ln for ln in log.split("\n") if _LOG_WARNINGS.search(ln)], [])
+
+    def test_the_figure_is_in_the_pdf_twice_the_same(self) -> None:
+        space = Workspace(self, vector_files(example_files()))
+        pdfs = []
+        for name in ("a", "b"):
+            code, out, _ = run_cli(
+                "build", str(space.package), "-o", str(space.root / f"{name}.pdf"), "--json"
+            )
+            self.assertEqual(code, 0, out)
+            pdfs.append((space.root / f"{name}.pdf").read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
+        content = pdf_content(pdfs[0])
+        # La pagina della figura entra come Form XObject, con il suo disegno.
+        self.assertIn(b"/Subtype /Form", content)
+        self.assertIn(DRAWING, content)
+        self.assertNotIn(b"PTEX.", content)
+        self.assertNotIn(str(space.root).encode(), content)
+        # Né il percorso né il nome del file della figura (rilettura del disegno di L20, 7).
+        self.assertNotIn(b"coverage.pdf", content)
+        self.assertNotIn(b"coverage", pdfs[0])
+
+    def test_without_pdf_figures_the_pdf_is_that_of_0_4(self) -> None:
+        # Lo stesso document.tex con regodoc.sty di oggi e con regodoc.sty senza la riga di
+        # L20, cioè quello della 0.4: i PDF devono essere identici byte per byte.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / "p.regodoc"
+            package.write_bytes(build_zip(example_files(LONG_EXAMPLE)))
+            code, out, _ = run_cli(
+                "build", str(package), "-o", str(root / "new"), "--format", "latex"
+            )
+            self.assertEqual(code, 0, out)
+            shutil.copytree(root / "new", root / "old")
+            sty = (root / "old" / "regodoc.sty").read_text(encoding="utf-8")
+            line = "\\pdfinclusionerrorlevel=-1\n"
+            self.assertEqual(sty.count(line), 1)
+            (root / "old" / "regodoc.sty").write_text(sty.replace(line, ""), encoding="utf-8")
+            pdfs = []
+            for name in ("new", "old"):
+                home = root / f"home-{name}"
+                home.mkdir()
+                assert PDFLATEX is not None
+                compiler.compile_pdf(root / name, home, 1791158400, PDFLATEX)
+                pdfs.append((root / name / "document.pdf").read_bytes())
+        self.assertEqual(pdfs[0], pdfs[1])
 
 
 class PdfReaderTest(unittest.TestCase):

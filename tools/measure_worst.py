@@ -15,6 +15,10 @@ riga, i casi delle parti escono dai 384 KiB nella forma canonica e ``canon`` li 
 ``regodoc.limit.file_size``; per questo ogni caso delle parti ha anche una variante più corta,
 che nella forma canonica sta nei limiti e passa per intero.
 
+Due casi riguardano le figure in PDF vettoriale di ``rego/2``: quattro figure dense al tetto di
+tutto il pacchetto, piene di token minimi scelti a caso, e ottanta figure con flussi che
+decodificati arrivano al tetto per file.
+
 Il comando stampa i tempi ed esce con 1 se un caso non è valido, se ``canon`` rifiuta un caso
 con un codice diverso da ``regodoc.limit.file_size`` (memoria o tempo esauriti compresi) o
 rifiuta una variante canonica, o se un tempo supera quello che ``info`` dichiara per il
@@ -33,6 +37,7 @@ import sys
 import tempfile
 import time
 import zipfile
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -41,7 +46,17 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 from tests import test_limits as builders  # noqa: E402
-from tests.support import build_zip, example_files, png_pixels, validate_bytes  # noqa: E402
+from tests.support import (  # noqa: E402
+    DRAWING,
+    build_zip,
+    example_files,
+    pdf,
+    pdf_figure,
+    png_pixels,
+    stream,
+    validate_bytes,
+    vector_files,
+)
 
 from regodoc import canonical  # noqa: E402
 from regodoc.declaration import CONTENT_LIMITS, RESOURCES  # noqa: E402
@@ -145,6 +160,46 @@ def images_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
     for number in range(4):
         files[f"images/big{number}.png"] = big
     files["images/coverage.png"] = png_pixels(6000, 1000, color=6)
+    stored = tuple(path for path in files if path.startswith("images/"))
+    return files, stored, len(stored)
+
+
+def vector_dense_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
+    """Figure in PDF di rego/2 al tetto di tutto il pacchetto, piene di token minimi scelti a
+    caso fra i più lenti per il lettore: così l'archivio non le comprime oltre il rapporto
+    ammesso per le immagini, e il pacchetto sta nei 12 MiB compressi."""
+    each = int(CONTENT_LIMITS["pdf_bytes"])
+    count = int(CONTENT_LIMITS["pdf_total_bytes"]) // each
+    generator = random.Random(20)  # noqa: S311 - casi ripetibili
+    body = bytearray(b"[")
+    tokens = 0
+    room = each - len(pdf({**pdf_figure(), 5: b"[]"}))
+    while len(body) < room - 2:
+        body += generator.choice((b"<>", b"()", b"[]", b"/"))
+        tokens += 1
+    body += b" " * (room - len(body) + 1) + b"]"
+    data = b""
+    for _ in range(2):
+        data = pdf({**pdf_figure(), 5: bytes(body)})
+        excess = len(data) - each
+        if excess > 0:
+            body = body[: len(body) - 1 - excess] + b"]"
+        elif excess < 0:
+            body = body[:-1] + b" " * -excess + b"]"
+    files = vector_files(example_files(), data)
+    for number in range(1, count):
+        files[f"images/dense{number}.pdf"] = data
+    return files, (), count * tokens
+
+
+def vector_streams_case() -> tuple[dict[str, bytes], tuple[str, ...], int]:
+    """Tante figure in PDF quante ne ammette il pacchetto, ognuna con flussi che decodificati
+    arrivano al tetto per file."""
+    rest = int(CONTENT_LIMITS["pdf_stream_bytes"]) - len(DRAWING)
+    data = pdf({**pdf_figure(), 5: stream(zlib.compress(b" " * rest, 9), b"/Filter /FlateDecode ")})
+    files = vector_files(example_files(), data)
+    for number in range(1, int(CONTENT_LIMITS["images"])):
+        files[f"images/streams{number}.pdf"] = data
     stored = tuple(path for path in files if path.startswith("images/"))
     return files, stored, len(stored)
 
@@ -323,7 +378,12 @@ def main() -> int:
     runs: list[tuple[str, Callable[[], tuple[bytes, int]], bool]] = []
     for label, body_of in cases().items():
         runs.append((label, lambda body_of=body_of: part_package(body_of), True))
-    for label, build in (("variabili", variables_case), ("immagini", images_case)):
+    for label, build in (
+        ("variabili", variables_case),
+        ("immagini", images_case),
+        ("pdf token", vector_dense_case),
+        ("pdf flussi", vector_streams_case),
+    ):
         runs.append((label, lambda build=build: _zip(build()), False))
     for label, make, scalable in runs:
         _BUDGET[0] = BUDGET
