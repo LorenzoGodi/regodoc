@@ -24,6 +24,7 @@ comando diviso ``--margin`` (predefinito 1, cioè il tempo dichiarato).
 """
 
 import argparse
+import io
 import json
 import os
 import random
@@ -31,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -205,6 +207,90 @@ def time_canon(data: bytes) -> tuple[float, list[str]]:
     return best, codes
 
 
+# I casi di import: un document.md vicino ai 2 MiB, diviso in parti che nel pacchetto stanno
+# nei 384 KiB, pieno di un solo tipo di blocco: voci d'elenco, enfasi o righe di tabella.
+MARKDOWN_PARTS = 40
+
+
+def markdown_cases() -> dict[str, Callable[[], bytes]]:
+    limit = int(CONTENT_LIMITS["markdown_bytes"])
+    budget = limit // MARKDOWN_PARTS - 64
+    # Parole casuali di due lettere: un testo ripetuto si comprimerebbe oltre il rapporto
+    # ammesso dall'archivio del pacchetto, e il caso misurerebbe un rifiuto.
+    generator = random.Random(19)  # noqa: S311 - casi ripetibili
+    letters = "abcdefghijklmnopqrstuvwxyz"
+
+    def word() -> str:
+        return generator.choice(letters) + generator.choice(letters)
+
+    def fill(piece: Callable[[], str]) -> str:
+        out: list[str] = []
+        size = 0
+        while size < budget:
+            text = piece()
+            out.append(text)
+            size += len(text)
+        return "".join(out)[:budget].rsplit("\n", 1)[0] + "\n"
+
+    def elenchi(index: int) -> str:
+        return fill(lambda: f"- {word()}\n  - {word()}\n")
+
+    def enfasi(index: int) -> str:
+        return fill(
+            lambda: " ".join(f"*{word()}* **{word()}** `{word()}`" for _ in range(30)) + "\n\n"
+        )
+
+    def tabelle(index: int) -> str:
+        return fill(
+            lambda: (
+                "| A | B |\n|---|--:|\n"
+                + "".join(f"| {word()} | {word()} |\n" for _ in range(590))
+                + "\n"
+            )
+        )
+
+    def make(body: Callable[[int], str]) -> Callable[[], bytes]:
+        def build() -> bytes:
+            text = "# Caso peggiore\n\n" + "".join(
+                f"## Parte {index}\n\n{body(index)}\n" for index in range(MARKDOWN_PARTS)
+            )
+            data = text.encode("utf-8")
+            if len(data) > limit:  # pragma: no cover - una regressione del caso
+                raise ValueError(f"il caso supera {limit} byte: {len(data)}")
+            buffer = io.BytesIO()
+            # Memorizzato: un testo così ripetitivo, compresso, supererebbe il rapporto.
+            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr(zipfile.ZipInfo("document.md", (1980, 1, 1, 0, 0, 0)), data)
+            return buffer.getvalue()
+
+        return build
+
+    return {"md elenchi": make(elenchi), "md enfasi": make(enfasi), "md tabelle": make(tabelle)}
+
+
+def time_import(data: bytes) -> tuple[float, list[str]]:
+    """Il tempo migliore di due ``import`` con il comando vero, con i codici di rifiuto; se
+    ``import`` scrive, l'uscita deve anche passare ``validate``."""
+    best = float("inf")
+    codes: list[str] = []
+    with tempfile.TemporaryDirectory() as folder:
+        source = Path(folder) / "in.zip"
+        output = Path(folder) / "out.regodoc"
+        source.write_bytes(data)
+        for _ in range(2):
+            start = time.perf_counter()
+            code, codes = _command("import", "--from", "markdown", str(source), "-o", str(output))
+            best = min(best, time.perf_counter() - start)
+            if code not in (0, 1):
+                codes = codes or [f"codice d'uscita {code}"]
+                break
+        if not codes:
+            code, problems = _command("validate", str(output))
+            if code != 0:
+                codes = ["uscita non valida", *problems]
+    return best, codes
+
+
 def growth(data: bytes) -> float:
     """Quanto la forma canonica allunga la parte che cresce di più."""
     validation = validate_bytes(data)
@@ -257,11 +343,23 @@ def main() -> int:
                 flush=True,
             )
     _BUDGET[0] = BUDGET
+    allowed_import = RESOURCES["time_seconds"]["import"] / margin
+    worst_import = 0.0
+    for label, build_markdown in markdown_cases().items():
+        data = build_markdown()
+        seconds, refused = time_import(data)
+        worst_import = max(worst_import, seconds)
+        if refused:
+            problems.append(f"{label}: import rifiuta con {refused}")
+        print(
+            f"{label:10s} {len(data):>8} byte      import {seconds:6.2f} s {refused or 'scritto'}"
+        )
     print(f"validate: caso peggiore {worst:.2f} s, ammessi {allowed:.2f} s (margine {margin})")
     print(f"canon: caso peggiore {worst_canon:.2f} s, ammessi {allowed_canon:.2f} s")
+    print(f"import: caso peggiore {worst_import:.2f} s, ammessi {allowed_import:.2f} s")
     for problem in problems:
         print(problem)
-    passed = worst <= allowed and worst_canon <= allowed_canon
+    passed = worst <= allowed and worst_canon <= allowed_canon and worst_import <= allowed_import
     return 0 if passed and not problems else 1
 
 

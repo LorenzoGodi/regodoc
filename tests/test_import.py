@@ -2,13 +2,14 @@
 
 import io
 import json
+import random
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
 from regodoc import declaration, importer
-from tests.support import EXAMPLE, run_cli, validate_bytes
+from tests.support import EXAMPLE, EXAMPLES, run_cli, validate_bytes
 
 PNG = (EXAMPLE / "images" / "coverage.png").read_bytes()
 
@@ -197,6 +198,18 @@ class ConversionTest(Workspace):
         self.assertEqual(len(set(accents)), 8)
 
 
+class ExampleTest(Workspace):
+    def test_the_markdown_example_converts_without_warnings(self) -> None:
+        outcome, target = self.run_import(EXAMPLES / "markdown")
+        self.assertEqual(outcome.exit_code, 0, outcome.validation.report.items)
+        self.assertEqual(outcome.validation.report.items, [])
+        files = self.written(target)
+        self.assertEqual(
+            [path for path in files if path.startswith("parts/")],
+            ["parts/opening.xml", "parts/rete-e-collegamenti.xml", "parts/copie-di-sicurezza.xml"],
+        )
+
+
 class RefusalTest(Workspace):
     def test_markdown_problems_point_at_the_markdown(self) -> None:
         text = "# T\n\n## P\n\nUn <b>tag</b>.\n\n![x](images/assente.png)\n"
@@ -256,6 +269,63 @@ class RefusalTest(Workspace):
         outcome, target = self.run_import(self.folder(files, "in2"), "s.regodoc", strict=True)
         self.assertEqual(outcome.exit_code, 1)
         self.assertFalse(target.exists())
+
+
+class HostileImportTest(Workspace):
+    def test_random_mutations_through_the_whole_import(self) -> None:
+        # Ogni esito è un pacchetto valido o un rifiuto con il rapporto: mai un'eccezione, mai
+        # un'uscita scritta con errori.
+        source = (EXAMPLES / "markdown" / "document.md").read_bytes()
+        alphabet = b"#*_`[]()!<>|-:\\ \n1.~&;^"
+        generator = random.Random(20261127)  # noqa: S311 - prove ripetibili
+        written = refused = 0
+        for round_number in range(300):
+            data = bytearray(source)
+            for _ in range(generator.randint(1, 6)):
+                position = generator.randrange(len(data))
+                action = generator.randrange(3)
+                if action == 0:
+                    data[position] = generator.choice(alphabet)
+                elif action == 1:
+                    data.insert(position, generator.choice(alphabet))
+                else:
+                    del data[position]
+            files = {"document.md": bytes(data), "images/coverage.png": PNG}
+            target = self.root / f"out-{round_number}.regodoc"
+            outcome, _ = self.run_import(self.archive(files, f"in-{round_number}.zip"), target.name)
+            if outcome.exit_code == 0:
+                written += 1
+                self.assertEqual(validate_bytes(target.read_bytes()).report.errors, [])
+            else:
+                refused += 1
+                self.assertEqual(outcome.exit_code, 1)
+                self.assertFalse(target.exists())
+                self.assertTrue(outcome.validation.report.errors)
+        self.assertGreater(written, 0)
+        self.assertGreater(refused, 0)
+
+    def test_symlink_in_the_input_folder(self) -> None:
+        root = self.folder(bundle())
+        (root / "images" / "altro.png").symlink_to(root / "images" / "coverage.png")
+        outcome, target = self.run_import(root)
+        self.assertEqual(outcome.exit_code, 1)
+        self.assertFalse(target.exists())
+        self.assertEqual(
+            [d.code for d in outcome.validation.report.errors], ["regodoc.archive.special_file"]
+        )
+
+    def test_compression_bomb(self) -> None:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("document.md", b"# T\n\n## P\n\n" + b"a" * (8 * 1024 * 1024))
+        target = self.root / "bomb.zip"
+        target.write_bytes(buffer.getvalue())
+        outcome, out = self.run_import(target)
+        self.assertEqual(outcome.exit_code, 1)
+        self.assertFalse(out.exists())
+        self.assertEqual(
+            [d.code for d in outcome.validation.report.errors], ["regodoc.archive.ratio"]
+        )
 
 
 class CommandTest(Workspace):

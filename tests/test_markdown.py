@@ -52,6 +52,8 @@ class StructureTest(unittest.TestCase):
 
     def test_closing_hashes_go(self) -> None:
         self.assertEqual(read("### Sezione ##\n").parts[0].sections[0].title, [md.Text("Sezione")])
+        # Solo quelli in fondo: in mezzo al titolo un cancelletto è testo.
+        self.assertEqual(read("### a ##b ##\n").parts[0].sections[0].title, [md.Text("a ##b")])
 
     def test_heading_problems(self) -> None:
         cases = {

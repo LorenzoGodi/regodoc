@@ -25,7 +25,7 @@ MAX_OPEN_EMPHASIS = 8
 # La punteggiatura ASCII che una barra rovescia rende letterale, come in CommonMark.
 _ESCAPABLE = frozenset("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 _HEADING = re.compile(r"(#{1,7})(?:[ ]+(.*?))?[ ]*")
-_CLOSING_HASHES = re.compile(r"[ ]+#+")
+_CLOSING_HASHES = re.compile(r"[ ]+#+$")
 _FENCE = re.compile(r"(`{3,}|~{3,})(.*)")
 _BULLET = re.compile(r"([ ]*)([-*])( +)(.*)")
 _NUMBER = re.compile(r"([ ]*)([0-9]{1,9})([.)])( +)(.*)")
@@ -301,6 +301,7 @@ class _Reader:
             return
         level = len(match.group(1))
         text = _CLOSING_HASHES.sub("", match.group(2) or "").strip()
+        column = match.start(2) + 1 if match.group(2) is not None else 1
         if level > 5:
             self.problem(
                 "regodoc.markdown.heading",
@@ -345,7 +346,7 @@ class _Reader:
                 1,
             )
             return
-        section = Section(number, self.inlines([(number, line.index(text) + 1, text)]))
+        section = Section(number, self.inlines([(number, column, text)]))
         del self.stack[depth:]
         container = self.stack[-1].sections if self.stack else self.current_chapter().sections
         container.append(section)
