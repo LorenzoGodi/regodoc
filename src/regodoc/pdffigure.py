@@ -103,6 +103,39 @@ class Stream:
 
 
 _KEYWORDS: dict[bytes, object] = {b"true": True, b"false": False, b"null": None}
+_WORDS = frozenset({b"R", b"obj", b"endobj", b"stream", b"endstream"})
+
+# Il lessico del PDF in espressioni regolari, che lavorano in C: spazi e commenti, poi un
+# token. I quantificatori possessivi tolgono ogni ritorno indietro, così il tempo resta lineare.
+_WS = rb"\x00\t\n\x0c\r "
+_DELIM = rb"()<>\[\]{}/%"
+_SPACE = rb"(?:[" + _WS + rb"]|%[^\r\n]*+)*+"
+_GAP = rb"(?:[" + _WS + rb"]|%[^\r\n]*+)++"
+_END = rb"(?=[" + _WS + _DELIM + rb"]|\Z)"
+_REGULAR = rb"[^" + _WS + _DELIM + rb"]"
+_SKIP = re.compile(_SPACE)
+# I gruppi: 1-2 un riferimento, 3 «<<», 4 «>>», 5 «[», 6 «]», 7 un nome, 8 un numero, 9 una
+# stringa senza parentesi annidate, 10 l'inizio di un'altra stringa, 11 una stringa
+# esadecimale, 12 una parola.
+_TOKEN = re.compile(
+    _SPACE
+    + rb"(?:([0-9]{1,10})"
+    + _GAP
+    + rb"([0-9]{1,5})"
+    + _GAP
+    + rb"R"
+    + _END
+    + rb"|(<<)|(>>)|(\[)|(\])|/("
+    + _REGULAR
+    + rb"*+)|((?>[+-]?(?:[0-9]++(?:\.[0-9]*+)?|\.[0-9]++)))"
+    + _END
+    + rb"|\(((?:[^\\()]++|\\[\x00-\xff])*+)\)|(\()|<([^>]*+)>|("
+    + _REGULAR
+    + rb"++))"
+)
+_HEX = re.compile(rb"[0-9A-Fa-f]*")
+_ESCAPE = re.compile(rb"#([0-9A-Fa-f]{2})")
+_LITERAL = re.compile(rb"[\\()]")
 
 
 class _Lexer:
@@ -111,140 +144,137 @@ class _Lexer:
     def __init__(self, data: bytes) -> None:
         self.data = data
         self.names: set[str] = set()
+        self._decoded: dict[bytes, Name] = {}
 
     def skip(self, index: int) -> int:
-        data = self.data
-        while index < len(data):
-            char = data[index]
-            if char in _WHITESPACE:
-                index += 1
-            elif char == 0x25:  # % commento fino a fine riga
-                while index < len(data) and data[index] not in b"\r\n":
-                    index += 1
-            else:
-                break
-        return index
+        match = _SKIP.match(self.data, index)
+        return match.end() if match is not None else index
 
-    def token(self, index: int) -> tuple[object, int]:
-        """Un token: un valore semplice, o uno dei segni «<<», «>>», «[», «]»."""
-        data = self.data
-        index = self.skip(index)
-        if index >= len(data):
-            raise _bad("il file finisce dentro un oggetto")
-        char = data[index]
-        if data.startswith(b"<<", index):
-            return "<<", index + 2
-        if data.startswith(b">>", index):
-            return ">>", index + 2
-        if char == 0x5B:
-            return "[", index + 1
-        if char == 0x5D:
-            return "]", index + 1
-        if char == 0x2F:
-            end = index + 1
-            while end < len(data) and data[end] not in _WHITESPACE and data[end] not in _DELIMITERS:
-                end += 1
-            raw = data[index + 1 : end]
-            try:
-                name = re.sub(
-                    rb"#([0-9A-Fa-f]{2})", lambda m: bytes([int(m.group(1), 16)]), raw
-                ).decode("latin-1")
-            except ValueError as error:  # pragma: no cover - re.sub su byte non fallisce
-                raise _bad("un nome illeggibile") from error
-            self.names.add(name)
-            return Name(name), end
-        if char == 0x28:
-            return self.literal(index)
-        if char == 0x3C:
-            end = data.find(b">", index)
-            if end < 0:
-                raise _bad("una stringa esadecimale non si chiude")
-            digits = bytes(b for b in data[index + 1 : end] if b not in _WHITESPACE)
-            if not re.fullmatch(rb"[0-9A-Fa-f]*", digits):
+    def _fail(self, index: int) -> Problem:
+        start = self.skip(index)
+        if start >= len(self.data):
+            return _bad("il file finisce dentro un oggetto")
+        if self.data[start] == 0x3C:
+            return _bad("una stringa esadecimale non si chiude")
+        return _bad(f"un elemento sconosciuto all'offset {start}")
+
+    def _name(self, raw: bytes) -> Name:
+        name = self._decoded.get(raw)
+        if name is None:
+            text = _ESCAPE.sub(lambda m: bytes([int(m.group(1), 16)]), raw) if b"#" in raw else raw
+            name = Name(text.decode("latin-1"))
+            self._decoded[raw] = name
+            self.names.add(name.value)
+        return name
+
+    def _simple(self, match: re.Match[bytes]) -> tuple[object, int]:
+        """Il valore di un token che non apre né chiude: tutti i gruppi salvo 3-6."""
+        group = match.lastindex
+        end = match.end()
+        if group == 8:
+            text = match.group(8)
+            return (float(text) if b"." in text else int(text)), end
+        if group == 7:
+            return self._name(match.group(7)), end
+        if group == 2:
+            return Ref(int(match.group(1)), int(match.group(2))), end
+        if group == 9:
+            return match.group(9), end
+        if group == 10:
+            return self.literal(end - 1)
+        if group == 11:
+            digits = bytes(b for b in match.group(11) if b not in _WHITESPACE)
+            if not _HEX.fullmatch(digits):
                 raise _bad("una stringa esadecimale con caratteri non esadecimali")
-            return binascii.unhexlify(digits + b"0" * (len(digits) % 2)), end + 1
-        match = _NUMBER.match(data, index)
-        if match is not None and (
-            match.end() >= len(data)
-            or data[match.end()] in _WHITESPACE
-            or data[match.end()] in _DELIMITERS
-        ):
-            text = match.group()
-            value: object = float(text) if b"." in text else int(text)
-            return value, match.end()
-        end = index
-        while end < len(data) and data[end] not in _WHITESPACE and data[end] not in _DELIMITERS:
-            end += 1
-        word = data[index:end]
+            return binascii.unhexlify(digits + b"0" * (len(digits) % 2)), end
+        word = match.group(12)
         if word in _KEYWORDS:
             return _KEYWORDS[word], end
-        if word in (b"R", b"obj", b"endobj", b"stream", b"endstream"):
+        if word in _WORDS:
             return word.decode("ascii"), end
-        raise _bad(f"un elemento sconosciuto all'offset {index}")
+        raise _bad(f"un elemento sconosciuto all'offset {match.start(12)}")
+
+    def token(self, index: int) -> tuple[object, int]:
+        """Un token: un valore semplice, un riferimento «n g R», o uno dei segni «<<», «>>»,
+        «[», «]»."""
+        match = _TOKEN.match(self.data, index)
+        if match is None:
+            raise self._fail(index)
+        group = match.lastindex
+        if group is not None and 3 <= group <= 6:
+            return ("<<", ">>", "[", "]")[group - 3], match.end()
+        return self._simple(match)
 
     def literal(self, index: int) -> tuple[bytes, int]:
         data = self.data
         depth = 0
         position = index
-        while position < len(data):
-            char = data[position]
+        while True:
+            match = _LITERAL.search(data, position)
+            if match is None:
+                raise _bad("una stringa non si chiude")
+            where = match.start()
+            char = data[where]
             if char == 0x5C:
-                position += 2
+                position = where + 2
                 continue
             if char == 0x28:
                 depth += 1
-            elif char == 0x29:
+            else:
                 depth -= 1
                 if depth == 0:
-                    return data[index + 1 : position], position + 1
-            position += 1
-        raise _bad("una stringa non si chiude")
+                    return data[index + 1 : where], where + 1
+            position = where + 1
 
     def value(self, index: int) -> tuple[object, int]:
-        """Un valore completo: dizionari e array con una pila, riferimenti «n g R»."""
+        """Un valore completo: dizionari e array con una pila. Il ciclo è in linea perché
+        un PDF al limite ha milioni di token."""
+        data = self.data
         stack: list[list[object] | dict[str, object]] = []
         keys: list[str | None] = []
+        match_token = _TOKEN.match
+        simple = self._simple
         while True:
-            item, index = self.token(index)
-            if item in ("<<", "["):
+            match = match_token(data, index)
+            if match is None:
+                raise self._fail(index)
+            group = match.lastindex
+            if group == 8 and stack and stack[-1].__class__ is list:
+                text = match.group(8)
+                stack[-1].append(float(text) if b"." in text else int(text))  # type: ignore[union-attr]
+                index = match.end()
+                continue
+            if group in (3, 5):
                 if len(stack) >= MAX_DEPTH:
                     raise Problem(
-                        "regodoc.limit.pdf", f"dizionari e array annidati oltre {MAX_DEPTH} livelli"
+                        "regodoc.limit.pdf",
+                        f"dizionari e array annidati oltre {MAX_DEPTH} livelli",
                     )
-                stack.append({} if item == "<<" else [])
+                stack.append({} if group == 3 else [])
                 keys.append(None)
+                index = match.end()
                 continue
-            if item in (">>", "]"):
-                if not stack or isinstance(stack[-1], dict) != (item == ">>"):
+            if group in (4, 6):
+                if not stack or (stack[-1].__class__ is dict) != (group == 4):
                     raise _bad("una chiusura senza apertura")
-                if item == ">>" and keys[-1] is not None:
+                if group == 4 and keys[-1] is not None:
                     raise _bad("una chiave di dizionario senza valore")
-                item = stack.pop()
+                item: object = stack.pop()
                 keys.pop()
-            elif isinstance(item, str):
-                raise _bad(f"«{item}» fuori posto")
-            elif isinstance(item, int) and item >= 0:
-                # Un riferimento «n g R», se seguono un intero e «R».
-                after = self.skip(index)
-                match = _NUMBER.match(self.data, after)
-                if match is not None and b"." not in match.group():
-                    following = self.skip(match.end())
-                    if self.data.startswith(b"R", following) and (
-                        following + 1 >= len(self.data)
-                        or self.data[following + 1] in _WHITESPACE
-                        or self.data[following + 1] in _DELIMITERS
-                    ):
-                        item = Ref(item, int(match.group()))
-                        index = following + 1
+                index = match.end()
+            else:
+                item, index = simple(match)
+                if item.__class__ is str:
+                    raise _bad(f"«{item}» fuori posto")
             if not stack:
                 return item, index
             container = stack[-1]
-            if isinstance(container, list):
-                container.append(item)
+            if container.__class__ is list:
+                container.append(item)  # type: ignore[union-attr]
             elif keys[-1] is None:
-                if not isinstance(item, Name):
+                if item.__class__ is not Name:
                     raise _bad("una chiave di dizionario che non è un nome")
-                keys[-1] = item.value
+                keys[-1] = item.value  # type: ignore[attr-defined]
             else:
                 container[keys[-1]] = item  # type: ignore[index]
                 keys[-1] = None
