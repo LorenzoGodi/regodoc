@@ -75,7 +75,7 @@ tag va sul commit del rilascio, non sulla testa.
    Lo strumento estrae i file del commit con `git archive`, quindi basta un checkout di `main`
    anche non pulito. Se le impronte non coincidono, il rilascio si ferma.
 3. **Pubblicare.** Crea il tag annotato `v<versione>` su quel commit, non sulla testa di
-   `main`, e lo spinge; per la 0.1.0, la 0.2.0, la 0.3.0 e la 0.4.0:
+   `main`, e lo spinge; per la 0.1.0, la 0.2.0, la 0.3.0, la 0.4.0 e la 0.5.0:
 
    ```sh
    git tag -a v0.1.0 2a7d943 -m "regodoc 0.1.0"
@@ -86,6 +86,8 @@ tag va sul commit del rilascio, non sulla testa.
    git push origin v0.3.0
    git tag -a v0.4.0 231bc2b -m "regodoc 0.4.0"
    git push origin v0.4.0
+   git tag -a v0.5.0 5c6aae4 -m "regodoc 0.5.0"
+   git push origin v0.5.0
    ```
 
    Poi crea la release su GitHub da quel tag con i due file e `SHA256SUMS` della
@@ -99,6 +101,7 @@ tag va sul commit del rilascio, non sulla testa.
 | 0.2.0 | `794a2a1` | L16 | vedi sotto |
 | 0.3.0 | `ea0a224` | L18 | vedi sotto |
 | 0.4.0 | `231bc2b` | L19 | vedi sotto |
+| 0.5.0 | `5c6aae4` | L20 | vedi sotto |
 
 ```text
 a96095e8de0098e1cb1e6fc2a5232bb7a83555178b802f3503f07f7316636c49  regodoc-0.1.0-py3-none-any.whl
@@ -118,6 +121,11 @@ e620dc996d5c1232206968ee62c1a13db14175628a45053a284d3b3d16bdf4e8  regodoc-0.3.0.
 ```text
 f8fd9a5746bc444dc1451a1ba2570f7985b80378bd0ece0e1ea345012f0ee716  regodoc-0.4.0-py3-none-any.whl
 b6b1164a20afbeee375b4be2631c4bb8d330e2d06301365175e00e4c94d53ca3  regodoc-0.4.0.tar.gz
+```
+
+```text
+72533e94a22e4f23aa3f41c3dd680af2baf88da37db4a87f0978faac831df8de  regodoc-0.5.0-py3-none-any.whl
+65b8ad5ef79a76d49bf9953e3cf910035b6f738f29efae4bb021c8c75c7d2921  regodoc-0.5.0.tar.gz
 ```
 
 Una prova del job del pacchetto ricostruisce a ogni commit i commit dei rilasci di questa
