@@ -1114,6 +1114,14 @@ non bloccano il pacchetto.
 | `regodoc.image.metadata` | avviso, in `rego/1`; §6.4 passo 10 |
 | `regodoc.image.stripped` | avviso, in `rego/2`; §6.4 passo 10, §13 |
 | `regodoc.image.unused` | avviso; §6.4 passo 11 |
+| `regodoc.markdown.syntax` | ingresso Markdown, `md-1.md` §2, §3 e §5 |
+| `regodoc.markdown.heading` | ingresso Markdown, `md-1.md` §3 e §5 |
+| `regodoc.markdown.html` | ingresso Markdown, `md-1.md` §5 |
+| `regodoc.markdown.link` | ingresso Markdown, `md-1.md` §5 |
+| `regodoc.markdown.image` | ingresso Markdown, `md-1.md` §3 e §5 |
+| `regodoc.markdown.remote_image` | ingresso Markdown, `md-1.md` §5 |
+| `regodoc.markdown.unsupported` | ingresso Markdown, `md-1.md` §5 |
+| `regodoc.limit.markdown` | ingresso Markdown, `md-1.md` §2 e §7 |
 | `regodoc.limit.file_size` | §7.2; §9 (canon e upgrade) |
 | `regodoc.limit.parts` | §7.2 |
 | `regodoc.limit.variables` | §7.2 |
