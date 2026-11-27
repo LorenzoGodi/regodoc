@@ -284,6 +284,79 @@ class RefusedTest(unittest.TestCase):
         self.assertIsNone(code(pdf({**figure(), 5: b"<< >>"}, trailer=b"/Info 5 0 R ")))
 
 
+class ReviewTest(unittest.TestCase):
+    """I casi della rilettura di L20 (27/11): nessuno è un errore interno."""
+
+    def test_huge_numbers(self) -> None:
+        long_int = b"1" * 5_000
+        cases = {
+            "intero in un valore": pdf(figure(page_extra=b"/Spessore " + long_int + b" ")),
+            "intero in un array": pdf({**figure(), 5: b"[0 " + long_int + b"]"}),
+            "/Length": pdf(
+                {**figure(), 5: b"<< /Length " + long_int + b" >>\nstream\nx\nendstream"}
+            ),
+            "/MediaBox": pdf(
+                {
+                    **figure(),
+                    3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+                    + b"9" * 400
+                    + b" 100] /Contents 4 0 R >>",
+                }
+            ),
+            "reale": pdf(figure(page_extra=b"/R 1." + b"5" * 40 + b" ")),
+            "startxref": pdf(figure()).replace(b"startxref\n", b"startxref\n" + b"0" * 40, 1),
+        }
+        for label, data in cases.items():
+            with self.subTest(label):
+                self.assertEqual(code(data), "regodoc.image.pdf_structure")
+        # Trentadue caratteri passano.
+        self.assertIsNone(code(pdf(figure(page_extra=b"/N " + b"1" * 32 + b" "))))
+
+    def test_every_byte_is_read(self) -> None:
+        html = b"<html><script>alert(1)</script></html>\n"
+        hidden = b"9 0 obj\n<< /S /JavaScript /JS (app.alert(1)) >>\nendobj\n"
+        cases = {
+            "HTML dopo un oggetto": pdf(figure(), after={3: html}),
+            "oggetto fuori dalla tabella": pdf(figure(), after={4: hidden}),
+            "byte prima della tabella": pdf(figure(), after={4: b"PK\x03\x04"}),
+            "commento in un oggetto": pdf(figure(page_extra=b"% /JavaScript\n")),
+            "commento fra due oggetti": pdf(figure(), after={1: b"% nascosto\n"}),
+            "byte fra startxref e %%EOF": pdf(figure()).replace(b"\n%%EOF", b"\nx\n%%EOF"),
+            "byte fra trailer e startxref": pdf(figure()).replace(
+                b">>\nstartxref", b">> x\nstartxref"
+            ),
+        }
+        for label, data in cases.items():
+            with self.subTest(label):
+                self.assertEqual(code(data), "regodoc.image.pdf_structure")
+        # Solo spazi fra gli oggetti, e la seconda riga d'intestazione, passano.
+        self.assertIsNone(code(pdf(figure(), after={2: b"\n \r\n\t"})))
+
+    def test_indirect_length(self) -> None:
+        objects = figure()
+        objects[5] = b"<< /Length 6 0 R >>\nstream\nabc\nendstream"
+        objects[6] = b"3"
+        self.assertIsNone(code(pdf(objects)))
+        objects[6] = b"(tre)"
+        self.assertEqual(code(pdf(objects)), "regodoc.image.pdf_structure")
+
+    def test_flate_must_end_cleanly(self) -> None:
+        packed = zlib.compress(DRAWING)
+        for label, body in (("troncato", packed[:-4]), ("con una coda", packed + b"coda")):
+            with self.subTest(label):
+                objects = figure()
+                objects[5] = stream(body, b"/Filter /FlateDecode ")
+                self.assertEqual(code(pdf(objects)), "regodoc.image.pdf_structure")
+        objects = figure()
+        objects[5] = stream(packed + b"\r\n", b"/Filter /FlateDecode ")
+        self.assertIsNone(code(pdf(objects)))
+
+    def test_font_of_a_graphics_state(self) -> None:
+        objects = figure(resources=b"/ExtGState << /GS0 << /Font [5 0 R 12] >> >>")
+        objects[5] = b"<< /Subtype /Type1 /BaseFont /Helvetica >>"
+        self.assertEqual(code(pdf(objects)), "regodoc.image.pdf_font")
+
+
 class LimitsTest(unittest.TestCase):
     def test_size(self) -> None:
         # Al limite passa, un byte oltre no: il riempimento è una stringa dentro un oggetto.
@@ -356,12 +429,15 @@ class HostileTest(unittest.TestCase):
         sources = [pdf(figure()), pdf(EMBEDDED)]
         generator = random.Random(20261127)  # noqa: S311 - prove ripetibili
         alphabet = b"<>[]()/%0123456789 \nRobjstreamendxref#\\"
+        digits = (b"9" * 400, b"1" * 5_000, b"7" * 33)
         for _ in range(3_000):
             data = bytearray(generator.choice(sources))
             for _ in range(generator.randint(1, 8)):
                 position = generator.randrange(len(data))
                 action = generator.randrange(3)
-                if action == 0:
+                if action == 0 and generator.random() < 0.1:
+                    data[position:position] = generator.choice(digits)
+                elif action == 0:
                     data[position] = generator.choice(alphabet)
                 elif action == 1:
                     data.insert(position, generator.choice(alphabet))

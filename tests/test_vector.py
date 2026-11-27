@@ -54,6 +54,10 @@ class ValidateTest(unittest.TestCase):
             "regodoc.image.pdf_structure": pdf(pdf_figure())[:-10],
             "regodoc.image.extension": png(),
         }
+        # Un intero di 5.000 cifre era un errore interno, con il codice 4 (rilettura di L20).
+        huge = pdf(pdf_figure(page_extra=b"/Spessore " + b"1" * 5_000 + b" "))
+        files = vector_files(example_files(), huge)
+        self.assertEqual(errors(files), [("regodoc.image.pdf_structure", "images/coverage.pdf")])
         for code, data in cases.items():
             with self.subTest(code):
                 files = vector_files(example_files(), data)

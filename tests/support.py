@@ -126,6 +126,7 @@ def pdf(
     version: bytes = b"1.4",
     tail: bytes = b"",
     newline: bytes = b"\n",
+    after: dict[int, bytes] | None = None,
 ) -> bytes:
     """Un PDF sintetico con questi oggetti e la tabella xref giusta: l'oggetto 1 è il
     catalogo. Gli a capo fuori dagli oggetti sono ``newline``; le righe della tabella xref
@@ -137,6 +138,7 @@ def pdf(
     for number in sorted(objects):
         offsets[number] = len(out)
         out += b"%d 0 obj" % number + nl + objects[number] + nl + b"endobj" + nl
+        out += (after or {}).get(number, b"")
     xref = len(out)
     size = max(objects) + 1
     out += b"xref" + nl + b"0 %d" % size + nl + b"0000000000 65535 f" + entry_end

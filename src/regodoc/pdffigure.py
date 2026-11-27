@@ -111,8 +111,10 @@ _WORDS = frozenset({b"R", b"obj", b"endobj", b"stream", b"endstream"})
 # token. I quantificatori possessivi tolgono ogni ritorno indietro, così il tempo resta lineare.
 _WS = rb"\x00\t\n\x0c\r "
 _DELIM = rb"()<>\[\]{}/%"
-_SPACE = rb"(?:[" + _WS + rb"]|%[^\r\n]*+)*+"
-_GAP = rb"(?:[" + _WS + rb"]|%[^\r\n]*+)++"
+# Niente commenti: lo strumento di pulizia non ne scrive, e un commento può nascondere testo
+# che nessun controllo legge. Fuori dalla seconda riga dell'intestazione «%» è un errore.
+_SPACE = rb"[" + _WS + rb"]*+"
+_GAP = rb"[" + _WS + rb"]++"
 _END = rb"(?=[" + _WS + _DELIM + rb"]|\Z)"
 _REGULAR = rb"[^" + _WS + _DELIM + rb"]"
 _SKIP = re.compile(_SPACE)
@@ -140,6 +142,21 @@ _ESCAPE = re.compile(rb"#([0-9A-Fa-f]{2})")
 _LITERAL = re.compile(rb"[\\()]")
 
 
+# Il lessema più lungo di un numero: il PDF ha interi a 32 bit e reali con poche cifre
+# significative, e lo strumento di pulizia non ne scrive di più lunghi. Il tetto viene prima
+# di int() e float(), che oltre le 4300 cifre o i 308 ordini di grandezza sollevano.
+MAX_NUMBER = 32
+
+
+def _number(text: bytes) -> int | float:
+    if len(text) > MAX_NUMBER:
+        raise _bad(f"un numero di {len(text)} caratteri: il massimo è {MAX_NUMBER}")
+    try:
+        return float(text) if b"." in text else int(text)
+    except (ValueError, OverflowError) as error:  # pragma: no cover - il tetto li esclude
+        raise _bad("un numero illeggibile") from error
+
+
 class _Lexer:
     """Legge oggetti PDF da ``data`` a partire da una posizione, senza ricorsione."""
 
@@ -159,6 +176,8 @@ class _Lexer:
             return _bad("il file finisce dentro un oggetto")
         if self.data[start] == 0x3C:
             return _bad("una stringa esadecimale non si chiude")
+        if self.data[start] == 0x25:
+            return _bad(f"un commento all'offset {start}: una figura non ne ha")
         return _bad(f"un elemento sconosciuto all'offset {start}")
 
     def _name(self, raw: bytes) -> Name:
@@ -175,8 +194,7 @@ class _Lexer:
         group = match.lastindex
         end = match.end()
         if group == 8:
-            text = match.group(8)
-            return (float(text) if b"." in text else int(text)), end
+            return _number(match.group(8)), end
         if group == 7:
             return self._name(match.group(7)), end
         if group == 2:
@@ -244,8 +262,7 @@ class _Lexer:
                 raise self._fail(index)
             group = match.lastindex
             if group == 8 and stack and stack[-1].__class__ is list:
-                text = match.group(8)
-                stack[-1].append(float(text) if b"." in text else int(text))  # type: ignore[union-attr]
+                stack[-1].append(_number(match.group(8)))  # type: ignore[union-attr]
                 index = match.end()
                 continue
             if group in (3, 5):
@@ -369,7 +386,7 @@ def _read(data: bytes) -> tuple[_Document, _Lexer]:
     trailer, after = lexer.value(lexer.skip(position) + len(b"trailer"))
     if not isinstance(trailer, dict):
         raise _bad("il trailer non è un dizionario")
-    if not data.startswith(b"startxref", lexer.skip(after)):
+    if lexer.skip(after) != start:
         raise _bad("dopo il trailer non c'è startxref: il PDF ha più revisioni")
     for key, problem in (
         ("Prev", "il PDF ha più revisioni (/Prev)"),
@@ -380,7 +397,13 @@ def _read(data: bytes) -> tuple[_Document, _Lexer]:
             raise _bad(problem)
     objects: dict[int, object] = {}
     lengths: list[tuple[int, int, dict[str, object]]] = []
-    for number, where in sorted(entries.items()):
+    # Ogni byte del file si legge (rilettura di L20, punto 3): dopo l'intestazione gli oggetti
+    # in ordine di offset, separati solo da spazi, poi la tabella xref. Un byte che nessun
+    # controllo legge potrebbe fare del PDF anche un HTML o uno ZIP.
+    cursor = _header_end(data)
+    for number, where in sorted(entries.items(), key=lambda item: item[1]):
+        if lexer.skip(cursor) != where:
+            raise _bad(f"byte che nessun oggetto contiene prima dell'oggetto {number}")
         header = _OBJECT.match(data, where)
         if header is None or int(header.group(1)) != number:
             raise _bad(f"l'oggetto {number} non è all'offset che la tabella xref dichiara")
@@ -398,22 +421,53 @@ def _read(data: bytes) -> tuple[_Document, _Lexer]:
                 body += 1
             else:
                 raise _bad(f"il flusso dell'oggetto {number} non comincia con un a capo")
+            length = value.get("Length")
+            if isinstance(length, Ref):
+                # La lunghezza sta in un altro oggetto: si legge senza conservarlo.
+                length = _direct_length(data, lexer, entries.get(length.number), length.number)
+            if not isinstance(length, int) or length < 0 or body + length > len(data):
+                raise _bad(f"il flusso dell'oggetto {number} ha una /Length impossibile")
+            end = lexer.skip(body + length)
+            if not data.startswith(b"endstream", end):
+                raise _bad(f"il flusso dell'oggetto {number} non finisce dove dice /Length")
+            keyword, after_keyword = lexer.token(end + len(b"endstream"))
+            if keyword != "endobj":
+                raise _bad(f"l'oggetto {number} non finisce con endobj")
             lengths.append((number, body, value))
-            objects[number] = Stream(value, b"")
+            objects[number] = Stream(value, data[body : body + length])
+            cursor = after_keyword
             continue
         if keyword != "endobj":
             raise _bad(f"l'oggetto {number} non finisce con endobj")
         objects[number] = value
+        cursor = after_keyword
+    if lexer.skip(cursor) != offset:
+        raise _bad("byte che nessun oggetto contiene prima della tabella xref")
+    after_number = lexer.skip(lexer.token(start + len(b"startxref"))[1])
+    if after_number != len(tail) - len(b"%%EOF"):
+        raise _bad("byte fra startxref e %%EOF")
     document = _Document(objects, trailer)
-    for number, body, dictionary in lengths:
-        length = document.resolve(dictionary.get("Length"))
-        if not isinstance(length, int) or length < 0 or body + length > len(data):
-            raise _bad(f"il flusso dell'oggetto {number} ha una /Length impossibile")
-        end = lexer.skip(body + length)
-        if not data.startswith(b"endstream", end):
-            raise _bad(f"il flusso dell'oggetto {number} non finisce dove dice /Length")
-        objects[number] = Stream(dictionary, data[body : body + length])
     return document, lexer
+
+
+def _header_end(data: bytes) -> int:
+    """Dove finisce l'intestazione: la riga «%PDF-x.y», già controllata da ``check``, e, se
+    c'è, una seconda riga di commento con i byte binari che segnalano un file binario."""
+    position = 10 if data.startswith(b"\r\n", 8) else 9
+    if data.startswith(b"%", position):
+        ends = [i for i in (data.find(b"\n", position), data.find(b"\r", position)) if i >= 0]
+        position = min(ends) if ends else len(data)
+    return position
+
+
+def _direct_length(data: bytes, lexer: _Lexer, where: int | None, number: int) -> object:
+    """Il valore di un oggetto che contiene solo la /Length di un flusso."""
+    if where is None:
+        raise _bad(f"la /Length rimanda all'oggetto {number}, che non c'è")
+    header = _OBJECT.match(data, where)
+    if header is None or int(header.group(1)) != number:
+        raise _bad(f"l'oggetto {number} non è all'offset che la tabella xref dichiara")
+    return lexer.token(header.end())[0]
 
 
 def _numbers(document: _Document, value: object) -> list[float] | None:
@@ -423,7 +477,10 @@ def _numbers(document: _Document, value: object) -> list[float] | None:
         isinstance(n, (int, float)) and not isinstance(n, bool) for n in items
     ):
         return None
-    return [float(n) for n in items]  # type: ignore[arg-type]
+    try:
+        return [float(n) for n in items]  # type: ignore[arg-type]
+    except OverflowError as error:  # pragma: no cover - MAX_NUMBER lo esclude
+        raise _bad("un numero della /MediaBox fuori misura") from error
 
 
 def _check_pages(document: _Document) -> object:
@@ -514,6 +571,10 @@ def _decode(name: str, data: bytes, budget: int) -> bytes:
             out = inflater.decompress(data, budget + 1)
             if len(out) > budget or inflater.unconsumed_tail:
                 raise _over()
+            if not inflater.eof:
+                raise _bad("un flusso /FlateDecode troncato")
+            if inflater.unused_data.strip(_WHITESPACE):
+                raise _bad("byte dopo la fine di un flusso /FlateDecode")
             return out
         if name == "ASCIIHexDecode":
             digits = bytes(b for b in data.split(b">", 1)[0] if b not in _WHITESPACE)
@@ -614,7 +675,14 @@ def _check_resources(document: _Document, resources: object) -> None:
                     if dictionary and dictionary.get("Resources") is not None:
                         following.append(dictionary["Resources"])
             for state in document.dictionary(entries.get("ExtGState")).values():
-                mask = document.dictionary(document.dictionary(state).get("SMask"))
+                graphics = document.dictionary(state)
+                # /Font [font dimensione]: il font di uno stato grafico.
+                pair = document.resolve(graphics.get("Font"))
+                if isinstance(pair, list) and pair:
+                    dictionary = visit(pair[0])
+                    if dictionary is not None:
+                        _check_font(document, dictionary)
+                mask = document.dictionary(graphics.get("SMask"))
                 group = mask.get("G")
                 form = visit(group) if group is not None else None
                 if form and form.get("Resources") is not None:

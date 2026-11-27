@@ -1478,9 +1478,16 @@ immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'esten
   trailer subito dopo; nessuna revisione in più (`/Prev`, un secondo trailer), nessun flusso
   xref (`/XRefStm` di un file ibrido, `/Type /XRef`), nessun flusso di oggetti
   (`/Type /ObjStm`), nessuna linearizzazione (`/Linearized`, con i suoi flussi di
-  suggerimento), nessuna cifratura (`/Encrypt`); ogni oggetto all'offset che la tabella dichiara, con il numero
-  giusto; ogni flusso lungo quanto dice `/Length` e chiuso da `endstream`. Al massimo 20 000
-  oggetti e 32 livelli di dizionari e array annidati (`regodoc.limit.pdf`).
+  suggerimento), nessuna cifratura (`/Encrypt`); ogni oggetto all'offset che la tabella
+  dichiara, con il numero giusto; ogni flusso lungo quanto dice `/Length`, chiuso da
+  `endstream` e da `endobj`. **Ogni byte del file si legge**: dopo la riga `%PDF-` e, se c'è,
+  una seconda riga di commento vengono gli oggetti in ordine di offset, separati solo da
+  spazi, poi la tabella, il trailer, `startxref` e `%%EOF`. Un byte che nessuna di queste
+  parti contiene, un oggetto che la tabella non elenca e un commento in qualunque altro punto
+  sono errori: così un PDF non può essere insieme un HTML o uno ZIP, né nascondere testo che
+  il controllo non legge. Un numero ha al massimo 32 caratteri. Un flusso `FlateDecode` è
+  completo, e dopo i dati compressi ha solo spazi. Al massimo 20 000 oggetti e 32 livelli di
+  dizionari e array annidati (`regodoc.limit.pdf`).
 - **Contenuto attivo o nascosto** (`regodoc.image.pdf_active`): nessuno dei nomi `JavaScript`,
   `JS`, `OpenAction`, `AA`, `Launch`, `SubmitForm`, `ImportData`, `RichMedia`, `EmbeddedFile`,
   `EmbeddedFiles`, `XFA`, `Annots`, `AcroForm`, `URI`, `GoToR`, `GoToE`, `FileAttachment`,
@@ -1506,7 +1513,8 @@ immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'esten
   quelli che le risorse nominano anche senza. Un font semplice ha un `/FontDescriptor` con
   `/FontFile`, `/FontFile2` o `/FontFile3`; un `Type0` ha un `/DescendantFonts` di un solo
   font, e il descrittore e il file stanno in quello, non nel `Type0`; un `Type3` ha i suoi
-  `/CharProcs`, e i font delle risorse dei suoi glifi seguono la stessa regola.
+  `/CharProcs`, e i font delle risorse dei suoi glifi seguono la stessa regola, come il font
+  di `/Font [font dimensione]` di uno `/ExtGState`.
 - **Risorse annidate** (`regodoc.limit.pdf`): dalle risorse della pagina il controllo scende
   per livelli nelle Form XObject, nei pattern, nei font `Type3` e nelle maschere di
   `/ExtGState` che hanno risorse proprie, al massimo 8 livelli. Ogni oggetto si visita una
