@@ -34,7 +34,6 @@ _SETEXT = re.compile(r"[ ]{0,3}(?:=+|-+)[ ]*")
 _DELIMITER_CELL = re.compile(r"[ ]*(:?)-+(:?)[ ]*")
 _TASK = re.compile(r"\[[ xX]\][ ]")
 _SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]{0,31}:")
-_ENTITY = re.compile(r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});")
 _FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)\s]*)\)")
 
 
@@ -581,6 +580,7 @@ class _Reader:
                 "regodoc.markdown.syntax",
                 "una tabella vuole la riga d'intestazione e poi la riga «|---|---|»",
                 number,
+                1,
             )
             return
         align: list[str] = []
@@ -594,6 +594,7 @@ class _Reader:
                     "regodoc.markdown.unsupported",
                     "una colonna centrata «:---:»: le colonne vanno a sinistra o a destra",
                     rows[1][0],
+                    1,
                 )
             align.append("right" if right and not left else "left")
         cells: list[list[list[Inline]]] = []
@@ -603,6 +604,7 @@ class _Reader:
                     "regodoc.markdown.syntax",
                     "una riga di tabella comincia e finisce con «|»",
                     line_number,
+                    1,
                 )
                 return
             row = _split_row(text)
@@ -611,6 +613,7 @@ class _Reader:
                     "regodoc.markdown.syntax",
                     f"la riga ha {len(row)} celle, la tabella {len(align)} colonne",
                     line_number,
+                    1,
                 )
                 return
             cells.append(
@@ -787,12 +790,6 @@ class _Inline:
                 )
             elif char == "[":
                 position = self.bracket(position)
-            elif char == "&" and _ENTITY.match(text, position):
-                self.problem(
-                    "regodoc.markdown.unsupported",
-                    "un riferimento a carattere HTML «&…;»: si scrive il carattere",
-                    position,
-                )
             elif char == "~" and text.startswith("~~", position):
                 self.problem(
                     "regodoc.markdown.unsupported", "il barrato «~~»: non c'è nel formato", position

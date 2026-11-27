@@ -124,10 +124,10 @@ class BlockTest(unittest.TestCase):
 
     def test_table_problems(self) -> None:
         cases = {
-            "| A | B |\n| 1 | 2 |\n": ("regodoc.markdown.syntax", 5, 0),
-            "| A | B |\n|---|---|\n| 1 |\n": ("regodoc.markdown.syntax", 7, 0),
-            "| A |\n|:-:|\n| 1 |\n": ("regodoc.markdown.unsupported", 6, 0),
-            "| A |\n|---|\n| 1\n": ("regodoc.markdown.syntax", 7, 0),
+            "| A | B |\n| 1 | 2 |\n": ("regodoc.markdown.syntax", 5, 1),
+            "| A | B |\n|---|---|\n| 1 |\n": ("regodoc.markdown.syntax", 7, 1),
+            "| A |\n|:-:|\n| 1 |\n": ("regodoc.markdown.unsupported", 6, 1),
+            "| A |\n|---|\n| 1\n": ("regodoc.markdown.syntax", 7, 1),
         }
         for body, expected in cases.items():
             with self.subTest(body):
@@ -219,7 +219,6 @@ class InlineTest(unittest.TestCase):
             "[rif]: https://example.com": ("regodoc.markdown.link", 5, 1),
             "vedi <https://example.com>": ("regodoc.markdown.link", 5, 6),
             "nota[^1]": ("regodoc.markdown.unsupported", 5, 5),
-            "a &amp; b": ("regodoc.markdown.unsupported", 5, 3),
             "~~barrato~~": ("regodoc.markdown.unsupported", 5, 1),
             "*aperta": ("regodoc.markdown.syntax", 5, 1),
             "chiusa*": ("regodoc.markdown.syntax", 5, 7),
@@ -230,6 +229,18 @@ class InlineTest(unittest.TestCase):
         for body, expected in cases.items():
             with self.subTest(body):
                 self.assertEqual(problems(body + "\n"), [expected])
+
+    def test_entities_and_ampersands_stay_literal(self) -> None:
+        # Nessuna decodifica delle entità di CommonMark: il testo è quello scritto.
+        self.assertEqual(
+            inline("a &amp; b, &#60; e & nudo"), [md.Text("a &amp; b, &#60; e & nudo")]
+        )
+
+    def test_unclosed_emphasis_points_at_the_opening(self) -> None:
+        self.assertEqual(
+            problems("testo *aperta su una riga\ne la seguente senza chiusura\n"),
+            [("regodoc.markdown.syntax", 5, 7)],
+        )
 
     def test_position_on_the_second_line(self) -> None:
         self.assertEqual(problems("prima riga\n  e poi <i>x\n"), [("regodoc.markdown.html", 6, 9)])

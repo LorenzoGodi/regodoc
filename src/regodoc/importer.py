@@ -76,12 +76,15 @@ def _toml_string(text: str) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def part_id(title: str, used: set[str]) -> str:
-    """L'id di una parte dal suo titolo: ASCII minuscolo con i trattini (md-1.md, §3)."""
-    folded = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
+def part_id(title: str, used: set[str], number: int) -> str:
+    """L'id della parte ``number`` (da 1) dal suo titolo (md-1.md, §3): NFKD e via i segni
+    diacritici, minuscole, ogni carattere fuori da a-z e 0-9 un trattino, i trattini ripetuti
+    ridotti a uno e tolti ai bordi; un titolo che resta vuoto dà «parte-N»."""
+    decomposed = unicodedata.normalize("NFKD", title)
+    letters = "".join(char for char in decomposed if not unicodedata.combining(char)).lower()
     pieces: list[str] = []
     word: list[str] = []
-    for char in folded.lower():
+    for char in letters:
         if "a" <= char <= "z" or "0" <= char <= "9":
             word.append(char)
         elif word:
@@ -90,8 +93,10 @@ def part_id(title: str, used: set[str]) -> str:
     if word:
         pieces.append("".join(word))
     base = "-".join(pieces)
-    if not base or not base[0].isalpha():
-        base = f"parte-{base}" if base else "parte"
+    if not base:
+        base = f"parte-{number}"
+    elif not base[0].isalpha():
+        base = f"parte-{base}"
     base = base[:48].rstrip("-")
     candidate = base
     counter = 2
@@ -195,7 +200,7 @@ def generate(document: markdown.Document, images: dict[str, bytes], language: st
         chapters.append((OPENING_ID, document.opening, "opening"))
     for index, chapter in enumerate(document.parts):
         generated.keys[f"part[{index + 1}]"] = chapter.line
-        identifier = part_id(chapter.title, used)
+        identifier = part_id(chapter.title, used, index + 1)
         structure.add("", chapter.line)
         structure.add("[[part]]", chapter.line)
         structure.add(f'id = "{identifier}"', chapter.line)

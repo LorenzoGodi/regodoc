@@ -21,6 +21,12 @@ Un archivio `.zip` o una cartella, con:
 Nessun altro file. L'archivio si legge con le stesse difese e gli stessi limiti
 dell'involucro di un pacchetto (`rego-1.md`, §6.1 e §7.1).
 
+**Le immagini come in `canon`.** Le immagini dell'ingresso passano gli stessi controlli di
+quelle del pacchetto (`rego-1.md`, §6.4), con gli stessi codici, e la stessa pulizia dei
+metadati della grammatica corrente (`rego-1.md`, §13): un'immagine con metadati dà l'avviso
+`regodoc.image.stripped` e nel pacchetto entra pulita. L'uscita di `import` è quella che
+`canon` scriverebbe per lo stesso contenuto: rifare `canon` sull'uscita dà gli stessi byte.
+
 ## 2. Codifica e righe
 
 | Regola | Codice |
@@ -71,15 +77,34 @@ pacchetto non centra. `\|` scrive una barra dentro una cella. Una cella vuota è
 
 - I blocchi fra il titolo del documento e la prima parte formano un'apertura, con id
   `opening`.
-- L'id di una parte viene dal titolo: lettere senza accenti, in minuscolo, con un trattino
-  al posto di ogni sequenza di altri caratteri, fino a 48 caratteri. Comincia con una lettera
-  (altrimenti con `parte-`) e un id già usato prende `-2`, `-3` e così via.
+- L'id della parte N (contando da 1) viene dal suo titolo, in quest'ordine:
+  1. il titolo si scompone in NFKD e si tolgono i segni diacritici, così `à` diventa `a`;
+  2. tutto passa in minuscolo;
+  3. ogni carattere fuori da `a`–`z` e `0`–`9` diventa un trattino, anche le lettere che
+     dopo il passo 1 non sono ASCII (`ß` dà un trattino);
+  4. i trattini ripetuti si riducono a uno e si tolgono in testa e in coda;
+  5. un titolo che resta vuoto dà `parte-N`; uno che comincia con una cifra prende
+     `parte-` davanti;
+  6. l'id si tronca a 48 caratteri, senza trattino finale;
+  7. un id già usato, `opening` compreso, o uno che il pacchetto non ammette (i nomi
+     riservati di Windows, come `con`) prende `-2`, poi `-3` e così via, entro i 48
+     caratteri.
+
+  «Attivita'», «Attività» e «ATTIVITÀ», in quest'ordine, danno `attivita`, `attivita-2`
+  e `attivita-3`.
 - L'accento delle parti segue la tavolozza a giro: `azure`, `slate`, `sage`, `bronze`, `plum`,
   `brick`, `olive`, `gray`.
 - Un blocco dopo una sottosezione appartiene alla sottosezione: in Markdown non si torna al
   livello di sopra senza un titolo.
-- La lingua è quella dell'opzione `--language` (`it` se manca); `toc`, `subject`,
-  `reference`, `date` e `version_label` non si scrivono.
+
+**L'intestazione.** Di `structure.toml` l'unico campo obbligatorio è `header.title`, che
+viene dal titolo `#` (un titolo mancante è `regodoc.markdown.heading`). `language` viene
+dall'opzione `--language`, `it` se manca; `document` del manifesto dall'opzione
+`--document`, se c'è. `toc`, `subject`, `reference`, `date` e `version_label` non si
+scrivono: chi vuole valorizzarli modifica il pacchetto dopo l'importazione. Nessun valore
+viene dall'orologio o dall'ambiente, quindi lo stesso ingresso con le stesse opzioni dà
+sempre gli stessi byte. Senza `header.date`, `build` prende la data dall'intestazione di
+chi chiama o da `SOURCE_DATE_EPOCH`, come per ogni pacchetto (`rego-1.md`, §2).
 
 ## 4. Testo in linea
 
@@ -99,7 +124,8 @@ senza essere aperta, è un errore. Al massimo otto enfasi aperte insieme. Le ann
 seguono il pacchetto: `<b>` dentro `<b>` è un errore (`rego-1.md`, §4.3).
 
 Il testo resta testo: `x < 3`, `[nota]` e un indirizzo scritto per intero non diventano
-altro.
+altro. **Le entità non si decodificano**: `&amp;`, `&#60;` e un `&` da solo restano i
+caratteri scritti, e il generatore li scrive nel XML come testo (`&amp;amp;`).
 
 ## 5. Che cosa è rifiutato
 
@@ -110,18 +136,27 @@ altro.
 | immagini con un indirizzo: `http:`, `https:`, `data:`, `//…` o un altro schema | `regodoc.markdown.remote_image` |
 | un'immagine dentro un paragrafo di testo, un percorso fuori da `images/nome.png`, `.jpg` o `.jpeg`, o un file che l'ingresso non contiene | `regodoc.markdown.image` |
 | un titolo mancante, ripetuto, vuoto o di livello `######`, un livello saltato, un titolo sottolineato con `===` o `---` | `regodoc.markdown.heading` |
-| citazioni `>`, righe di separazione `---`, `***` o `___`, codice rientrato di quattro spazi, note `[^1]`, barrato `~~`, voci da spuntare `[ ]`, riferimenti a caratteri HTML `&amp;`, colonne centrate, un elenco numerato che non comincia da 1 | `regodoc.markdown.unsupported` |
+| citazioni `>`, righe di separazione `---`, `***` o `___`, codice rientrato di quattro spazi, note `[^1]`, barrato `~~`, voci da spuntare `[ ]`, colonne centrate, un elenco numerato che non comincia da 1 | `regodoc.markdown.unsupported` |
 | ogni altra forma sbagliata: un'enfasi o un codice non chiusi, un blocco di codice senza chiusura o vuoto, una tabella senza riga di separazione o con celle in numero diverso, una voce fuori colonna o senza testo | `regodoc.markdown.syntax` |
 
 ## 6. Errori e posizioni
 
-Ogni problema dice `file: "document.md"`, la riga e, dove serve, la colonna del Markdown. Il
+Ogni problema dice `file: "document.md"`, la riga e, dove serve, la colonna del Markdown. La
+posizione è quella dell'apertura: per un'enfasi o un codice non chiusi, il segno che li
+apre; per un blocco di codice senza chiusura, la riga dei tre accenti; per una riga di
+tabella sbagliata, la colonna 1 di quella riga. Il
 pacchetto generato si valida per intero, come ogni uscita di `canon`. I problemi che la
 validazione trova nel pacchetto (per esempio una virgoletta spaiata o un limite superato)
 tengono il loro codice e tornano alla riga del Markdown da cui viene il blocco.
 
 Lo stesso `document.md`, con le stesse immagini e le stesse opzioni, dà sempre gli stessi byte
 in uscita.
+
+**`--strict`** vale come per `canon`: gli avvisi del pacchetto generato contano come errori
+e l'uscita non si scrive. Gli avvisi possibili sono quelli della validazione, per esempio
+un'immagine dell'ingresso che il testo non richiama (`regodoc.image.unused`) o metadati
+tolti da un'immagine (`regodoc.image.stripped`). Il Markdown in sé non dà avvisi: ciò che
+non è `md/1` è sempre un errore.
 
 ## 7. Limiti
 

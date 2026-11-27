@@ -3,15 +3,17 @@
 import io
 import json
 import random
+import struct
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
 from regodoc import declaration, importer
-from tests.support import EXAMPLE, EXAMPLES, run_cli, validate_bytes
+from tests.support import EXAMPLE, EXAMPLES, jpeg, run_cli, validate_bytes
 
 PNG = (EXAMPLE / "images" / "coverage.png").read_bytes()
+SIGNATURE = b"Firma-sintetica-di-import-77"
 
 DOCUMENT = """# Rinnovo della rete
 
@@ -178,13 +180,18 @@ class ConversionTest(Workspace):
             ("Perché è così?", "perche-e-cosi"),
             ("2026: il piano", "parte-2026-il-piano"),
             ("Opening", "opening-2"),
-            ("???", "parte"),
+            ("???", "parte-6"),
             ("Con", "con-2"),
             ("x" * 80, "x" * 48),
+            ("Attivita'", "attivita"),
+            ("Attività", "attivita-2"),
+            ("ATTIVITÀ", "attivita-3"),
+            ("  --Prima---e  dopo--  ", "prima-e-dopo"),
+            ("Straße", "stra-e"),
         ]
-        for title, expected in cases:
+        for number, (title, expected) in enumerate(cases, 1):
             with self.subTest(title):
-                self.assertEqual(importer.part_id(title, used), expected)
+                self.assertEqual(importer.part_id(title, used, number), expected)
 
     def test_accents_go_round(self) -> None:
         text = "# T\n\n" + "".join(f"## Parte {n}\n\nTesto.\n\n" for n in range(1, 10))
@@ -196,6 +203,50 @@ class ConversionTest(Workspace):
         self.assertEqual(accents[0], "azure")
         self.assertEqual(accents[8], "azure")
         self.assertEqual(len(set(accents)), 8)
+
+
+class ImagesAndTextTest(Workspace):
+    def test_entities_stay_literal_in_the_package(self) -> None:
+        text = "# T\n\n## P\n\nPrima &amp; dopo, &#60; e un & nudo.\n"
+        outcome, target = self.run_import(self.folder(bundle(text, {})))
+        self.assertEqual(outcome.exit_code, 0, outcome.validation.report.items)
+        part = self.written(target)["parts/p.xml"].decode()
+        self.assertIn("<p>Prima &amp;amp; dopo, &amp;#60; e un &amp; nudo.</p>", part)
+
+    def test_images_are_checked_and_cleaned_as_in_canon(self) -> None:
+        exif = b"\xff\xe1" + struct.pack(">H", 8 + len(SIGNATURE)) + b"Exif\x00\x00" + SIGNATURE
+        photo = jpeg()
+        dirty = photo[:20] + exif + photo[20:]
+        text = "# T\n\n## P\n\n![Foto](images/foto.jpg)\n"
+        outcome, target = self.run_import(self.folder(bundle(text, {"images/foto.jpg": dirty})))
+        self.assertEqual(outcome.exit_code, 0, outcome.validation.report.items)
+        self.assertEqual(
+            [(d.code, d.file) for d in outcome.validation.report.items],
+            [("regodoc.image.stripped", "images/foto.jpg")],
+        )
+        files = self.written(target)
+        self.assertEqual(files["images/foto.jpg"], photo)
+        self.assertNotIn(SIGNATURE, target.read_bytes())
+        # canon sull'uscita dà gli stessi byte: import e canon scrivono lo stesso pacchetto.
+        again = self.root / "again.regodoc"
+        outcome = importer.canon.run(
+            target, str(again), document=None, base_version=None, files_dir=None, strict=False
+        )
+        self.assertEqual(outcome.exit_code, 0)
+        self.assertEqual(again.read_bytes(), target.read_bytes())
+        # Con --strict l'avviso dei metadati tolti è un rifiuto, come in canon.
+        outcome, strict_target = self.run_import(
+            self.folder(bundle(text, {"images/foto.jpg": dirty}), "in-strict"),
+            "s.regodoc",
+            strict=True,
+        )
+        self.assertEqual(outcome.exit_code, 1)
+        self.assertFalse(strict_target.exists())
+
+    def test_a_broken_image_is_refused_as_in_canon(self) -> None:
+        text = "# T\n\n## P\n\n![Foto](images/foto.png)\n"
+        found = self.problems(bundle(text, {"images/foto.png": b"\x89PNG\r\n\x1a\nrotto"}))
+        self.assertEqual(found, [("regodoc.image.structure", "images/foto.png", 0)])
 
 
 class ExampleTest(Workspace):
