@@ -60,14 +60,16 @@ def run(
     files_dir: Path | None,
     strict: bool,
     upgrade: bool = False,
+    data: bytes | None = None,
 ) -> Outcome:
     """Esegue ``canon``, oppure ``upgrade`` con ``upgrade``. Solleva ``OutputError`` per
-    un'uscita non valida."""
+    un'uscita non valida. Con ``data`` valida quei byte d'archivio invece di leggere
+    ``package``, che resta il nome dell'ingresso: così fa ``import``."""
     target = Path(output)
     check_output(target, package, directory=False)
     if files_dir is not None:
         check_files_dir(files_dir)
-    validation = validate_package(package)
+    validation = validate_package(package, data)
     report = validation.report
     outcome = Outcome(1, validation, validation.summary())
     if upgrade:

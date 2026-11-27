@@ -100,6 +100,7 @@ class Table:
     align: list[str]
     head: list[list[Inline]]
     rows: list[list[list[Inline]]]
+    row_lines: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -618,7 +619,7 @@ class _Reader:
                     for cell in row
                 ]
             )
-        self.add(Table(number, align, cells[0], cells[1:]))
+        self.add(Table(number, align, cells[0], cells[1:], [line for line, _ in rows[2:]]))
 
     # -- In linea --
 
@@ -831,7 +832,7 @@ class _Inline:
                     close += 1
                 continue
             break
-        body = text[end:close]
+        body = text[end:close].replace("\n", " ")
         if len(body) > 2 and body.startswith(" ") and body.endswith(" ") and body.strip():
             body = body[1:-1]
         if not body.strip():

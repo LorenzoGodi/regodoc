@@ -81,6 +81,33 @@ def is_allowed_path(path: str) -> bool:
     return path in FIXED_FILES or bool(PART_PATH.fullmatch(path) or IMAGE_PATH.fullmatch(path))
 
 
+@dataclass(frozen=True)
+class Layout:
+    """Che cosa può contenere un archivio o una cartella: quella del pacchetto (§1.1), o quella
+    dell'ingresso Markdown (md-1.md, §1), senza ``mimetype``."""
+
+    files: frozenset[str]
+    folders: frozenset[str]
+    parts: bool
+    mimetype: bool
+
+    def allows(self, path: str) -> bool:
+        if path in self.files or IMAGE_PATH.fullmatch(path):
+            return True
+        return self.parts and bool(PART_PATH.fullmatch(path))
+
+    def message(self, name: str) -> str:
+        if self.mimetype:
+            return _layout_message(name)
+        if name.startswith("images/"):
+            return f"«{name}» non è un nome d'immagine valido: serve images/<nome>.png o .jpg"
+        return f"la voce «{name}» non è prevista: l'ingresso ha document.md e images/"
+
+
+PACKAGE = Layout(frozenset(FIXED_FILES), frozenset(FOLDERS), parts=True, mimetype=True)
+MARKDOWN = Layout(frozenset({"document.md"}), frozenset({"images"}), parts=False, mimetype=False)
+
+
 def is_system_file(path: str) -> bool:
     """Vero per i file che i sistemi operativi aggiungono da soli (§1.6)."""
     parts = path.split("/")
@@ -123,7 +150,9 @@ class _Stop(Exception):
     """Interrompe la lettura dell'involucro dopo un errore che rende inutile proseguire."""
 
 
-def read_package(path: Path, report: Collector, data: bytes | None = None) -> PackageFiles | None:
+def read_package(
+    path: Path, report: Collector, data: bytes | None = None, layout: Layout = PACKAGE
+) -> PackageFiles | None:
     """Legge un pacchetto da archivio o da cartella; None se l'involucro è da rifiutare.
 
     ``data``, se c'è, sono i byte dell'archivio già letti da chi chiama, al massimo il limite
@@ -131,10 +160,10 @@ def read_package(path: Path, report: Collector, data: bytes | None = None) -> Pa
     """
     try:
         if data is None and path.is_dir():
-            return _read_directory(path, report)
+            return _read_directory(path, report, layout)
         if data is None:
             data = read_archive_bytes(path)
-        return _read_archive(data, report)
+        return _read_archive(data, report, layout)
     except _Stop:
         return None
 
@@ -170,7 +199,7 @@ def read_archive_bytes(path: Path) -> bytes:
         return handle.read(ENVELOPE_LIMITS["compressed_bytes"] + 1)
 
 
-def _read_archive(data: bytes, report: Collector) -> PackageFiles:
+def _read_archive(data: bytes, report: Collector, layout: Layout = PACKAGE) -> PackageFiles:
     # Gli errori dell'archivio intero non nominano il file: chi chiama passa spesso un nome
     # temporaneo, che nel rapporto non direbbe niente (contratto, §4.4).
     where = ""
@@ -182,9 +211,10 @@ def _read_archive(data: bytes, report: Collector) -> PackageFiles:
     # Passo 2: struttura. Passo 3: numero di voci.
     entries = _read_central_directory(data, where, report)
     # Passo 4: prima voce.
-    _check_first_entry(data, entries, report)
+    if layout.mimetype:
+        _check_first_entry(data, entries, report)
     # Passo 5: controlli per voce.
-    _check_entries(data, entries, report)
+    _check_entries(data, entries, report, layout)
     # Passo 6: estrazione contata.
     return _extract(data, entries, report)
 
@@ -349,7 +379,9 @@ def _has_zip64_extra(extra: bytes) -> bool:
     return False
 
 
-def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> None:
+def _check_entries(
+    data: bytes, entries: list[_Entry], report: Collector, layout: Layout = PACKAGE
+) -> None:
     """Passo 5: controlli su ogni voce; raccoglie tutti i problemi, poi si ferma se ce n'è."""
     before = len(report.errors)
     seen: set[str] = set()
@@ -402,15 +434,16 @@ def _check_entries(data: bytes, entries: list[_Entry], report: Collector) -> Non
             empty = (entry.method == _STORED and entry.compressed == 0) or (
                 entry.method == _DEFLATED and entry.compressed == len(_EMPTY_DEFLATE)
             )
-            if key not in FOLDERS or entry.size or entry.crc or not empty:
+            if key not in layout.folders or entry.size or entry.crc or not empty:
+                folders = " o ".join(f"«{folder}/»" for folder in sorted(layout.folders))
                 report.error(
                     "regodoc.archive.layout",
-                    f"la voce di cartella «{name}» deve essere «parts/» o «images/», vuota: "
+                    f"la voce di cartella «{name}» deve essere {folders}, vuota: "
                     "«stored» senza dati, oppure «deflate» con il solo flusso vuoto, e CRC 0",
                 )
                 continue
-        elif not is_allowed_path(name):
-            report.error("regodoc.archive.layout", _layout_message(name))
+        elif not layout.allows(name):
+            report.error("regodoc.archive.layout", layout.message(name))
             continue
         end = _local_end(data, entry, report)
         if end is None:
@@ -602,7 +635,7 @@ def _decompress(entry: _Entry, raw: bytes, budget: int, report: Collector) -> tu
 # --- Cartella --------------------------------------------------------------------------------
 
 
-def _read_directory(root: Path, report: Collector) -> PackageFiles:
+def _read_directory(root: Path, report: Collector, layout: Layout = PACKAGE) -> PackageFiles:
     """Legge un pacchetto aperto in una cartella, con le stesse regole di disposizione."""
     result = PackageFiles("directory")
     total = 0
@@ -628,8 +661,8 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
                     f"«{relative}/» è stata aggiunta dal sistema operativo: è ignorata",
                 )
                 dirs.remove(name)
-            elif relative not in FOLDERS:
-                report.error("regodoc.archive.layout", _layout_message(relative + "/"))
+            elif relative not in layout.folders:
+                report.error("regodoc.archive.layout", layout.message(relative + "/"))
                 fatal = True
                 dirs.remove(name)
         for name in sorted(files):
@@ -659,8 +692,8 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
                 report.error("regodoc.archive.path", f"nome non ammesso «{relative}»: {problem}")
                 fatal = True
                 continue
-            if not is_allowed_path(relative):
-                report.error("regodoc.archive.layout", _layout_message(relative))
+            if not layout.allows(relative):
+                report.error("regodoc.archive.layout", layout.message(relative))
                 fatal = True
                 continue
             remaining = expanded_limit - total
@@ -676,7 +709,7 @@ def _read_directory(root: Path, report: Collector) -> PackageFiles:
             result.files[relative] = data
     if fatal:
         raise _Stop
-    if result.files.get("mimetype") != MIMETYPE:
+    if layout.mimetype and result.files.get("mimetype") != MIMETYPE:
         _fail(
             report,
             "regodoc.archive.mimetype",
