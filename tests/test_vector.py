@@ -2,6 +2,7 @@
 controllo di pdffigure nella validazione, copiate byte per byte nella forma canonica."""
 
 import json
+import random
 import tempfile
 import unittest
 import zipfile
@@ -73,6 +74,30 @@ class ValidateTest(unittest.TestCase):
                 ("regodoc.image.pdf_metadata", "images/altra.pdf"),
             ],
         )
+
+
+class LimitTest(unittest.TestCase):
+    def test_all_pdf_figures_together(self) -> None:
+        # Quattro figure da 4 MiB stanno al tetto; una figura in più, l'ultima in ordine di
+        # percorso, lo supera ed è rifiutata da sola.
+        total = int(declaration.CONTENT_LIMITS["pdf_total_bytes"])
+        each = int(declaration.CONTENT_LIMITS["pdf_bytes"])
+        self.assertEqual(total % each, 0)
+        # Il riempimento è una stringa esadecimale casuale, che l'archivio non comprime oltre
+        # il rapporto ammesso.
+        noise = random.Random(5).randbytes(each).hex().encode()  # noqa: S311 - ripetibile
+        filler = each - len(pdf({**pdf_figure(), 5: b"<>"}))
+        full = b""
+        for _ in range(2):
+            full = pdf({**pdf_figure(), 5: b"<" + noise[:filler] + b">"})
+            filler -= len(full) - each
+        self.assertEqual(len(full), each)
+        files = vector_files(example_files(), full)
+        for number in range(1, total // each):
+            files[f"images/extra{number}.pdf"] = full
+        self.assertEqual(errors(files), [])
+        files["images/zz.pdf"] = pdf(pdf_figure())
+        self.assertEqual(errors(files), [("regodoc.limit.pdf", "images/zz.pdf")])
 
 
 class Workspace(unittest.TestCase):

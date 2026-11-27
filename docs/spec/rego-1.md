@@ -966,7 +966,7 @@ grammatica.
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
 | `document.md` dell'ingresso Markdown, dal motore 0.4 (`md-1.md`, §7) | 2 MiB | `content.markdown_bytes` |
 | Riga di `document.md`, dal motore 0.4 | 10.000 caratteri | `content.markdown_line_characters` |
-| Figura in PDF di `rego/2`, dal motore 0.5 (§13) | 4 MiB, 20.000 oggetti, 64 MiB di flussi decodificati | `content.pdf_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes` |
+| Figura in PDF di `rego/2`, dal motore 0.5 (§13) | 4 MiB, 20.000 oggetti, 64 MiB di flussi decodificati; tutte le figure in PDF del pacchetto insieme al massimo 16 MiB | `content.pdf_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes`, `content.pdf_total_bytes` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
 | Diagrammi (§4.5) | 40 per documento, 30 elementi per diagramma, 80 caratteri per etichetta; oltre è `regodoc.limit.diagram` | `content.diagrams`, `content.diagram_items`, `content.diagram_label_characters` |
 | Formula di una variabile calcolata (§3.3) | 500 caratteri, 64 operandi, 16 livelli di parentesi; oltre è `regodoc.limit.calc` | `content.calc_characters`, `content.calc_operands`, `content.calc_depth` |
@@ -1468,7 +1468,10 @@ immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'esten
 `regodoc.image.extension`; un PDF con l'estensione di un'immagine a pixel resta
 `regodoc.image.format`. Le regole, nell'ordine in cui si controllano:
 
-- **Dimensione**: al massimo 4 MiB (`regodoc.limit.pdf`).
+- **Dimensione** (`regodoc.limit.pdf`): al massimo 4 MiB, e tutte le figure in PDF del
+  pacchetto insieme al massimo 16 MiB, contate nell'ordine dei percorsi; la prima che supera
+  il tetto non si legge. Il lettore percorre il PDF token per token, e il tetto tiene la
+  validazione nel tempo che `info` dichiara.
 - **Struttura** (`regodoc.image.pdf_structure`): l'intestazione `%PDF-1.0` … `%PDF-2.0`; dopo
   l'ultimo `%%EOF` solo spazi; una sola tabella xref classica, dove dice `startxref`, con il
   trailer subito dopo; nessuna revisione in più (`/Prev`, un secondo trailer), nessun flusso

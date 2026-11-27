@@ -102,6 +102,9 @@ CONTENT_LIMITS: Final = MappingProxyType(
         # Le figure in PDF vettoriale di rego/2 (specifica, §13): byte del file, oggetti, byte
         # dei flussi decodificati, contati senza conservarli.
         "pdf_bytes": 4 * _MIB,
+        # Tutte le figure in PDF del pacchetto: il lettore costa circa un microsecondo per
+        # token, e il tetto tiene validate nel suo tempo dichiarato.
+        "pdf_total_bytes": 16 * _MIB,
         "pdf_objects": 20_000,
         "pdf_stream_bytes": 64 * _MIB,
     }

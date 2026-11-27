@@ -408,8 +408,20 @@ def _check_parts(
     budget = int(CONTENT_LIMITS["images_pixel_bytes"])
     # Le immagini si controllano come le ha scritte chi ha fatto il pacchetto, anche quando
     # l'aggiornamento in memoria le ha già pulite: gli avvisi parlano dei file ricevuti.
+    # Così i byte delle figure in PDF, che il lettore percorre token per token (§13).
+    vectors = int(CONTENT_LIMITS["pdf_total_bytes"])
     for path in sorted(images):
         data = originals.files.get(path, package.files[path])
+        if vector and path.endswith(".pdf"):
+            if len(data) > vectors:
+                report.error(
+                    "regodoc.limit.pdf",
+                    f"con questa figura i PDF del pacchetto superano "
+                    f"{CONTENT_LIMITS['pdf_total_bytes'] // (1024 * 1024)} MiB",
+                    path,
+                )
+                continue
+            vectors -= len(data)
         budget -= check_image(path, data, report, budget, stripping=stripping, vector=vector)
     # Il controllore delle parti segna da sé gli elementi in cui non è sceso.
     context.complete = context.complete and complete

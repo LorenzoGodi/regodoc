@@ -357,6 +357,7 @@ class ContentBoundaryTest(unittest.TestCase):
             "markdown_bytes",  # test_markdown, EncodingTest, sul file d'ingresso di import
             "markdown_line_characters",  # test_markdown, EncodingTest
             "pdf_bytes",  # test_pdffigure, LimitsTest, al byte
+            "pdf_total_bytes",  # test_vector, LimitTest, al byte
             "pdf_objects",  # test_pdffigure, LimitsTest
             "pdf_stream_bytes",  # test_pdffigure, LimitsTest
         }
