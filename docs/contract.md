@@ -28,7 +28,8 @@ comando `import`, con l'ingresso Markdown `md/1` (§2.1 e §3.4; `spec/md-1.md`)
 (§2.3) e la famiglia di codici `regodoc.markdown.*` (§4.4). Il motore 0.5 aggiunge dentro
 `rego/2` le figure in PDF vettoriale (specifica, §13), con l'estensione `.pdf` in
 `layout.image_path` (§5), la capacità `figure.pdf` (§5.2), i limiti `content.pdf_bytes`,
-`content.pdf_total_bytes`, `content.pdf_objects` e `content.pdf_stream_bytes` (§5.1) e i codici
+`content.pdf_total_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes`, `content.pdf_depth` e
+`content.pdf_resource_depth` (§5.1) e i codici
 `regodoc.image.pdf_structure`, `.pdf_pages`, `.pdf_active`, `.pdf_metadata`, `.pdf_filter`,
 `.pdf_font` e `regodoc.limit.pdf` (§4.4; specifica, §8.1). Un pacchetto senza figure in PDF ha
 la stessa forma canonica e lo stesso PDF di prima (§8).
@@ -509,7 +510,9 @@ invece di importarli dal codice del motore: la regola 1 vale anche qui.
 | `content.pdf_bytes` | byte | dimensione di una figura in PDF di `rego/2`, dal motore 0.5; oltre, `regodoc.limit.pdf` |
 | `content.pdf_total_bytes` | byte | tutte le figure in PDF del pacchetto, dal motore 0.5; la figura che lo supera ha `regodoc.limit.pdf` |
 | `content.pdf_objects` | oggetti | righe usate della tabella xref di una figura in PDF, dal motore 0.5 |
-| `content.pdf_stream_bytes` | byte | tutti i flussi di una figura in PDF, decodificati e contati senza conservarli, dal motore 0.5 |
+| `content.pdf_stream_bytes` | byte | tutti i flussi di una figura in PDF, decodificati e contati senza conservarli, con le stringhe esadecimali, dal motore 0.5 |
+| `content.pdf_depth` | livelli | dizionari e array annidati in una figura in PDF, dal motore 0.5 |
+| `content.pdf_resource_depth` | livelli | risorse annidate in una figura in PDF (Form XObject, pattern, font `Type3`, maschere), dal motore 0.5 |
 | `content.problems` | problemi | elencati in un rapporto; oltre, un errore ferma la lettura con `regodoc.limit.problems` e gli avvisi si contano in `warnings_omitted` (§4.4) |
 
 ### 5.2 Capacità

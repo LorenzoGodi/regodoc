@@ -29,9 +29,9 @@ from regodoc.declaration import CONTENT_LIMITS
 MAX_BYTES = int(CONTENT_LIMITS["pdf_bytes"])
 MAX_OBJECTS = int(CONTENT_LIMITS["pdf_objects"])
 MAX_STREAM_BYTES = int(CONTENT_LIMITS["pdf_stream_bytes"])
-MAX_DEPTH = 32
+MAX_DEPTH = int(CONTENT_LIMITS["pdf_depth"])
 # Le risorse annidate: Form XObject, pattern, font Type3 e maschere dentro altre risorse.
-MAX_FORM_DEPTH = 8
+MAX_FORM_DEPTH = int(CONTENT_LIMITS["pdf_resource_depth"])
 MAX_SIDE = 5000  # punti tipografici, poco meno di 1,8 m
 
 VERSIONS = frozenset({"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "2.0"})

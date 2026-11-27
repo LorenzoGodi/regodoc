@@ -966,7 +966,7 @@ grammatica.
 | Riga di un listato | 200 caratteri | `content.listing_line_characters` |
 | `document.md` dell'ingresso Markdown, dal motore 0.4 (`md-1.md`, §7) | 2 MiB | `content.markdown_bytes` |
 | Riga di `document.md`, dal motore 0.4 | 10.000 caratteri | `content.markdown_line_characters` |
-| Figura in PDF di `rego/2`, dal motore 0.5 (§13) | 4 MiB, 20.000 oggetti, 64 MiB di flussi decodificati; tutte le figure in PDF del pacchetto insieme al massimo 16 MiB | `content.pdf_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes`, `content.pdf_total_bytes` |
+| Figura in PDF di `rego/2`, dal motore 0.5 (§13) | 4 MiB, 20.000 oggetti, 16 MiB di flussi decodificati, 32 livelli di dizionari e array, 8 livelli di risorse; tutte le figure in PDF del pacchetto insieme al massimo 16 MiB | `content.pdf_bytes`, `content.pdf_objects`, `content.pdf_stream_bytes`, `content.pdf_depth`, `content.pdf_resource_depth`, `content.pdf_total_bytes` |
 | Interi e numeri delle variabili | 10^15 in valore assoluto | `content.number_abs_max` |
 | Diagrammi (§4.5) | 40 per documento, 30 elementi per diagramma, 80 caratteri per etichetta; oltre è `regodoc.limit.diagram` | `content.diagrams`, `content.diagram_items`, `content.diagram_label_characters` |
 | Formula di una variabile calcolata (§3.3) | 500 caratteri, 64 operandi, 16 livelli di parentesi; oltre è `regodoc.limit.calc` | `content.calc_characters`, `content.calc_operands`, `content.calc_depth` |
@@ -1499,7 +1499,7 @@ immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'esten
   `ASCII85Decode` e `RunLengthDecode`. `JBIG2Decode`, `JPXDecode`, `LZWDecode`,
   `CCITTFaxDecode`, `Crypt` e ogni altro nome sono rifiutati: sono i decodificatori con più
   difetti nella storia dei lettori PDF. I flussi si decodificano contati, senza conservarli:
-  insieme al massimo 64 MiB, con i byte delle stringhe esadecimali `<…>` nello stesso conto
+  insieme al massimo 16 MiB, con i byte delle stringhe esadecimali `<…>` nello stesso conto
   (`regodoc.limit.pdf`); un flusso che non si decodifica è un errore di struttura.
 - **Font** (`regodoc.image.pdf_font`): ogni font è incorporato, quelli con `/Type /Font` e
   quelli che le risorse nominano anche senza. Un font semplice ha un `/FontDescriptor` con

@@ -106,7 +106,11 @@ CONTENT_LIMITS: Final = MappingProxyType(
         # token, e il tetto tiene validate nel suo tempo dichiarato.
         "pdf_total_bytes": 16 * _MIB,
         "pdf_objects": 20_000,
-        "pdf_stream_bytes": 64 * _MIB,
+        "pdf_stream_bytes": 16 * _MIB,
+        # Annidamento di dizionari e array, e delle risorse: Form XObject, pattern, font Type3
+        # e maschere dentro altre risorse.
+        "pdf_depth": 32,
+        "pdf_resource_depth": 8,
     }
 )
 

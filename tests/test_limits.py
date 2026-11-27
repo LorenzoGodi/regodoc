@@ -360,6 +360,8 @@ class ContentBoundaryTest(unittest.TestCase):
             "pdf_total_bytes",  # test_vector, LimitTest, al byte
             "pdf_objects",  # test_pdffigure, LimitsTest
             "pdf_stream_bytes",  # test_pdffigure, LimitsTest
+            "pdf_depth",  # test_pdffigure, LimitsTest
+            "pdf_resource_depth",  # test_pdffigure, RefusedTest.test_nested_resources
         }
         self.assertEqual(sorted(set(L) - covered), [])
 
