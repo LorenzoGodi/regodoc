@@ -407,6 +407,15 @@ class CommandTest(Workspace):
             ("regodoc.markdown.link", "document.md", 5, 1),
         )
 
+    def test_a_deep_list_is_refused_not_an_internal_error(self) -> None:
+        # Il caso della rilettura di L19: 1.200 livelli finivano in RecursionError, codice 4.
+        body = "".join(" " * (2 * level) + "- x\n" for level in range(1_200))
+        source = self.folder(bundle("# T\n\n## P\n\n" + body, {}))
+        code, report = self.command("--from", "markdown", source, "-o", self.root / "o.regodoc")
+        self.assertEqual(code, 1)
+        found = [(e["code"], e["line"]) for e in report["errors"]]  # type: ignore[index, union-attr]
+        self.assertEqual(found, [("regodoc.markdown.syntax", 8)])
+
     def test_usage(self) -> None:
         source = self.folder(bundle())
         for argv in (

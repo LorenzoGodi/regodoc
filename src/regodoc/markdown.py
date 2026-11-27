@@ -24,14 +24,13 @@ MAX_OPEN_EMPHASIS = 8
 
 # La punteggiatura ASCII che una barra rovescia rende letterale, come in CommonMark.
 _ESCAPABLE = frozenset("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
-_HEADING = re.compile(r"(#{1,7})(?:[ ]+(.*?))?[ ]*")
-_CLOSING_HASHES = re.compile(r"[ ]+#+$")
-_FENCE = re.compile(r"(`{3,}|~{3,})(.*)")
-_BULLET = re.compile(r"([ ]*)([-*])( +)(.*)")
-_NUMBER = re.compile(r"([ ]*)([0-9]{1,9})([.)])( +)(.*)")
-_THEMATIC = re.compile(r"[ ]{0,3}(?:(?:\*[ ]*){3,}|(?:-[ ]*){3,}|(?:_[ ]*){3,})")
-_SETEXT = re.compile(r"[ ]{0,3}(?:=+|-+)[ ]*")
-_DELIMITER_CELL = re.compile(r"[ ]*(:?)-+(:?)[ ]*")
+MAX_LIST_DEPTH = 3  # come list_depth del pacchetto (md-1.md, §3)
+_FENCE = re.compile(r"(`{3,}+|~{3,}+)(.*)")
+_BULLET = re.compile(r"([ ]*+)([-*+])( ++)(.*)")
+_NUMBER = re.compile(r"([ ]*+)([0-9]{1,9}+)([.)])( ++)(.*)")
+_THEMATIC = re.compile(r"[ ]{0,3}+(?:(?:\*[ ]*+){3,}+|(?:-[ ]*+){3,}+|(?:_[ ]*+){3,}+)")
+_SETEXT = re.compile(r"[ ]{0,3}+(?:=++|-++)[ ]*+")
+_DELIMITER_CELL = re.compile(r"[ ]*+(:?)-++(:?)[ ]*+")
 _TASK = re.compile(r"\[[ xX]\][ ]")
 _SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]{0,31}:")
 _FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)\s]*)\)")
@@ -248,6 +247,8 @@ class _Reader:
             return True
         if _FENCE.match(stripped) or _THEMATIC.fullmatch(line):
             return True
+        if _spaced_marker(line):
+            return True
         return stripped.startswith((">", "|")) or _list_marker(line) is not None
 
     def block(self, line: str) -> None:
@@ -277,6 +278,14 @@ class _Reader:
             self.index += 1
         elif _list_marker(line) is not None:
             self.list_block(number)
+        elif _spaced_marker(line):
+            self.problem(
+                "regodoc.markdown.syntax",
+                "un segno d'elenco seguito da più di uno spazio: «- voce», «1. voce»",
+                number,
+                indent + 1,
+            )
+            self.index += 1
         elif stripped.startswith("|") and indent <= 3:
             self.table(number)
         elif indent >= 4:
@@ -295,12 +304,10 @@ class _Reader:
     # -- Titoli --
 
     def heading(self, line: str, number: int) -> None:
-        match = _HEADING.fullmatch(line)
-        if match is None:  # pragma: no cover - _is_heading l'ha già controllato
+        parsed = _heading(line)
+        if parsed is None:  # pragma: no cover - _is_heading l'ha già controllato
             return
-        level = len(match.group(1))
-        text = _CLOSING_HASHES.sub("", match.group(2) or "").strip()
-        column = match.start(2) + 1 if match.group(2) is not None else 1
+        level, text, column = parsed
         if level > 5:
             self.problem(
                 "regodoc.markdown.heading",
@@ -466,6 +473,8 @@ class _Reader:
         lists: list[ListBlock] = []
         last: Item | None = None
         text: list[tuple[int, str]] = []
+        # Il rientro da cui le voci sono oltre il terzo livello: segnalato una volta, saltato.
+        too_deep: int | None = None
 
         def flush() -> None:
             if last is not None and text:
@@ -496,6 +505,21 @@ class _Reader:
                 self.index += 1
                 continue
             indent, numbered, first, content_column, body = marker
+            if too_deep is not None and indent >= too_deep:
+                self.index += 1
+                continue
+            too_deep = None
+            nested = bool(lists) and indent == columns[-1] and indent not in indents
+            if nested and len(lists) >= MAX_LIST_DEPTH:
+                self.problem(
+                    "regodoc.markdown.syntax",
+                    f"un elenco annidato oltre {MAX_LIST_DEPTH} livelli",
+                    line_number,
+                    indent + 1,
+                )
+                too_deep = indent
+                self.index += 1
+                continue
             if not lists or (indent == columns[-1] and indent not in indents):
                 # Un elenco nuovo: il primo, o annidato sotto l'ultima voce.
                 flush()
@@ -599,7 +623,7 @@ class _Reader:
             align.append("right" if right and not left else "left")
         cells: list[list[list[Inline]]] = []
         for line_number, text in [rows[0], *rows[2:]]:
-            if not (text.endswith("|") and not text.endswith("\\|")):
+            if not text.endswith("|") or _escaped_at_end(text):
                 self.problem(
                     "regodoc.markdown.syntax",
                     "una riga di tabella comincia e finisce con «|»",
@@ -633,9 +657,33 @@ class _Reader:
         return _Inline(self, pieces).run()
 
 
+def _heading(line: str) -> tuple[int, str, int] | None:
+    """Livello, testo e colonna del testo di un titolo, o None se la riga non lo è. Senza
+    espressioni regolari: i cancelletti di testa si contano, quelli di chiusura si tolgono se
+    uno spazio li precede, e ogni passo percorre la riga una volta."""
+    level = len(line) - len(line.lstrip("#"))
+    if not 1 <= level <= 7:
+        return None
+    rest = line[level:]
+    if rest and rest[0] != " ":
+        return None
+    body = rest.lstrip(" ")
+    column = level + len(rest) - len(body) + 1 if rest else 1
+    body = body.rstrip(" ")
+    closed = body.rstrip("#")
+    if closed != body and (not closed or closed.endswith(" ")):
+        body = closed if closed.strip() else body
+    return level, body.strip(), column
+
+
 def _is_heading(line: str) -> bool:
-    match = _HEADING.fullmatch(line)
-    return match is not None and (match.group(2) is not None or line.rstrip("#") == "")
+    return _heading(line) is not None
+
+
+def _escaped_at_end(text: str) -> bool:
+    """Vero se l'ultimo carattere è preceduto da un numero dispari di barre rovesce."""
+    head = text[:-1]
+    return (len(head) - len(head.rstrip("\\"))) % 2 == 1
 
 
 def _list_marker(line: str) -> tuple[int, bool, int, int, str] | None:
@@ -645,7 +693,7 @@ def _list_marker(line: str) -> tuple[int, bool, int, int, str] | None:
     match = _BULLET.fullmatch(line)
     if match is not None:
         indent, spaces, body = len(match.group(1)), len(match.group(3)), match.group(4)
-        if spaces != 1 or not body:
+        if spaces != 1 or not body or match.group(2) == "+":
             return None
         return indent, False, 0, indent + 2, body
     match = _NUMBER.fullmatch(line)
@@ -657,6 +705,18 @@ def _list_marker(line: str) -> tuple[int, bool, int, int, str] | None:
         width = len(match.group(2)) + 1
         return indent, True, int(match.group(2)), indent + width + 1, body
     return None
+
+
+def _spaced_marker(line: str) -> bool:
+    """Una voce d'elenco con più di uno spazio dopo il segno «-», «*» o «1.»: in md/1 è un
+    errore, non testo (md-1.md, §3). «+» resta testo."""
+    if _THEMATIC.fullmatch(line):
+        return False
+    match = _BULLET.fullmatch(line)
+    if match is not None:
+        return match.group(2) != "+" and len(match.group(3)) > 1 and bool(match.group(4))
+    match = _NUMBER.fullmatch(line)
+    return match is not None and len(match.group(4)) > 1 and bool(match.group(5))
 
 
 def _is_delimiter_row(text: str) -> bool:

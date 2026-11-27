@@ -109,10 +109,26 @@ class BlockTest(unittest.TestCase):
             "- a\n   - fuori colonna\n": ("regodoc.markdown.syntax", 6, 1),
             "- a\n  1. b\n  - c\n": ("regodoc.markdown.syntax", 7, 3),
             "- [ ] da fare\n": ("regodoc.markdown.unsupported", 5, 3),
+            # Un segno seguito da più di uno spazio non è testo di paragrafo (rilettura di L19).
+            "-  due spazi\n": ("regodoc.markdown.syntax", 5, 1),
+            "Testo\n*   voce\n": ("regodoc.markdown.syntax", 6, 1),
+            "1.  voce\n": ("regodoc.markdown.syntax", 5, 1),
+            # Al quarto livello: un errore solo, sul primo segno troppo profondo.
+            "- a\n  - b\n    - c\n      - d\n        - e\n": ("regodoc.markdown.syntax", 8, 7),
         }
         for body, expected in cases.items():
             with self.subTest(body):
                 self.assertIn(expected, problems(body))
+
+    def test_plus_is_text_and_three_levels_pass(self) -> None:
+        (paragraph,) = blocks("+ voce\n")
+        self.assertIsInstance(paragraph, md.Paragraph)
+        (block,) = blocks("- a\n  - b\n    - c\n")
+        assert isinstance(block, md.ListBlock)
+        self.assertEqual(
+            codes("- a\n  - b\n    - c\n      - d\n        - e\n").count("regodoc.markdown.syntax"),
+            1,
+        )
 
     def test_table(self) -> None:
         (table,) = blocks("| A | B | C |\n|---|:--|--:|\n| 1 | `x\\|y` |  |\n| *e* | 2 | 3 |\n")
@@ -122,12 +138,19 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(table.rows[0], [[md.Text("1")], [md.Code("x|y")], []])
         self.assertEqual(table.rows[1][0], [md.Emphasis([md.Text("e")])])
 
+    def test_a_doubled_backslash_before_the_last_bar(self) -> None:
+        # «\\\\|» è una barra rovescia letterale e poi la barra che chiude la riga.
+        (table,) = blocks("| A |\n|---|\n| x\\\\|\n")
+        assert isinstance(table, md.Table)
+        self.assertEqual(len(table.rows), 1)
+
     def test_table_problems(self) -> None:
         cases = {
             "| A | B |\n| 1 | 2 |\n": ("regodoc.markdown.syntax", 5, 1),
             "| A | B |\n|---|---|\n| 1 |\n": ("regodoc.markdown.syntax", 7, 1),
             "| A |\n|:-:|\n| 1 |\n": ("regodoc.markdown.unsupported", 6, 1),
             "| A |\n|---|\n| 1\n": ("regodoc.markdown.syntax", 7, 1),
+            "| A |\n|---|\n| 1 \\|\n": ("regodoc.markdown.syntax", 7, 1),
         }
         for body, expected in cases.items():
             with self.subTest(body):
@@ -318,8 +341,18 @@ class HostileTest(unittest.TestCase):
                 self.timed((HEAD + body).encode())
 
     def test_deep_lists(self) -> None:
-        body = "".join(" " * (2 * level) + "- x\n" for level in range(2_000))
-        self.timed((HEAD + body).encode())
+        # Mille e milleduecento livelli (1,4 MB): un errore solo, nessuna voce oltre il terzo.
+        for depth in (1_000, 1_200):
+            body = "".join(" " * (2 * level) + "- x\n" for level in range(depth))
+            document = self.timed((HEAD + body).encode())
+            self.assertEqual([p.code for p in document.problems], ["regodoc.markdown.syntax"])
+
+    def test_headings_with_long_runs_of_spaces(self) -> None:
+        # Il caso della rilettura di L19: lunghe serie di spazi dentro e dopo il titolo.
+        line = "### a" + " " * 9_990 + "b"
+        closing = "### a" + " " * 9_980 + "#"
+        data = (HEAD + "\n\n".join([line, closing] * 75) + "\n").encode()
+        self.timed(data)
 
     def test_random_mutations_never_raise(self) -> None:
         source = (

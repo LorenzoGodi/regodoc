@@ -249,6 +249,11 @@ def markdown_cases() -> dict[str, Callable[[], bytes]]:
             )
         )
 
+    def titoli(index: int) -> str:
+        # Il caso della rilettura di L19: lunghe serie di spazi nei titoli, prima dei
+        # cancelletti di chiusura, che il lettore toglie.
+        return fill(lambda: f"### {word()}" + " " * 9_000 + f"#\n\n{word()}\n\n")
+
     def make(body: Callable[[int], str]) -> Callable[[], bytes]:
         def build() -> bytes:
             text = "# Caso peggiore\n\n" + "".join(
@@ -265,7 +270,12 @@ def markdown_cases() -> dict[str, Callable[[], bytes]]:
 
         return build
 
-    return {"md elenchi": make(elenchi), "md enfasi": make(enfasi), "md tabelle": make(tabelle)}
+    return {
+        "md elenchi": make(elenchi),
+        "md enfasi": make(enfasi),
+        "md tabelle": make(tabelle),
+        "md titoli": make(titoli),
+    }
 
 
 def time_import(data: bytes) -> tuple[float, list[str]]:

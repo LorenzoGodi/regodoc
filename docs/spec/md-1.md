@@ -58,20 +58,25 @@ paragrafi, elenchi e tabelle.
 | un paragrafo di una riga fatto solo di `![didascalia](images/nome.png)` | `<figure file="images/nome.png">`, con `<caption>` se la didascalia non è vuota |
 
 **Titoli.** Il cancelletto è seguito da uno spazio; `#etichetta` è testo. I cancelletti di
-chiusura (`## Titolo ##`) si tolgono. Il titolo del documento e quelli delle parti sono testo
+chiusura (`## Titolo ##`) si tolgono quando uno spazio li precede; `## C#` resta «C#». Il titolo del documento e quelli delle parti sono testo
 puro: le fughe con la barra rovescia valgono, le enfasi no. I titoli delle sezioni sono testo
 in linea (§4).
 
 **Elenchi.** Una voce annidata comincia alla colonna del testo della voce di sopra: due spazi
-sotto `- `, tre sotto `1. `. Al massimo tre livelli, come nel pacchetto. Una riga che non è una
-voce continua il testo della voce di sopra. Le righe vuote fra due voci dello stesso elenco
+sotto `- `, tre sotto `1. `. Il segno `-`, `*` o `1.` è seguito da uno spazio solo: `-  voce`,
+con due o più, è un errore e non testo. `+ voce` è testo di paragrafo, perché md/1 non ha
+quel segno. Al massimo tre livelli, come nel pacchetto: la prima voce del quarto livello è un
+errore, e le voci più rientrate che la seguono si saltano senza altri errori. Una riga che non
+è una voce continua il testo della voce di sopra. Le righe vuote fra due voci dello stesso elenco
 non lo interrompono. Una voce di tipo diverso allo stesso livello è un errore, salvo al primo
 livello, dove comincia un elenco nuovo.
 
 **Tabelle.** Ogni riga comincia e finisce con `|`, e ha tante celle quante la riga di
 separazione. La prima riga va in `<head>`, le altre in `<row>`. Le colonne sono tutte `*`;
 `---` e `:---` le allineano a sinistra, `---:` a destra; `:---:` è un errore, perché il
-pacchetto non centra. `\|` scrive una barra dentro una cella. Una cella vuota è `<cell/>`.
+pacchetto non centra. `\|` scrive una barra dentro una cella; `\\|` è una barra rovescia e poi la barra che chiude
+la cella: conta se le barre rovesce prima di `|` sono in numero pari o dispari. Una cella
+vuota è `<cell/>`.
 
 **Struttura del pacchetto.**
 
@@ -137,7 +142,7 @@ caratteri scritti, e il generatore li scrive nel XML come testo (`&amp;amp;`).
 | un'immagine dentro un paragrafo di testo, un percorso fuori da `images/nome.png`, `.jpg` o `.jpeg`, o un file che l'ingresso non contiene | `regodoc.markdown.image` |
 | un titolo mancante, ripetuto, vuoto o di livello `######`, un livello saltato, un titolo sottolineato con `===` o `---` | `regodoc.markdown.heading` |
 | citazioni `>`, righe di separazione `---`, `***` o `___`, codice rientrato di quattro spazi, note `[^1]`, barrato `~~`, voci da spuntare `[ ]`, colonne centrate, un elenco numerato che non comincia da 1 | `regodoc.markdown.unsupported` |
-| ogni altra forma sbagliata: un'enfasi o un codice non chiusi, un blocco di codice senza chiusura o vuoto, una tabella senza riga di separazione o con celle in numero diverso, una voce fuori colonna o senza testo | `regodoc.markdown.syntax` |
+| ogni altra forma sbagliata: un'enfasi o un codice non chiusi, un blocco di codice senza chiusura o vuoto, una tabella senza riga di separazione o con celle in numero diverso, una voce fuori colonna, senza testo, con più di uno spazio dopo il segno o oltre il terzo livello | `regodoc.markdown.syntax` |
 
 ## 6. Errori e posizioni
 
@@ -168,7 +173,10 @@ non è `md/1` è sempre un errore.
 Tutti gli altri limiti sono quelli del pacchetto d'uscita (`rego-1.md`, §7.2), con i loro codici.
 
 Il lettore va per righe, senza ricorsione sull'ingresso: il tempo cresce in modo lineare con
-il testo, anche con migliaia di segni d'enfasi o di parentesi di fila.
+il testo, anche con migliaia di segni d'enfasi o di parentesi di fila. I titoli si leggono
+senza espressioni regolari, contando i cancelletti, perché una lunga serie di spazi nel
+titolo non faccia tornare indietro il confronto; le espressioni regolari che restano non
+hanno due quantificatori che si contendono gli stessi caratteri.
 
 ## 8. Esempio
 
