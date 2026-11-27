@@ -15,7 +15,7 @@ riga, i casi delle parti escono dai 384 KiB nella forma canonica e ``canon`` li 
 ``regodoc.limit.file_size``; per questo ogni caso delle parti ha anche una variante più corta,
 che nella forma canonica sta nei limiti e passa per intero.
 
-Due casi riguardano le figure in PDF vettoriale di ``rego/2``: quattro figure dense al tetto di
+Due casi riguardano le figure in PDF vettoriale di ``rego/2``: figure dense al tetto di
 tutto il pacchetto, piene di token minimi scelti a caso, e ottanta figure con flussi che
 decodificati arrivano al tetto per file.
 

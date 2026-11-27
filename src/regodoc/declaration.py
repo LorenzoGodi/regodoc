@@ -103,8 +103,10 @@ CONTENT_LIMITS: Final = MappingProxyType(
         # dei flussi decodificati, contati senza conservarli.
         "pdf_bytes": 4 * _MIB,
         # Tutte le figure in PDF del pacchetto: il lettore costa circa un microsecondo per
-        # token, e il tetto tiene validate nel suo tempo dichiarato.
-        "pdf_total_bytes": 16 * _MIB,
+        # token, e il tetto tiene validate nel suo tempo dichiarato. La forma canonica
+        # memorizza le immagini senza comprimerle: con 8 MiB il pacchetto sta ancora nei
+        # 12 MiB compressi dell'involucro.
+        "pdf_total_bytes": 8 * _MIB,
         "pdf_objects": 20_000,
         "pdf_stream_bytes": 16 * _MIB,
         # Annidamento di dizionari e array, e delle risorse: Form XObject, pattern, font Type3

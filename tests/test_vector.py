@@ -76,25 +76,31 @@ class ValidateTest(unittest.TestCase):
         )
 
 
+def at_the_limit() -> dict[str, bytes]:
+    """Il pacchetto d'esempio con figure in PDF da 4 MiB fino al tetto di tutto il pacchetto.
+    Il riempimento è una stringa esadecimale casuale, che l'archivio non comprime oltre il
+    rapporto ammesso."""
+    total = int(declaration.CONTENT_LIMITS["pdf_total_bytes"])
+    each = int(declaration.CONTENT_LIMITS["pdf_bytes"])
+    assert total % each == 0
+    noise = random.Random(5).randbytes(each).hex().encode()  # noqa: S311 - ripetibile
+    filler = each - len(pdf({**pdf_figure(), 5: b"<>"}))
+    full = b""
+    for _ in range(2):
+        full = pdf({**pdf_figure(), 5: b"<" + noise[:filler] + b">"})
+        filler -= len(full) - each
+    assert len(full) == each
+    files = vector_files(example_files(), full)
+    for number in range(1, total // each):
+        files[f"images/extra{number}.pdf"] = full
+    return files
+
+
 class LimitTest(unittest.TestCase):
     def test_all_pdf_figures_together(self) -> None:
-        # Quattro figure da 4 MiB stanno al tetto; una figura in più, l'ultima in ordine di
+        # Le figure da 4 MiB stanno al tetto; una figura in più, l'ultima in ordine di
         # percorso, lo supera ed è rifiutata da sola.
-        total = int(declaration.CONTENT_LIMITS["pdf_total_bytes"])
-        each = int(declaration.CONTENT_LIMITS["pdf_bytes"])
-        self.assertEqual(total % each, 0)
-        # Il riempimento è una stringa esadecimale casuale, che l'archivio non comprime oltre
-        # il rapporto ammesso.
-        noise = random.Random(5).randbytes(each).hex().encode()  # noqa: S311 - ripetibile
-        filler = each - len(pdf({**pdf_figure(), 5: b"<>"}))
-        full = b""
-        for _ in range(2):
-            full = pdf({**pdf_figure(), 5: b"<" + noise[:filler] + b">"})
-            filler -= len(full) - each
-        self.assertEqual(len(full), each)
-        files = vector_files(example_files(), full)
-        for number in range(1, total // each):
-            files[f"images/extra{number}.pdf"] = full
+        files = at_the_limit()
         self.assertEqual(errors(files), [])
         files["images/zz.pdf"] = pdf(pdf_figure())
         self.assertEqual(errors(files), [("regodoc.limit.pdf", "images/zz.pdf")])
@@ -129,6 +135,14 @@ class CanonicalTest(Workspace):
         code, _ = self.command("canon", out, "-o", again)
         self.assertEqual(code, ExitCode.OK)
         self.assertEqual(again.read_bytes(), out.read_bytes())
+
+    def test_canon_writes_a_package_at_the_limit(self) -> None:
+        # La forma canonica memorizza le figure: al tetto il pacchetto sta nell'involucro.
+        source_path = self.folder / "in.regodoc"
+        source_path.write_bytes(build_zip(at_the_limit()))
+        out = self.folder / "out.regodoc"
+        code, report = self.command("canon", source_path, "-o", out)
+        self.assertEqual(code, ExitCode.OK, report["errors"])
 
     def test_upgrade_from_rego1_refuses_a_pdf_figure(self) -> None:
         files = vector_files(example_files())
