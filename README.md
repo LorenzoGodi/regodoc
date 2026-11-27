@@ -8,13 +8,15 @@ per il PDF serve TeX Live.
 Rego lo usa come dipendenza con versione fissata. Chiunque può usarlo da solo, con Python
 e TeX Live.
 
-> **Stato:** versione 0.3.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`
-> e `upgrade`. La 0.2 ha aggiunto l'allineamento delle colonne delle tabelle, le variabili
-> calcolate e i diagrammi. La 0.3 apre la grammatica `rego/2`, che toglie i metadati delle
-> immagini a pixel invariati, e legge ancora `rego/1`; il contratto resta 1. La specifica dei
-> due formati è in [`docs/spec/rego-1.md`](docs/spec/rego-1.md). Due pacchetti d'esempio,
-> sintetici, sono in `examples/`: `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`,
-> lungo, in inglese, con tutto il vocabolario.
+> **Stato:** versione 0.4.0. Funzionano tutti i comandi: `info`, `validate`, `canon`, `build`,
+> `upgrade` e `import`. La 0.2 ha aggiunto l'allineamento delle colonne delle tabelle, le
+> variabili calcolate e i diagrammi. La 0.3 apre la grammatica `rego/2`, che toglie i metadati
+> delle immagini a pixel invariati, e legge ancora `rego/1`. La 0.4 aggiunge `import`, che
+> converte un documento Markdown nudo in un pacchetto ([`docs/spec/md-1.md`](docs/spec/md-1.md)).
+> Il contratto resta 1. La specifica dei due formati del pacchetto è in
+> [`docs/spec/rego-1.md`](docs/spec/rego-1.md). In `examples/` ci sono due pacchetti
+> d'esempio sintetici, `colle-rovere/`, breve e in italiano, e `lakeside-rowing/`, lungo, in
+> inglese, con tutto il vocabolario, e un ingresso Markdown, `markdown/`.
 
 ## Requisiti
 
@@ -49,7 +51,8 @@ impronta (`pip install --require-hashes`): costruzione, rilascio e versione fiss
 | `regodoc validate PACCHETTO` | Controlla un pacchetto, archivio o cartella, e ne elenca errori e avvisi | pronto |
 | `regodoc canon PACCHETTO -o USCITA` | Riscrive il pacchetto in forma canonica, con `README.md` e manifesto; `--document` e `--base-version` scrivono i campi del manifesto, `--files-dir` scrive anche i file uno per uno | pronto |
 | `regodoc build PACCHETTO -o USCITA` | Produce PDF o LaTeX (`--format`), con un tema esterno (`--theme`) e un'intestazione (`--header`) | pronto |
-| `regodoc upgrade PACCHETTO -o USCITA` | Porta il pacchetto alla grammatica corrente, in forma canonica; oggi `rego/1` è l'unica grammatica | pronto |
+| `regodoc upgrade PACCHETTO -o USCITA` | Porta il pacchetto alla grammatica corrente, `rego/2`, in forma canonica; da `rego/1` toglie i metadati delle immagini | pronto |
+| `regodoc import --from markdown INGRESSO -o USCITA` | Converte un documento Markdown nudo, con le sue immagini, in un pacchetto in forma canonica; `--language` e `--document` come sopra | pronto |
 
 Ogni comando che legge un pacchetto accetta `--json`, che scrive il rapporto in JSON su stdout,
 e `--strict`, che tratta gli avvisi come errori. Lo stesso comando si può chiamare con
