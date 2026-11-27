@@ -86,7 +86,7 @@ tag va sul commit del rilascio, non sulla testa.
    git push origin v0.3.0
    git tag -a v0.4.0 231bc2b -m "regodoc 0.4.0"
    git push origin v0.4.0
-   git tag -a v0.5.0 5c6aae4 -m "regodoc 0.5.0"
+   git tag -a v0.5.0 58541df -m "regodoc 0.5.0"
    git push origin v0.5.0
    ```
 
@@ -101,7 +101,7 @@ tag va sul commit del rilascio, non sulla testa.
 | 0.2.0 | `794a2a1` | L16 | vedi sotto |
 | 0.3.0 | `ea0a224` | L18 | vedi sotto |
 | 0.4.0 | `231bc2b` | L19 | vedi sotto |
-| 0.5.0 | `5c6aae4` | L20 | vedi sotto |
+| 0.5.0 | `58541df` | L20 | vedi sotto |
 
 ```text
 a96095e8de0098e1cb1e6fc2a5232bb7a83555178b802f3503f07f7316636c49  regodoc-0.1.0-py3-none-any.whl
@@ -124,8 +124,8 @@ b6b1164a20afbeee375b4be2631c4bb8d330e2d06301365175e00e4c94d53ca3  regodoc-0.4.0.
 ```
 
 ```text
-72533e94a22e4f23aa3f41c3dd680af2baf88da37db4a87f0978faac831df8de  regodoc-0.5.0-py3-none-any.whl
-65b8ad5ef79a76d49bf9953e3cf910035b6f738f29efae4bb021c8c75c7d2921  regodoc-0.5.0.tar.gz
+406e613869f7e6af963406e85cd55f8d67e027cd11920c6494fb08a6e28bf657  regodoc-0.5.0-py3-none-any.whl
+327ae1dad9ab2e15ce1872b27cde86b2783f6bd58db8b33b535c5d8374a11121  regodoc-0.5.0.tar.gz
 ```
 
 Una prova del job del pacchetto ricostruisce a ogni commit i commit dei rilasci di questa
