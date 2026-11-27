@@ -30,6 +30,8 @@ MAX_BYTES = int(CONTENT_LIMITS["pdf_bytes"])
 MAX_OBJECTS = int(CONTENT_LIMITS["pdf_objects"])
 MAX_STREAM_BYTES = int(CONTENT_LIMITS["pdf_stream_bytes"])
 MAX_DEPTH = 32
+# Le risorse annidate: Form XObject, pattern, font Type3 e maschere dentro altre risorse.
+MAX_FORM_DEPTH = 8
 MAX_SIDE = 5000  # punti tipografici, poco meno di 1,8 m
 
 VERSIONS = frozenset({"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "2.0"})
@@ -144,6 +146,7 @@ class _Lexer:
     def __init__(self, data: bytes) -> None:
         self.data = data
         self.names: set[str] = set()
+        self.hex_bytes = 0  # i byte decodificati delle stringhe esadecimali
         self._decoded: dict[bytes, Name] = {}
 
     def skip(self, index: int) -> int:
@@ -186,6 +189,7 @@ class _Lexer:
             digits = bytes(b for b in match.group(11) if b not in _WHITESPACE)
             if not _HEX.fullmatch(digits):
                 raise _bad("una stringa esadecimale con caratteri non esadecimali")
+            self.hex_bytes += (len(digits) + 1) // 2
             return binascii.unhexlify(digits + b"0" * (len(digits) % 2)), end
         word = match.group(12)
         if word in _KEYWORDS:
@@ -308,6 +312,11 @@ def check(data: bytes) -> None:
     if match is None or match.group(1).decode() not in VERSIONS:
         raise _bad("manca l'intestazione %PDF-1.x o %PDF-2.0")
     document, lexer = _read(data)
+    if "Linearized" in lexer.names:
+        # Un PDF linearizzato ha una seconda tabella xref e i suoi flussi di suggerimento.
+        raise _bad(
+            "il PDF è linearizzato: una figura ha una sola tabella xref e nessun /Linearized"
+        )
     found = sorted(lexer.names & ACTIVE)
     if found:
         raise Problem(
@@ -319,9 +328,10 @@ def check(data: bytes) -> None:
             raise Problem("regodoc.image.pdf_metadata", f"il PDF contiene /{name}: metadati")
     if document.dictionary(document.trailer.get("Info")):
         raise Problem("regodoc.image.pdf_metadata", "il dizionario /Info del PDF non è vuoto")
-    _check_pages(document)
-    _check_streams(document)
+    resources = _check_pages(document)
+    _check_streams(document, lexer.hex_bytes)
     _check_fonts(document)
+    _check_resources(document, resources)
 
 
 def _read(data: bytes) -> tuple[_Document, _Lexer]:
@@ -406,7 +416,18 @@ def _read(data: bytes) -> tuple[_Document, _Lexer]:
     return document, lexer
 
 
-def _check_pages(document: _Document) -> None:
+def _numbers(document: _Document, value: object) -> list[float] | None:
+    box = document.resolve(value)
+    items = [document.resolve(item) for item in box] if isinstance(box, list) else []
+    if len(items) != 4 or not all(
+        isinstance(n, (int, float)) and not isinstance(n, bool) for n in items
+    ):
+        return None
+    return [float(n) for n in items]  # type: ignore[arg-type]
+
+
+def _check_pages(document: _Document) -> object:
+    """Controlla la pagina sola e restituisce le sue risorse, proprie o della radice."""
     root = document.dictionary(document.trailer.get("Root"))
     if root.get("Type") != Name("Catalog"):
         raise _bad("manca il catalogo /Root")
@@ -419,16 +440,26 @@ def _check_pages(document: _Document) -> None:
     page = document.dictionary(kids[0])
     if page.get("Type") != Name("Page"):
         raise Problem("regodoc.image.pdf_pages", "una figura in PDF ha una pagina sola")
-    box = document.resolve(page.get("MediaBox", pages.get("MediaBox")))
-    numbers = [document.resolve(item) for item in box] if isinstance(box, list) else []
-    if len(numbers) != 4 or not all(
-        isinstance(n, (int, float)) and not isinstance(n, bool) for n in numbers
-    ):
+
+    def inherited(key: str) -> object:
+        return page.get(key, pages.get(key))
+
+    numbers = _numbers(document, inherited("MediaBox"))
+    if numbers is None:
         raise _bad("la pagina non ha una /MediaBox di quattro numeri")
-    width = abs(float(numbers[2]) - float(numbers[0]))  # type: ignore[arg-type]
-    height = abs(float(numbers[3]) - float(numbers[1]))  # type: ignore[arg-type]
+    width = abs(numbers[2] - numbers[0])
+    height = abs(numbers[3] - numbers[1])
     if not (1 <= width <= MAX_SIDE and 1 <= height <= MAX_SIDE):
         raise _bad(f"la pagina misura {width:g} × {height:g} punti: ogni lato va da 1 a {MAX_SIDE}")
+    # pdfTeX include la pagina dal suo /CropBox, la ruota con /Rotate e la scala con /UserUnit:
+    # la resa cambierebbe senza che il controllo lo veda.
+    if inherited("CropBox") is not None and _numbers(document, inherited("CropBox")) != numbers:
+        raise Problem("regodoc.image.pdf_pages", "il /CropBox della pagina non è la /MediaBox")
+    if document.resolve(inherited("Rotate")) not in (None, 0):
+        raise Problem("regodoc.image.pdf_pages", "la pagina è ruotata con /Rotate")
+    if "UserUnit" in page or "UserUnit" in pages:
+        raise Problem("regodoc.image.pdf_pages", "la pagina ha un /UserUnit")
+    return inherited("Resources")
 
 
 def _filters(document: _Document, dictionary: dict[str, object]) -> list[str]:
@@ -443,8 +474,12 @@ def _filters(document: _Document, dictionary: dict[str, object]) -> list[str]:
     return names
 
 
-def _check_streams(document: _Document) -> None:
-    budget = MAX_STREAM_BYTES
+def _check_streams(document: _Document, strings: int) -> None:
+    """I filtri e i byte decodificati di tutti i flussi, con quelli delle stringhe
+    esadecimali, nello stesso tetto."""
+    if strings > MAX_STREAM_BYTES:
+        raise _over()
+    budget = MAX_STREAM_BYTES - strings
     for value in document.objects.values():
         if not isinstance(value, Stream):
             continue
@@ -511,24 +546,78 @@ def _decode(name: str, data: bytes, budget: int) -> bytes:
 def _check_fonts(document: _Document) -> None:
     for value in document.objects.values():
         dictionary = value.dictionary if isinstance(value, Stream) else value
-        if not isinstance(dictionary, dict) or dictionary.get("Type") != Name("Font"):
-            continue
-        subtype = document.resolve(dictionary.get("Subtype"))
-        if subtype == Name("Type3"):
-            if not document.dictionary(dictionary.get("CharProcs")):
-                raise Problem("regodoc.image.pdf_font", "un font Type3 senza /CharProcs")
-            continue
-        if subtype == Name("Type0"):
-            descendants = document.resolve(dictionary.get("DescendantFonts"))
-            fonts = descendants if isinstance(descendants, list) else []
-            if len(fonts) != 1:
-                raise Problem("regodoc.image.pdf_font", "un font Type0 senza un /DescendantFonts")
-            dictionary = document.dictionary(fonts[0])
-        descriptor = document.dictionary(dictionary.get("FontDescriptor"))
-        if not any(isinstance(document.resolve(descriptor.get(k)), Stream) for k in FONT_FILES):
-            base = document.resolve(dictionary.get("BaseFont"))
-            shown = base.value if isinstance(base, Name) else "senza nome"
+        if isinstance(dictionary, dict) and dictionary.get("Type") == Name("Font"):
+            _check_font(document, dictionary)
+
+
+def _check_font(document: _Document, dictionary: dict[str, object]) -> None:
+    subtype = document.resolve(dictionary.get("Subtype"))
+    if subtype == Name("Type3"):
+        if not document.dictionary(dictionary.get("CharProcs")):
+            raise Problem("regodoc.image.pdf_font", "un font Type3 senza /CharProcs")
+        return
+    if subtype == Name("Type0"):
+        # Il descrittore e il file del font stanno nel solo font di /DescendantFonts.
+        descendants = document.resolve(dictionary.get("DescendantFonts"))
+        fonts = descendants if isinstance(descendants, list) else []
+        if len(fonts) != 1:
+            raise Problem("regodoc.image.pdf_font", "un font Type0 senza un /DescendantFonts")
+        dictionary = document.dictionary(fonts[0])
+    descriptor = document.dictionary(dictionary.get("FontDescriptor"))
+    if not any(isinstance(document.resolve(descriptor.get(k)), Stream) for k in FONT_FILES):
+        base = document.resolve(dictionary.get("BaseFont"))
+        shown = base.value if isinstance(base, Name) else "senza nome"
+        raise Problem(
+            "regodoc.image.pdf_font",
+            f"il font {shown} non è incorporato: il PDF dipenderebbe dai font della macchina",
+        )
+
+
+def _check_resources(document: _Document, resources: object) -> None:
+    """Le risorse della pagina e quelle annidate, per livelli: Form XObject e pattern con le
+    loro risorse, font Type3 con le risorse dei glifi, maschere di /ExtGState. Ogni font
+    raggiunto è incorporato, anche senza /Type; oltre MAX_FORM_DEPTH livelli è un limite.
+    Ogni oggetto si visita una volta sola, così i cicli e le condivisioni non moltiplicano il
+    lavoro."""
+    seen: set[int] = set()
+    level: list[object] = [resources]
+    depth = 0
+    while level:
+        if depth > MAX_FORM_DEPTH:
             raise Problem(
-                "regodoc.image.pdf_font",
-                f"il font {shown} non è incorporato: il PDF dipenderebbe dai font della macchina",
+                "regodoc.limit.pdf",
+                f"risorse annidate oltre {MAX_FORM_DEPTH} livelli fra Form XObject, pattern e font",
             )
+        following: list[object] = []
+
+        def visit(value: object) -> dict[str, object] | None:
+            if isinstance(value, Ref):
+                if value.number in seen:
+                    return None
+                seen.add(value.number)
+            return document.dictionary(value)
+
+        for value in level:
+            entries = visit(value)
+            if not entries:
+                continue
+            for font in document.dictionary(entries.get("Font")).values():
+                dictionary = visit(font)
+                if dictionary is None:
+                    continue
+                _check_font(document, dictionary)
+                if dictionary.get("Resources") is not None:
+                    following.append(dictionary["Resources"])
+            for key in ("XObject", "Pattern"):
+                for item in document.dictionary(entries.get(key)).values():
+                    dictionary = visit(item)
+                    if dictionary and dictionary.get("Resources") is not None:
+                        following.append(dictionary["Resources"])
+            for state in document.dictionary(entries.get("ExtGState")).values():
+                mask = document.dictionary(document.dictionary(state).get("SMask"))
+                group = mask.get("G")
+                form = visit(group) if group is not None else None
+                if form and form.get("Resources") is not None:
+                    following.append(form["Resources"])
+        level = following
+        depth += 1

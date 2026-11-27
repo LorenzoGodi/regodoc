@@ -103,7 +103,11 @@ class RefusedTest(unittest.TestCase):
             "xref spostata": good[:xref] + b" " + good[xref:],
             "cifrato": pdf(figure(), trailer=b"/Encrypt 9 0 R "),
             "più revisioni": pdf(figure(), trailer=b"/Prev 9 "),
-            "flusso xref": pdf(figure(), trailer=b"/XRefStm 9 "),
+            # Ibridi e linearizzati, per nome (rilettura del disegno di L20, punto 1).
+            "ibrido con /XRefStm": pdf(figure(), trailer=b"/XRefStm 9 "),
+            "linearizzato": pdf(
+                {**figure(), 5: b"<< /Linearized 1 /L 100 /H [10 20] /O 3 /E 90 /N 1 /T 80 >>"}
+            ),
             "flusso di oggetti": pdf(
                 {**figure(), 5: stream(b"1 0", b"/Type /ObjStm /N 1 /First 4 ")}
             ),
@@ -125,6 +129,23 @@ class RefusedTest(unittest.TestCase):
         for label, data in cases.items():
             with self.subTest(label):
                 self.assertEqual(code(data), "regodoc.image.pdf_structure")
+
+    def test_boxes_and_rotation(self) -> None:
+        # Punto 5: pdfTeX include dal /CropBox, ruota e scala; il controllo lo vede.
+        same = b"/CropBox [0 0 200 120] "
+        self.assertIsNone(code(pdf(figure(page_extra=same))))
+        self.assertIsNone(code(pdf(figure(page_extra=b"/Rotate 0 "))))
+        for extra in (
+            b"/CropBox [10 10 100 100] ",
+            b"/CropBox [0 0 200] ",
+            b"/Rotate 90 ",
+            b"/UserUnit 2 ",
+        ):
+            with self.subTest(extra):
+                self.assertEqual(code(pdf(figure(page_extra=extra))), "regodoc.image.pdf_pages")
+        inherited = figure()
+        inherited[2] = b"<< /Type /Pages /Kids [3 0 R] /Count 1 /Rotate 180 >>"
+        self.assertEqual(code(pdf(inherited)), "regodoc.image.pdf_pages")
 
     def test_one_page_only(self) -> None:
         two = figure()
@@ -157,6 +178,67 @@ class RefusedTest(unittest.TestCase):
             ),
             "regodoc.image.pdf_active",
         )
+
+    def test_escaped_names_in_values(self) -> None:
+        # Punto 6: un nome con #XX conta anche come valore e come nome di una risorsa.
+        for extra in (b"/S /Java#53cript ", b"/X << /#4A#53 1 >> ", b"/A [/Launc#68] "):
+            with self.subTest(extra):
+                self.assertEqual(code(pdf(figure(page_extra=extra))), "regodoc.image.pdf_active")
+
+    def test_hex_strings_count_in_the_budget(self) -> None:
+        # Punto 6: le stringhe esadecimali stanno nel tetto dei byte decodificati.
+        objects = figure()
+        half = pdffigure.MAX_STREAM_BYTES - len(DRAWING) - 10
+        objects[5] = stream(zlib.compress(b" " * half, 9), b"/Filter /FlateDecode ")
+        objects[6] = b"<" + b"00" * 11 + b">"
+        self.assertEqual(code(pdf(objects)), "regodoc.limit.pdf")
+        objects[6] = b"<" + b"00" * 10 + b">"
+        self.assertIsNone(code(pdf(objects)))
+
+    def test_fonts_reached_from_the_resources(self) -> None:
+        # Un font nelle risorse va incorporato anche senza /Type; i Type0 hanno il file nel
+        # discendente (punto 4).
+        bare = with_font(b"<< /Subtype /TrueType /BaseFont /Arial >>")
+        self.assertEqual(code(pdf(bare)), "regodoc.image.pdf_font")
+        type0 = with_font(
+            b"<< /Type /Font /Subtype /Type0 /BaseFont /S /DescendantFonts [6 0 R] "
+            b"/FontDescriptor 7 0 R >>",
+            (6, b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /S >>"),
+            (7, b"<< /Type /FontDescriptor /FontName /S /FontFile2 8 0 R >>"),
+            (8, stream(b"dati del font")),
+        )
+        self.assertEqual(code(pdf(type0)), "regodoc.image.pdf_font")
+
+    def test_nested_resources(self) -> None:
+        # Punto 2 e 4: Form XObject annidate, e un Type3 i cui glifi richiamano una forma.
+        def chain(levels: int) -> dict[int, bytes]:
+            objects = figure(resources=b"/XObject << /X0 10 0 R >>")
+            for n in range(levels):
+                inner = b"/XObject << /X%d %d 0 R >>" % (n + 1, n + 11) if n + 1 < levels else b""
+                objects[10 + n] = stream(
+                    b"0 0 1 1 re f",
+                    b"/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << "
+                    + inner
+                    + b">> ",
+                )
+            return objects
+
+        self.assertIsNone(code(pdf(chain(pdffigure.MAX_FORM_DEPTH))))
+        self.assertEqual(code(pdf(chain(pdffigure.MAX_FORM_DEPTH + 1))), "regodoc.limit.pdf")
+        # Un ciclo fra due forme non fa girare il controllo.
+        loop = figure(resources=b"/XObject << /A 10 0 R >>")
+        loop[10] = stream(b"", b"/Subtype /Form /Resources << /XObject << /B 11 0 R >> >> ")
+        loop[11] = stream(b"", b"/Subtype /Form /Resources << /XObject << /A 10 0 R >> >> ")
+        self.assertIsNone(code(pdf(loop)))
+        # I glifi di un Type3 con un font non incorporato nelle loro risorse.
+        type3 = with_font(
+            b"<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1 1] /FontMatrix [1 0 0 1 0 0] "
+            b"/CharProcs << /a 6 0 R >> /Resources << /Font << /G 7 0 R >> >> "
+            b"/Encoding << /Differences [97 /a] >> /FirstChar 97 /LastChar 97 /Widths [1] >>",
+            (6, stream(b"BT /G 1 Tf (a) Tj ET")),
+            (7, b"<< /Subtype /Type1 /BaseFont /Helvetica >>"),
+        )
+        self.assertEqual(code(pdf(type3)), "regodoc.image.pdf_font")
 
     def test_fonts_must_be_embedded(self) -> None:
         cases = [

@@ -1475,30 +1475,41 @@ immagini, e `build` lo passa così com'è a pdfTeX. Un PNG o un JPEG con l'esten
 - **Struttura** (`regodoc.image.pdf_structure`): l'intestazione `%PDF-1.0` … `%PDF-2.0`; dopo
   l'ultimo `%%EOF` solo spazi; una sola tabella xref classica, dove dice `startxref`, con il
   trailer subito dopo; nessuna revisione in più (`/Prev`, un secondo trailer), nessun flusso
-  xref (`/XRefStm`, `/Type /XRef`), nessun flusso di oggetti (`/Type /ObjStm`), nessuna
-  cifratura (`/Encrypt`); ogni oggetto all'offset che la tabella dichiara, con il numero
+  xref (`/XRefStm` di un file ibrido, `/Type /XRef`), nessun flusso di oggetti
+  (`/Type /ObjStm`), nessuna linearizzazione (`/Linearized`, con i suoi flussi di
+  suggerimento), nessuna cifratura (`/Encrypt`); ogni oggetto all'offset che la tabella dichiara, con il numero
   giusto; ogni flusso lungo quanto dice `/Length` e chiuso da `endstream`. Al massimo 20 000
   oggetti e 32 livelli di dizionari e array annidati (`regodoc.limit.pdf`).
 - **Contenuto attivo o nascosto** (`regodoc.image.pdf_active`): nessuno dei nomi `JavaScript`,
   `JS`, `OpenAction`, `AA`, `Launch`, `SubmitForm`, `ImportData`, `RichMedia`, `EmbeddedFile`,
   `EmbeddedFiles`, `XFA`, `Annots`, `AcroForm`, `URI`, `GoToR`, `GoToE`, `FileAttachment`,
   `Sound`, `Movie`, `Rendition`, `3D`, `Names` e `OCProperties`, dovunque compaia e comunque
-  sia scritto: `/J#53` è `/JS`.
+  sia scritto: chiave, valore o nome di una risorsa, i nomi si decodificano prima del
+  confronto, e `/J#53` è `/JS`.
 - **Metadati** (`regodoc.image.pdf_metadata`): nessun `/Metadata` e nessun `/PieceInfo`; il
   dizionario `/Info` del trailer assente o vuoto. Il motore li rifiuta e non li toglie, perché
   toglierli vorrebbe dire riscrivere il PDF.
 - **Pagine** (`regodoc.image.pdf_pages`): la radice delle pagine ha `/Count 1` e un solo
   figlio, che è la pagina. La sua `/MediaBox`, propria o della radice, ha quattro numeri e lati
-  fra 1 e 5000 punti; altrimenti è un errore di struttura.
+  fra 1 e 5000 punti; altrimenti è un errore di struttura. pdfTeX include la pagina dal suo
+  `/CropBox`, la ruota con `/Rotate` e la scala con `/UserUnit`: un `/CropBox` diverso dalla
+  `/MediaBox`, un `/Rotate` diverso da 0 e un `/UserUnit` qualsiasi, propri o della radice,
+  sono rifiutati, perché la resa cambierebbe senza che il controllo lo veda.
 - **Filtri** (`regodoc.image.pdf_filter`): solo `FlateDecode`, `DCTDecode`, `ASCIIHexDecode`,
   `ASCII85Decode` e `RunLengthDecode`. `JBIG2Decode`, `JPXDecode`, `LZWDecode`,
   `CCITTFaxDecode`, `Crypt` e ogni altro nome sono rifiutati: sono i decodificatori con più
   difetti nella storia dei lettori PDF. I flussi si decodificano contati, senza conservarli:
-  insieme al massimo 64 MiB (`regodoc.limit.pdf`); un flusso che non si decodifica è un errore
-  di struttura.
-- **Font** (`regodoc.image.pdf_font`): ogni font è incorporato. Un font semplice ha un
-  `/FontDescriptor` con `/FontFile`, `/FontFile2` o `/FontFile3`; un `Type0` ha un
-  `/DescendantFonts` con un font incorporato; un `Type3` ha i suoi `/CharProcs`.
+  insieme al massimo 64 MiB, con i byte delle stringhe esadecimali `<…>` nello stesso conto
+  (`regodoc.limit.pdf`); un flusso che non si decodifica è un errore di struttura.
+- **Font** (`regodoc.image.pdf_font`): ogni font è incorporato, quelli con `/Type /Font` e
+  quelli che le risorse nominano anche senza. Un font semplice ha un `/FontDescriptor` con
+  `/FontFile`, `/FontFile2` o `/FontFile3`; un `Type0` ha un `/DescendantFonts` di un solo
+  font, e il descrittore e il file stanno in quello, non nel `Type0`; un `Type3` ha i suoi
+  `/CharProcs`, e i font delle risorse dei suoi glifi seguono la stessa regola.
+- **Risorse annidate** (`regodoc.limit.pdf`): dalle risorse della pagina il controllo scende
+  per livelli nelle Form XObject, nei pattern, nei font `Type3` e nelle maschere di
+  `/ExtGState` che hanno risorse proprie, al massimo 8 livelli. Ogni oggetto si visita una
+  volta sola, così un ciclo o una risorsa condivisa non moltiplicano il lavoro.
 
 Il controllo si fa nella validazione (§6.4 passo 10), un errore per immagine, e il tempo cresce
 in modo lineare con il file: il lettore degli oggetti usa una pila e non la ricorsione.
